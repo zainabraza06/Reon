@@ -1,0 +1,362 @@
+/* MessageBubble.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+  max-width: 85%;
+  position: relative;
+  animation: fadeIn 0.3s ease;
+}
+
+.container.sent {
+  margin-left: auto;
+  align-items: flex-end;
+}
+
+.container.received {
+  margin-right: auto;
+  align-items: flex-start;
+}
+
+.senderName {
+  font-size: 0.75rem;
+  color: #93c5fd;
+  margin-bottom: 0.25rem;
+  margin-left: 0.25rem;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.bubble {
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  position: relative;
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bubble:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.bubble.sentBubble {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border-top-right-radius: 0.25rem;
+  border-bottom-right-radius: 1rem;
+  border-bottom-left-radius: 1rem;
+}
+
+.bubble.receivedBubble {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: white;
+  border-top-left-radius: 0.25rem;
+  border-bottom-right-radius: 1rem;
+  border-bottom-left-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Media Styles */
+.mediaContainer {
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mediaItem {
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.image {
+  max-width: 100%;
+  max-height: 20rem;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  display: block;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.video {
+  max-width: 100%;
+  max-height: 20rem;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.audio {
+  width: 100%;
+  border-radius: 0.5rem;
+}
+
+.document {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 0.5rem;
+  color: white;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.document:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.iconContainer {
+  padding: 0.5rem;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(96, 165, 250, 0.3) 100%);
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.iconContainer svg {
+  width: 1rem;
+  height: 1rem;
+  color: #bfdbfe;
+}
+
+.documentText {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Content Styles */
+.content {
+  word-break: break-word;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.messageText {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Decryption Styles */
+.decryptionContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+  min-height: 2rem;
+}
+
+.decrypting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dots {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: #60a5fa;
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.dot1 {
+  animation-delay: -0.32s;
+}
+
+.dot2 {
+  animation-delay: -0.16s;
+}
+
+.dot3 {
+  animation-delay: 0s;
+}
+
+.decryptingText {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.encrypted {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.encrypted svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.encryptedText {
+  font-size: 0.875rem;
+  opacity: 0.8;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.retryButton {
+  font-size: 0.75rem;
+  color: #93c5fd;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font-weight: 500;
+  transition: color 0.2s ease;
+  margin-left: 0.25rem;
+}
+
+.retryButton:hover {
+  color: #bfdbfe;
+}
+
+/* Metadata Styles */
+.metadata {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.metadata:hover {
+  opacity: 1;
+}
+
+.metadata.metadataSent {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.metadata.metadataReceived {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.timestamp {
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.checkIcon {
+  opacity: 0.7;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.readIcon {
+  color: #93c5fd;
+  opacity: 1;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  .container {
+    max-width: 90%;
+  }
+  
+  .bubble {
+    padding: 0.625rem 0.875rem;
+  }
+  
+  .image, .video {
+    max-height: 15rem;
+  }
+}
+
+/* Sent bubble specific adjustments */
+.bubble.sentBubble .encrypted svg {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.bubble.sentBubble .encryptedText {
+  color: white;
+  opacity: 0.9;
+}
+
+.bubble.sentBubble .retryButton {
+  color: #bfdbfe;
+}
+
+.bubble.sentBubble .dot {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Received bubble specific adjustments */
+.bubble.receivedBubble .document {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.bubble.receivedBubble .iconContainer {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Group message styling */
+.groupMessage {
+  border-left: 3px solid #60a5fa;
+  padding-left: 0.75rem;
+  margin-left: -0.75rem;
+}

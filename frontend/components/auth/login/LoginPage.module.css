@@ -1,0 +1,733 @@
+/* LoginPage.module.css */
+.fullPage {
+  min-height: 100vh;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: linear-gradient(135deg, #1e1e2f, #111117);
+  overflow: hidden;
+}
+
+/* BLOBS */
+.blob {
+  position: absolute;
+  width: 25rem;
+  height: 25rem;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.4;
+  animation: pulseBlob 8s infinite alternate;
+}
+
+.blobPurple { 
+  background: rgba(128, 90, 213, 0.3); 
+  top: -8rem; 
+  right: -8rem; 
+}
+.blobBlue { 
+  background: rgba(59, 130, 246, 0.3); 
+  bottom: -8rem; 
+  left: -8rem; 
+  animation-delay: 2s;
+}
+.blobTeal { 
+  background: rgba(45, 212, 191, 0.25); 
+  top: 50%; 
+  left: 60%; 
+  animation-delay: 4s;
+}
+
+@keyframes pulseBlob {
+  0% { transform: scale(0.9); opacity: 0.3; }
+  50% { transform: scale(1.1); opacity: 0.5; }
+  100% { transform: scale(0.9); opacity: 0.3; }
+}
+
+/* Floating particles */
+.particlesContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  animation: floatParticle 20s infinite linear;
+}
+
+@keyframes floatParticle {
+  0% {
+    transform: translateY(100vh) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100px) translateX(100px);
+    opacity: 0;
+  }
+}
+
+/* MAIN LAYOUT */
+.main {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  gap: 3rem; /* slightly reduced gap for compact */
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  position: relative;
+}
+
+/* LEFT SIDE: WIDER FORM */
+.formSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 400px;
+  height: 70%; /* compact form height */
+}
+
+/* Brand */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* smaller gap */
+  margin-bottom: 1.5rem; /* smaller margin */
+  justify-content: center;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #3b82f6, #9333ea);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 18px;
+  color: white;
+}
+
+.brandText {
+  font-size: 1.5rem; /* smaller font */
+  font-weight: 800;
+  background: linear-gradient(90deg, #3b82f6, #9333ea);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glass effect form - compact version */
+.glassForm {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-radius: 1.5rem;
+  padding: 1.5rem; /* reduced padding */
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 500px;
+  min-width: 400px;
+  height: 50%; /* 70% of parent */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Form Header */
+.formHeader {
+  text-align: center;
+  margin-bottom: 1.2rem; /* reduced margin */
+}
+
+.title {
+  font-size: 1.8rem; /* smaller font */
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 0.8rem; /* smaller font */
+  line-height: 1.2;
+}
+
+/* Form Box */
+.formBox {
+  display: flex;
+  flex-direction: column;
+  gap:0.6rem; /* reduced gap */
+  width: 100%;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* smaller gap */
+}
+
+.formGroup label {
+  color: rgba(255,255,255,0.9);
+  font-weight: 600;
+  font-size: 0.7rem; /* smaller font */
+}
+
+.glassInput {
+  padding: 0.7rem 0.8rem; /* smaller padding */
+  border-radius: 0.8rem; /* slightly smaller corners */
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 0.7rem; /* smaller font */
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.glassInput:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  background: rgba(255,255,255,0.12);
+}
+
+.glassInput::placeholder {
+  color: rgba(255,255,255,0.5);
+}
+
+/* Password wrapper */
+.passwordWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.passwordToggle:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* Form options */
+.formOptions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem; /* smaller font */
+  margin-top: 0.3rem; /* reduced margin */
+}
+
+.rememberMe {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.rememberMe input {
+  width: 16px;
+  height: 16px;
+}
+
+.forgotPassword {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.forgotPassword:hover {
+  color: #60a5fa;
+}
+
+/* BUTTONS */
+.btnPrimary {
+  padding: 0.95rem; /* smaller padding */
+  border-radius: 0.8rem;
+  background: linear-gradient(45deg, #3b82f6, #9333ea);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem; /* smaller font */
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(59, 130, 246, 0.4);
+}
+
+.btnPrimary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btnPrimary.loading {
+  color: transparent;
+}
+
+.btnPrimary.loading::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: auto;
+  border: 3px solid transparent;
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: buttonLoading 1s ease infinite;
+}
+
+@keyframes buttonLoading {
+  from { transform: rotate(0turn); }
+  to { transform: rotate(1turn); }
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  margin: 1rem 0; /* smaller margin */
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem; /* smaller font */
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.divider span {
+  padding: 0 1rem;
+}
+
+/* Google button */
+.btnGoogle {
+  padding: 0.9rem; /* smaller padding */
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+   -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem; /* smaller font */
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem; /* smaller gap */
+}
+
+.btnGoogle:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.googleIcon {
+  width: 18px;
+  height: 18px;
+}
+
+/* FOOTER TEXT */
+.altText {
+  text-align: center;
+  margin-top: 1rem; /* reduced margin */
+  color: rgba(255,255,255,0.7);
+  font-size: 0.9rem; /* smaller font */
+}
+
+.altText a {
+  margin-left: 0.5rem;
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.altText a:hover {
+  color: #60a5fa;
+}
+
+/* RIGHT SIDE: CHAT DEMO */
+.chatContainer {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 400px;
+}
+
+.chatBox {
+  width: 100%;
+  max-width: 450px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border-radius: 1.5rem;
+  padding: 1.5rem; /* reduced padding */
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
+  max-height: 500px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+}
+
+.chatTitle {
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  text-align: center;
+  color: rgba(255,255,255,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.chatMessage {
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  margin-bottom: 0.4rem;
+  max-width: 80%;
+  color: white;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.4s ease;
+  animation: messageSlideIn 0.4s ease forwards;
+}
+
+@keyframes messageSlideIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chatMessage.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.other {
+  background: rgba(255,255,255,0.15);
+  align-self: flex-start;
+  border-bottom-left-radius: 0.5rem;
+}
+
+.user {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  align-self: flex-end;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.messageContent {
+  font-size: 0.9rem; /* smaller font */
+  line-height: 1.3;
+  word-wrap: break-word;
+}
+
+.messageStatus {
+  font-size: 0.7rem; /* smaller font */
+  opacity: 0.7;
+  margin-top: 0.3rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .main {
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+  
+  .formSection, .chatContainer {
+    min-width: 100%;
+  }
+  
+  .glassForm {
+    max-width: 400px;
+    min-width: auto;
+    height: 70%;
+  }
+  
+  .chatBox {
+    max-width: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .fullPage {
+    padding: 1rem;
+  }
+  
+  .glassForm {
+    padding: 1.5rem;
+  }
+  
+  .chatBox {
+    padding: 1rem;
+  }
+  
+  .title {
+    font-size: 1.6rem;
+  }
+}
+
+
+.footerInfo {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.dot {
+  width: 0.25rem;
+  height: 0.25rem;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+}
+
+/* Flash Messages */
+.flashMessage {
+  position: fixed;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1rem 1.5rem;
+  border-radius: 0.8rem;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 400px;
+  width: 90%;
+  animation: slideDown 0.3s ease;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.flashMessage.error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fecaca;
+}
+
+.flashMessage.success {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #bbf7d0;
+}
+
+.flashMessage.info {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #bfdbfe;
+}
+
+.flashContent {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.flashIcon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.flashText {
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.flashClose {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.3rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.flashClose:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+/* Responsive flash messages */
+@media (max-width: 768px) {
+  .flashMessage {
+    padding: 0.875rem 1.25rem;
+    max-width: 90%;
+  }
+  
+  .flashContent {
+    gap: 0.5rem;
+  }
+  
+  .flashText {
+    font-size: 0.85rem;
+  }
+}
+
+
+/* Add to LoginPage.module.css */
+.loadingLink {
+  cursor: not-allowed !important;
+  text-decoration: none !important;
+}
+
+.forgotPassword {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.forgotPassword:hover:not(:disabled) {
+  color: #60a5fa;
+}
+
+.forgotPassword:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+
+.glassInput:focus,
+.glassInput:valid,
+.glassInput:not(:placeholder-shown),
+.glassInput:invalid,
+.glassInput[value]:not([value=""]) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: white !important;
+}
+
+.glassInput:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+  background: rgba(255, 255, 255, 0.15) !important; /* Slightly brighter on focus only */
+}
+
+.glassInput::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Remove any browser default styles that might override */
+.glassInput:-webkit-autofill,
+.glassInput:-webkit-autofill:hover, 
+.glassInput:-webkit-autofill:focus {
+  -webkit-text-fill-color: white;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.12) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Specific fix for email and name inputs */
+input[type="text"].glassInput,
+input[type="email"].glassInput {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+input[type="text"].glassInput:focus,
+input[type="email"].glassInput:focus {
+  background: rgba(255, 255, 255, 0.15) !important;
+}

@@ -1,0 +1,48 @@
+/* Reset and global styles */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add your custom styles here */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+html, body {
+  height: 100%;
+   overflow-x: hidden; 
+  
+}
+
+
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg,#1e1e2f,#111117);
+  color: white;
+  /* overflow: hidden; <- remove this */
+}
+
+
+
+/* Footer */
+footer { 
+  text-align: center; 
+  font-size: 0.875rem; 
+  color: rgba(255,255,255,0.5); 
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.5rem; 
+  border-top: 1px solid rgba(255,255,255,0.1); 
+  padding: 2rem 0 1rem 0; 
+  margin-top: auto; 
+}
+
+
