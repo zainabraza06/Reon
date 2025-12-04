@@ -1,3 +1,4 @@
+/* ChatPage.module.css */
 .pageContainer {
   height: 100vh;
   width: 100vw;
@@ -8,13 +9,14 @@
   position: relative;
 }
 
+/* Static blobs - no animation */
 .blob {
   position: absolute;
   filter: blur(80px);
   opacity: 0.4;
-  animation: blob 7s infinite;
   border-radius: 50%;
   z-index: 0;
+  /* No animation property */
 }
 
 .blobPurple {
@@ -23,7 +25,6 @@
   width: 18rem;
   height: 18rem;
   background-color: #a855f7;
-  animation-delay: 0s;
 }
 
 .blobBlue {
@@ -32,7 +33,6 @@
   width: 18rem;
   height: 18rem;
   background-color: #3b82f6;
-  animation-delay: 2s;
 }
 
 .blobTeal {
@@ -41,14 +41,6 @@
   width: 18rem;
   height: 18rem;
   background-color: #14b8a6;
-  animation-delay: 4s;
-}
-
-@keyframes blob {
-  0% { transform: translate(0px, 0px) scale(1); }
-  33% { transform: translate(30px, -50px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.9); }
-  100% { transform: translate(0px, 0px) scale(1); }
 }
 
 .mainContainer {
@@ -61,11 +53,18 @@
   justify-content: center;
 }
 
+/* Tablet styles */
 @media (min-width: 768px) {
-  .mainContainer { padding: 1rem; }
+  .mainContainer { 
+    padding: 1rem; 
+  }
 }
+
+/* Desktop styles */
 @media (min-width: 1024px) {
-  .mainContainer { padding: 2rem; }
+  .mainContainer { 
+    padding: 2rem; 
+  }
 }
 
 .chatWrapper {
@@ -80,9 +79,20 @@
 }
 
 @media (min-width: 768px) {
-  .chatWrapper { border-radius: 1.5rem; }
+  .chatWrapper { 
+    border-radius: 1.5rem; 
+    max-width: 100%;
+  }
 }
 
+@media (min-width: 1280px) {
+  .chatWrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}
+
+/* Sidebar container */
 .sidebarContainer {
   width: 100%;
   height: 100%;
@@ -90,12 +100,13 @@
   flex-direction: column;
   flex-shrink: 0;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
   position: absolute;
   z-index: 20;
   background-color: #0f172a;
 }
 
+/* Tablet: Sidebar becomes fixed width */
 @media (min-width: 768px) {
   .sidebarContainer {
     width: 20rem;
@@ -103,28 +114,37 @@
     background-color: transparent;
   }
 }
+
+/* Desktop: Larger sidebar */
 @media (min-width: 1024px) {
-  .sidebarContainer { width: 24rem; }
+  .sidebarContainer { 
+    width: 24rem; 
+  }
 }
 
+/* Mobile sidebar visibility */
 .sidebarHidden {
   transform: translateX(-100%);
 }
+
 @media (min-width: 768px) {
-  .sidebarHidden { transform: translateX(0); }
+  .sidebarHidden { 
+    transform: translateX(0); 
+  }
 }
 
 .sidebarVisible {
   transform: translateX(0);
 }
 
+/* Chat area container */
 .chatAreaContainer {
   flex: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease;
   position: absolute;
   width: 100%;
   background-color: #0f172a;
@@ -138,26 +158,76 @@
   }
 }
 
+/* Mobile chat area visibility */
 .chatAreaHidden {
   transform: translateX(100%);
 }
+
 @media (min-width: 768px) {
-  .chatAreaHidden { transform: translateX(0); }
+  .chatAreaHidden { 
+    transform: translateX(0); 
+  }
 }
 
 .chatAreaVisible {
   transform: translateX(0);
 }
 
-.flexColScroll {
-  /* Utility for keeping column flex if needed, mostly handled by classes above */
+/* Loading state */
+.loadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+  background-color: #0f172a;
+  font-size: 1.125rem;
+  font-weight: 500;
 }
 
-.loadingContainer {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    color: white;
-    background-color: #0f172a;
+/* Optional: Add a subtle gradient background if you want more visual interest */
+.pageContainer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  z-index: -1;
+}
+
+/* Optional: Glass effect for chat wrapper */
+.chatWrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  border-radius: inherit;
+  z-index: -1;
+}
+
+/* Responsive adjustments for very large screens */
+@media (min-width: 1536px) {
+  .sidebarContainer {
+    width: 28rem;
+  }
+  
+  .mainContainer {
+    padding: 3rem;
+  }
+}
+
+/* Fix for mobile viewport height */
+@supports (-webkit-touch-callout: none) {
+  .pageContainer {
+    height: -webkit-fill-available;
+  }
 }

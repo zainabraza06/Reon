@@ -1,35 +1,69 @@
+/* InputArea.module.css */
+
 .container {
   padding: 1rem;
-  background-color: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
 }
 
+/* File Previews */
 .filePreviews {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.filePreviews::-webkit-scrollbar {
+  height: 4px;
+}
+
+.filePreviews::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.filePreviews::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
 }
 
 .previewItem {
   position: relative;
-  width: 4rem;
-  height: 4rem;
+  width: 5rem;
+  height: 5rem;
   flex-shrink: 0;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.75rem;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.3s ease;
+  animation: slideIn 0.3s ease;
+}
+
+.previewItem:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .previewImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.previewItem:hover .previewImage {
+  transform: scale(1.05);
 }
 
 .previewIcon {
@@ -39,42 +73,85 @@
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+}
+
+.previewIcon svg {
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .removeButton {
   position: absolute;
-  top: 0;
-  right: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  top: 0.25rem;
+  right: 0.25rem;
+  background: rgba(0, 0, 0, 0.7);
   color: white;
-  border-bottom-left-radius: 0.25rem;
-  padding: 0.125rem;
+  border-radius: 50%;
+  padding: 0.25rem;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  transition: all 0.2s ease;
+  opacity: 0;
+  transform: scale(0.8);
 }
-.removeButton:hover { background-color: rgba(239, 68, 68, 0.8); }
 
+.previewItem:hover .removeButton {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.removeButton:hover {
+  background: rgba(239, 68, 68, 0.9);
+  transform: scale(1.1);
+}
+
+.removeButton svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* Input Form */
 .inputForm {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  position: relative;
 }
 
 .iconButton {
-  padding: 0.625rem;
-  color: rgba(255, 255, 255, 0.7);
+  padding: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
   border-radius: 9999px;
-  transition: all 0.2s;
-  background: none;
-  border: none;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
+
 .iconButton:hover {
   color: white;
-  background-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.iconButton:active {
+  transform: translateY(0);
+}
+
+.iconButton svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .hiddenInput {
@@ -83,59 +160,260 @@
 
 .textInput {
   flex: 1;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 9999px;
-  padding: 0.625rem 1rem;
+  padding: 0.875rem 1.25rem;
   color: white;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
   font-family: inherit;
+  font-size: 0.9375rem;
+  outline: none;
+  min-width: 0;
 }
 
-.textInput::placeholder { color: rgba(255, 255, 255, 0.4); }
+.textInput::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+}
+
 .textInput:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.3);
-  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
-.textInput:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.textInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Send Button */
 .sendButton {
-  padding: 0.625rem;
-  background: linear-gradient(to right, #3b82f6, #9333ea);
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
   border-radius: 9999px;
   color: white;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
-.sendButton:hover { transform: scale(1.05); box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3); }
-.sendButton:active { transform: scale(0.95); }
-.sendButton:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.micButton {
-  padding: 0.625rem;
-  color: rgba(255, 255, 255, 0.7);
-  border-radius: 9999px;
-  transition: all 0.2s;
-  background: none;
-  border: none;
-  cursor: pointer;
+.sendButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
 }
+
+.sendButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.sendButton:hover::before {
+  left: 100%;
+}
+
+.sendButton:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.sendButton:disabled::before {
+  display: none;
+}
+
+.sendButton svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Mic Button */
+.micButton {
+  padding: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .micButton:hover {
   color: white;
-  background-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
 }
 
+.micButton:active {
+  transform: translateY(0);
+}
+
+.micButton svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Animations */
 .animatePulse {
   animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* Typing indicator in input */
+.typingIndicator {
+  position: absolute;
+  top: -1.75rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.typingBubble {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  .container {
+    padding: 0.75rem;
+  }
+  
+  .previewItem {
+    width: 4rem;
+    height: 4rem;
+  }
+  
+  .inputForm {
+    gap: 0.5rem;
+  }
+  
+  .textInput {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .iconButton,
+  .sendButton,
+  .micButton {
+    padding: 0.625rem;
+  }
+  
+  .iconButton svg,
+  .sendButton svg,
+  .micButton svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+}
+
+/* Loading State */
+.loading {
+  position: relative;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  animation: shimmer 2s infinite;
+}
+
+/* Voice Recording State */
+.recording {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  animation: pulseRed 2s infinite;
+}
+
+@keyframes pulseRed {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
 }
