@@ -103,11 +103,21 @@ export interface User {
   profilePic?: string;
   lastMessage?: string;
   lastMessageTime?: string;
+  read?:boolean;
+  sent?:boolean;
+  delivered?:boolean;
+  tickStatus?:string;
+  
+  
+   lastMessageSenderId?:string;
+  lastMessageMedia?:"image" | "video" | "audio" | "document";
   unreadCount?: number;
   isOnline?: boolean;
   lastSeen?: string;
   fullName?: string;
   isOnboarded?: boolean;
+   lastMessageEncryptedKey?:string;
+  lastMessageEncryptedKeySender?:string;
    pendingFriendRequests?: number;
    location?:string;
    bio?:string;
@@ -201,41 +211,63 @@ export interface PendingRequestsCountData {
 
 
 
+// Keep everything exactly as you have it
+// Update your types file
+export interface MediaForUI {
+  url: string | File | Blob;
+  type: "image" | "video" | "audio" | "document" | "blob"; // Add "blob" here
+  encryptedKey?: string;
+  senderEncryptedKey?: string;
+  fileName?: string;
+  fileSize?: number;
+}
+
+
+export interface DecryptedMediaForUI extends MediaForUI {
+  // Internal decryption state
+  _isDecrypted: boolean;
+  _canPreview: boolean;
+  _requiresPlayer?: boolean;
+  _mimeType?: string;
+  _previewUrl?: string; // Object URL for preview
+  _error?: string;
+}
+
+export interface MediaForBackend {
+  url: string;
+  type: "image" | "video" | "audio" | "document" | "blob"; // Same type
+  encryptedKey?: string;
+  senderEncryptedKey?: string;
+}
+
 export interface BaseMessage {
   _id: string;
   sender: string;
-  type: "text" | "image" | "audio" | "video" | "document";
+  type: "preKey" | "ratcheted";
   ciphertext?: string;
   text?: string;
-  media?: Array<{
-    url: string;
-    type: string;
-    encryptedKey?: string; // 1:1 only
-  }>;
+  media?: MediaForUI[]; // Use MediaForUI for BaseMessage
   sentAt: string;
   delivered?: boolean;
   read?: boolean;
   isTemp?: boolean;
+  sent?: boolean;
 }
 
 export interface Message extends BaseMessage {
   receiver: string;
-  media?: Array<{
-    url: string;
-    type: string;
-    encryptedKey?: string;
-  }>;
+  // media is already inherited from BaseMessage as MediaForUI[]
 }
 
 export interface GroupMessage extends BaseMessage {
   groupId: string;
   isGroup: true;
   // For group, media can have encryptedKeys mapping userId → AES key
-  media?: Array<{
-    url: string;
-    type: string;
-    encryptedKeys?: Record<string, string>;
-  }>;
+  // media?: Array<{
+  //   url: string;
+  //   type: string;
+  //   encryptedKeys?: Record<string, string>;
+  // }>;
   // Group text can have encrypted keys per user
   encryptedKeys?: Record<string, string>;
 }
@@ -295,13 +327,22 @@ export interface Group {
   description?: string;
   profilePic?: string;
   coverPhoto?: string;
+  read?:boolean;
+  sent?:boolean;
+  delivered?:boolean;
+  tickStatus?:string;
+
   // Allow both string IDs (unpopulated) and User objects (populated)
   admin: string | User;
   members: (string | User)[];
   createdAt: string | Date;
   updatedAt: string | Date;
   lastActivity?: string | Date;
-  lastMessage?: string | Message;
+  lastMessage?: string ;
+  lastMessageSenderId?:string;
+  lastMessageMedia?: "image" | "video" | "audio" | "document";
+  lastMessageEncryptedKey?:string;
+  lastMessageEncryptedKeySender?:string;
   settings?: {
     allowInvites?: boolean;
     adminOnlyMessages?: boolean;

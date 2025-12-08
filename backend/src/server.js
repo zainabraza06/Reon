@@ -24,11 +24,15 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({
-  origin: 'http://localhost:3000', // frontend URL
+const corsOptions = {
+  origin: ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
-}));
+  exposedHeaders: ['Content-Disposition', 'X-Encrypted'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
 
+
+app.use(cors(corsOptions));
 // Security & parsing middleware
 app.use(helmet());
 app.use(express.json());

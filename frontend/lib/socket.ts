@@ -6,8 +6,10 @@ import {
   Notification,
   TypingEvent,
   OnlineStatusEvent,
-  NotificationCountEvent
+  NotificationCountEvent,
+  MediaForBackend // ✅ ADD THIS
 } from "@/types";
+
 
 type EventCallback<T = unknown> = (data: T) => void;
 
@@ -291,15 +293,15 @@ class SocketService {
   }
 
   // Message Methods
-  sendMessage(messageData: {
-    sender: string;
-    receiver: string;
-    ciphertext: string;
-    type: string;
-    media?: Array<{ url: string; type: string; encryptedKey?: string }>;
-  }) {
-    this.emit("send-message", messageData);
-  }
+sendMessage(messageData: {
+  sender: string;
+  receiver: string;
+  ciphertext: string;
+  type: "preKey" | "ratcheted";
+  media?: MediaForBackend[]; // ✅ STRICTLY BACKEND MEDIA
+}) {
+  this.emit("send-message", messageData);
+}
 
   markMessageAsDelivered(messageId: string, receiverId: string) {
     this.emit("message-delivered", { messageId, receiverId });
@@ -346,15 +348,16 @@ class SocketService {
     this.emit("leave-group", groupId);
   }
 
-  sendGroupMessage(data: {
-    groupId: string;
-    sender: string;
-    ciphertext: string;
-    type: string;
-    media?: unknown[];
-  }) {
-    this.emit("send-group-message", data);
-  }
+sendGroupMessage(data: {
+  groupId: string;
+  sender: string;
+  ciphertext: string;
+  type: "preKey" | "ratcheted";
+  media?: MediaForBackend[];
+}) {
+  this.emit("send-group-message", data);
+}
+
 
   groupTyping(data: { groupId: string; sender: string }) {
     this.emit("group-typing", data);

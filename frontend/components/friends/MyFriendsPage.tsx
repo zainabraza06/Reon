@@ -406,14 +406,11 @@ export default function MyFriendsPage() {
                       </button>
                       
                     
-                              <button
+                            <button
                                 className={`${styles.actionButton} ${styles.messageButton}`}
                                 onClick={() => {
-                                  // Store the selected user in localStorage
-                                  localStorage.setItem('selectedChatUser', JSON.stringify(friend._id));
-                                  
-                                  // Then navigate to chat
-                                  router.push('/chat');
+                                  // Navigate to chat with user ID in URL
+                                  router.push(`/chat?userId=${friend._id}`);
                                 }}
                               >
                                 <FiMessageCircle />

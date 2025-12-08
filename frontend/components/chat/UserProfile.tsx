@@ -149,7 +149,7 @@ export default function UserProfile({
                 {isActivePage('my-friends') && <div className={styles.activeIndicator}></div>}
               </button>
 
-              {/* Create Group */}
+              {/* Create Group
               <button 
                 className={styles.menuItem} 
                 onClick={() => {
@@ -159,7 +159,7 @@ export default function UserProfile({
               >
                 <FiUsers className={styles.menuIcon} />
                 <span>Create Group</span>
-              </button>
+              </button> */}
 
               {/* Friend Requests */}
               <button 

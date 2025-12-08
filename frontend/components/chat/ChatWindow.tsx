@@ -1,19 +1,22 @@
+// ChatWindow.tsx
 "use client";
 
 import React, { useRef, useEffect } from 'react';
-import { Message, User, Group } from '@/types';
+import { Message, User, Group, GroupMessage, DecryptedMediaForUI } from '@/types';
 import MessageBubble from './MessageBubble';
 import { Phone, Video, MoreVertical, ArrowLeft, Lock, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import styles from './ChatWindow.module.css'; // Add this import
+import styles from './ChatWindow.module.css';
 
 interface ChatWindowProps {
   selectedUser: User | null;
   selectedGroup: Group | null;
-  messages: Array<Message>;
+  messages: Array<Message | GroupMessage>;
   currentUserId: string;
   decryptedMessages: Record<string, string>;
-  onDecryptMessage: (id: string, text: string) => void;
+  decryptedMedia?: Record<string, DecryptedMediaForUI[]>;
+  onDecryptMessage: (message: Message | GroupMessage) => Promise<string>;
+  onDecryptMedia?: (messageId: string, mediaIndex: number) => Promise<DecryptedMediaForUI | undefined>;
   isTyping: boolean;
   onBack: () => void;
 }
@@ -24,7 +27,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   currentUserId,
   decryptedMessages,
+  decryptedMedia = {},
   onDecryptMessage,
+  onDecryptMedia,
   isTyping,
   onBack
 }) => {
@@ -51,6 +56,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
     );
   }
+
+  // Create a wrapper function that matches MessageBubble's expected signature
+  const handleDecryptMediaWrapper = onDecryptMedia 
+    ? async (messageId: string, mediaIndex: number) => {
+        try {
+          console.log(`🔓 Decrypting media ${mediaIndex} for message ${messageId}`);
+          const result = await onDecryptMedia(messageId, mediaIndex);
+          
+          if (result) {
+            console.log(`✅ Media decryption successful for ${result.fileName}`);
+          } else {
+            console.log(`❌ Media decryption failed or returned undefined`);
+          }
+          
+          return result;
+        } catch (error) {
+          console.error(`Error in ChatWindow media decryption:`, error);
+          return undefined;
+        }
+      }
+    : undefined;
 
   return (
     <div className={styles.chatWindow}>
@@ -130,20 +156,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className={styles.encryptionNotice}>
           <span className={styles.encryptionBadge}>
             <Lock size={12} className={styles.lockIcon} /> 
-            Messages are end-to-end encrypted
+            Messages and media are end-to-end encrypted
           </span>
         </div>
 
         {messages.map((msg, index) => {
-          const isMe = msg.sender === currentUserId || ('sender' in msg && msg.sender === currentUserId);
+          const isMe = msg.sender === currentUserId;
+          const messageId = msg._id;
+          const mediaForThisMessage = decryptedMedia[messageId] || [];
+          
           return (
             <MessageBubble 
-              key={msg._id || `msg-${index}`}
+              key={messageId || `msg-${index}`}
               message={msg}
               isMe={isMe}
               currentUserId={currentUserId}
-              onDecrypt={onDecryptMessage}
-              decryptedText={decryptedMessages[msg._id]}
+              onDecrypt={() => onDecryptMessage(msg)}
+              onDecryptMedia={handleDecryptMediaWrapper} // Use the wrapper function
+              decryptedText={decryptedMessages[messageId]}
+              decryptedMedia={mediaForThisMessage}
             />
           );
         })}

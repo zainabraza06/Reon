@@ -77,77 +77,82 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const getDisplayData = (item: User | Group | SearchResultItem) => {
-    if ('type' in item && item.type === 'group') {
-      // Search result group
-      const group = item as SearchResultItem;
-      return {
-        id: group._id,
-        name: group.name,
-        avatar: group.profilePic || `https://ui-avatars.com/api/?name=${group.name}&background=random`,
-        lastMessage: group.lastMessage || 'No messages yet',
-        time: group.lastMessageTime,
-        unread: group.unreadCount || 0,
-        isOnline: false,
-        isGroup: true,
-        memberCount: group.memberCount || 0
-      };
-    } else if ('type' in item && item.type === 'user') {
-      // Search result user
-      const user = item as SearchResultItem;
-      return {
-        id: user._id,
-        name: user.fullName || user.name || user.username || 'User',
-        avatar: user.profilePic || `https://ui-avatars.com/api/?name=${user.name || user.username}&background=random`,
-        lastMessage: user.lastMessage || 'Start a conversation',
-        time: user.lastMessageTime,
-        unread: user.unreadCount || 0,
-        isOnline: user.isOnline,
-        isGroup: false,
-        username: user.username
-      };
-    } else if ('members' in item) {
-      // Regular Group from users prop
-      const group = item as Group;
-      let lastMsgContent = 'No messages yet';
-      let lastMsgTime: string | undefined;
+  if ('type' in item && item.type === 'group') {
+    // Search result group
+    const group = item as SearchResultItem;
+    return {
+      id: group._id,
+      name: group.name,
+      avatar: group.profilePic || `https://ui-avatars.com/api/?name=${group.name}&background=random`,
+      lastMessage: group.lastMessage || 'No messages yet',
+      time: group.lastMessageTime,
+      unread: group.unreadCount || 0,
+      isOnline: false,
+      isGroup: true,
+      tickStatus: 'none', // groups don’t have ticks
+      memberCount: group.memberCount || 0
+    };
+  } else if ('type' in item && item.type === 'user') {
+    // Search result user
+    const user = item as SearchResultItem;
+    return {
+      id: user._id,
+      name: user.fullName || user.name || user.username || 'User',
+      avatar: user.profilePic || `https://ui-avatars.com/api/?name=${user.name || user.username}&background=random`,
+      lastMessage: user.lastMessage || 'Start a conversation',
+      time: user.lastMessageTime,
+      unread: user.unreadCount || 0,
+      isOnline: user.isOnline,
+      isGroup: false,
+      username: user.username,
+      tickStatus: (user as User).tickStatus || 'none' // read from processed chat
+    };
+  } else if ('members' in item) {
+    // Regular Group from users prop
+    const group = item as Group;
+    let lastMsgContent = 'No messages yet';
+    let lastMsgTime: string | undefined;
 
-      if (typeof group.lastMessage === 'string') {
-        lastMsgContent = group.lastMessage;
-      } else if (group.lastMessage && typeof group.lastMessage === 'object') {
-        const message = group.lastMessage as Message;
-        lastMsgContent = message.text || message.ciphertext || 'Encrypted message';
-        lastMsgTime = message.sentAt;
-      }
-
-      const unreadCount = group.metadata?.unreadCount || 0;
-
-      return {
-        id: group._id,
-        name: group.name,
-        avatar: group.profilePic || `https://ui-avatars.com/api/?name=${group.name}&background=random`,
-        lastMessage: lastMsgContent,
-        time: lastMsgTime || group.lastActivity?.toString() || group.updatedAt?.toString(),
-        unread: unreadCount,
-        isOnline: false,
-        isGroup: true,
-        memberCount: group.members?.length || group.metadata?.memberCount || 0
-      };
-    } else {
-      // Regular User from users prop
-      const user = item as User;
-      return {
-        id: user._id,
-        name: user.fullName || user.username,
-        avatar: user.profilePic || `https://ui-avatars.com/api/?name=${user.username}&background=random`,
-        lastMessage: user.lastMessage || 'Start a conversation',
-        time: user.lastMessageTime,
-        unread: user.unreadCount || 0,
-        isOnline: user.isOnline,
-        isGroup: false,
-        username: user.username
-      };
+    if (typeof group.lastMessage === 'string') {
+      lastMsgContent = group.lastMessage;
+    } else if (group.lastMessage && typeof group.lastMessage === 'object') {
+      const message = group.lastMessage as Message;
+      lastMsgContent = message.text || message.ciphertext || 'Encrypted message';
+      lastMsgTime = message.sentAt;
     }
-  };
+
+    const unreadCount = group.metadata?.unreadCount || 0;
+
+    return {
+      id: group._id,
+      name: group.name,
+      avatar: group.profilePic || `https://ui-avatars.com/api/?name=${group.name}&background=random`,
+      lastMessage: lastMsgContent,
+      time: lastMsgTime || group.lastActivity?.toString() || group.updatedAt?.toString(),
+      unread: unreadCount,
+      isOnline: false,
+      isGroup: true,
+      tickStatus: 'none', // groups don’t have ticks
+      memberCount: group.members?.length || group.metadata?.memberCount || 0
+    };
+  } else {
+    // Regular User from users prop
+    const user = item as User;
+    return {
+      id: user._id,
+      name: user.fullName || user.username,
+      avatar: user.profilePic || `https://ui-avatars.com/api/?name=${user.username}&background=random`,
+      lastMessage: user.lastMessage || 'Start a conversation',
+      time: user.lastMessageTime,
+      unread: user.unreadCount || 0,
+      isOnline: user.isOnline,
+      isGroup: false,
+      username: user.username,
+      tickStatus: (user as User).tickStatus || 'none' // read from processed chat
+    };
+  }
+};
+
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const target = e.target as HTMLImageElement;
@@ -187,17 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         lastActivity: item.lastMessageTime || undefined,
-        lastMessage: item.lastMessage ? {
-          _id: 'temp-search-' + item._id,
-          sender: '',
-          receiver: item._id,
-          ciphertext: item.lastMessage,
-          text: item.lastMessage,
-          type: 'text',
-          sentAt: item.lastMessageTime || new Date().toISOString(),
-          delivered: false,
-          read: false
-        } as Message : undefined,
+        lastMessage: item.lastMessage,
         settings: {
           allowInvites: true,
           adminOnlyMessages: false,
@@ -387,17 +382,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
                   <div className={styles.itemFooter}>
-                    <p className={`${styles.lastMessage} ${
-                      isSelected && styles.lastMessageSelected
-                    }`}>
-                      {data.lastMessage}
-                    </p>
-                    {data.unread > 0 && (
-                      <span className={styles.unreadBadge}>
-                        {data.unread > 99 ? '99+' : data.unread}
-                      </span>
-                    )}
-                  </div>
+  <p className={`${styles.lastMessage} ${isSelected && styles.lastMessageSelected}`}>
+    {data.lastMessage}
+    {/* ✅ WhatsApp-style ticks based on tickStatus */}
+    {data.tickStatus && data.tickStatus !== 'none' && (
+      <span className={`${styles.ticks} ${data.tickStatus === 'read' ? styles.read : ''}`}>
+        {data.tickStatus === 'sent' ? '✔' : '✔✔'}
+      </span>
+    )}
+  </p>
+  {data.unread > 0 && (
+    <span className={styles.unreadBadge}>
+      {data.unread > 99 ? '99+' : data.unread}
+    </span>
+  )}
+</div>
+
                   {data.isGroup && data.memberCount && (
                     <p className={styles.memberCount}>
                       {data.memberCount} members

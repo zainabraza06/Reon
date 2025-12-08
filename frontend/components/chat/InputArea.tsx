@@ -1,18 +1,17 @@
 // InputArea.tsx
 import React, { useState, useRef } from 'react';
 import { Send, Paperclip, Mic, X, FileText, Loader2 } from 'lucide-react';
-import { generateAESKey, aesKeyToString } from '@/lib/crypto';
 import { cn } from '@/lib/utils';
-import styles from './InputArea.module.css'; // Add this import
+import styles from './InputArea.module.css';
 
 interface InputAreaProps {
   onSendMessage: (
     text: string,
-    files: { file: File; aesKey: string }[]
+    files: File[] 
   ) => void;
   onTyping: (isTyping: boolean) => void;
   disabled?: boolean;
-  isRecording?: boolean; // Optional prop for voice recording
+  isRecording?: boolean;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({ 
@@ -68,24 +67,18 @@ const InputArea: React.FC<InputAreaProps> = ({
     setIsProcessing(true);
 
     try {
-      const encryptedFiles = [];
-      for (const item of selectedFiles) {
-        const aesKey = await generateAESKey();
-        const str = await aesKeyToString(aesKey);
-        encryptedFiles.push({ 
-          file: item.file, 
-          aesKey: str
-        });
-      }
-
-      await onSendMessage(text, encryptedFiles);
+      // Convert selected files to plain File array
+      const filesArray = selectedFiles.map(item => item.file);
       
+      await onSendMessage(text, filesArray);
+      
+      // Clear state after successful send
       setText('');
       setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       onTyping(false);
     } catch (error) {
-      console.error("Error sending:", error);
+      console.error("Error sending message:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -98,6 +91,29 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
   };
 
+  // Get file icon based on type
+  const getFileIcon = (type: string) => {
+    switch (type) {
+      case 'image':
+        return <div className={styles.imageIcon}>🖼️</div>;
+      case 'video':
+        return <div className={styles.videoIcon}>🎬</div>;
+      case 'audio':
+        return <div className={styles.audioIcon}>🎵</div>;
+      default:
+        return <FileText size={24} />;
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   return (
     <div className={styles.container}>
       {selectedFiles.length > 0 && (
@@ -105,18 +121,30 @@ const InputArea: React.FC<InputAreaProps> = ({
           {selectedFiles.map((item, idx) => (
             <div key={idx} className={styles.previewItem}>
               {item.preview ? (
-                <img 
-                  src={item.preview} 
-                  alt="preview" 
-                  className={styles.previewImage}
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
+                <div className={styles.previewContainer}>
+                  <img 
+                    src={item.preview} 
+                    alt="preview" 
+                    className={styles.previewImage}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.parentElement!.classList.add(styles.previewError);
+                    }}
+                  />
+                  <div className={styles.fileInfo}>
+                    <span className={styles.fileName}>{item.file.name}</span>
+                    <span className={styles.fileSize}>{formatFileSize(item.file.size)}</span>
+                  </div>
+                </div>
               ) : (
-                <div className={styles.previewIcon}>
-                  <FileText size={24} />
+                <div className={styles.previewContainer}>
+                  <div className={styles.previewIcon}>
+                    {getFileIcon(item.type)}
+                  </div>
+                  <div className={styles.fileInfo}>
+                    <span className={styles.fileName}>{item.file.name}</span>
+                    <span className={styles.fileSize}>{formatFileSize(item.file.size)}</span>
+                  </div>
                 </div>
               )}
               <button 
@@ -124,8 +152,9 @@ const InputArea: React.FC<InputAreaProps> = ({
                 className={styles.removeButton}
                 aria-label="Remove file"
                 type="button"
+                disabled={disabled || isProcessing}
               >
-                <X size={12} />
+                <X size={14} />
               </button>
             </div>
           ))}
@@ -136,12 +165,22 @@ const InputArea: React.FC<InputAreaProps> = ({
         <button 
           type="button" 
           onClick={() => fileInputRef.current?.click()}
-          className={cn(styles.iconButton, selectedFiles.length > 0 && 'ring-2 ring-blue-500/30')}
+          className={cn(
+            styles.iconButton, 
+            selectedFiles.length > 0 && styles.hasFiles,
+            disabled && styles.disabled,
+            isProcessing && styles.processing
+          )}
           aria-label="Attach file"
           disabled={disabled || isProcessing}
+  
         >
           <Paperclip size={20} />
+          {selectedFiles.length > 0 && (
+            <span className={styles.fileCountBadge}>{selectedFiles.length}</span>
+          )}
         </button>
+        
         <input 
           type="file" 
           multiple 
@@ -150,7 +189,7 @@ const InputArea: React.FC<InputAreaProps> = ({
           onChange={handleFileSelect}
           accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
           disabled={disabled || isProcessing}
-          aria-label='i'
+          aria-label="Attach files"
         />
 
         <input
@@ -162,29 +201,47 @@ const InputArea: React.FC<InputAreaProps> = ({
           className={styles.textInput}
           disabled={disabled || isProcessing}
           aria-label="Message input"
+          onBlur={() => {
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+              typingTimeoutRef.current = null;
+              onTyping(false);
+            }
+          }}
         />
 
-        {text || selectedFiles.length > 0 ? (
+        {text.trim() || selectedFiles.length > 0 ? (
           <button 
             type="submit" 
             disabled={disabled || isProcessing}
-            className={styles.sendButton}
+            className={cn(
+              styles.sendButton,
+              disabled && styles.disabled,
+              isProcessing && styles.processing
+            )}
             aria-label="Send message"
+          
           >
             {isProcessing ? (
               <Loader2 size={20} className="animate-spin" />
             ) : (
-              <Send size={20} className={cn(isProcessing && styles.animatePulse)} />
+              <Send size={20} />
             )}
           </button>
         ) : (
           <button 
             type="button"
-            className={cn(styles.micButton, isRecording && styles.recording)}
+            className={cn(
+              styles.micButton,
+              isRecording && styles.recording,
+              disabled && styles.disabled
+            )}
             aria-label={isRecording ? "Stop recording" : "Start voice recording"}
             onClick={() => {
               // Add voice recording logic here
             }}
+            disabled={disabled || isProcessing}
+           
           >
             <Mic size={20} />
           </button>

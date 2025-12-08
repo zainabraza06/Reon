@@ -2,19 +2,38 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { protectRoute } from "../middlewares/auth.middleware.js";
 
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+
+
+
 
 
 // Controllers
 import {
   sendMessage,
   getMessages,
-  ackMessage,
+
   getUserForSideBar,
-  searchUsers
+  searchUsers,downloadEncryptedFile, markMessageAsDelivered, markMessageAsRead, serveMediaFile
 } from "../controllers/message.controller.js";
 
-// Multer for media uploads
-import upload from "../middlewares/chatUpload.js";
+
+// Configure multer for memory storage (or disk if preferred)
+
+
+const storage = multer.memoryStorage();
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024,   // 100MB file limit
+    fieldSize: 50 * 1024 * 1024,  // ✅ 50MB text field limit (IMPORTANT)
+    fields: 20                    // optional: number of text fields
+  }
+});
+
+
 
 const router = express.Router();
 
@@ -30,16 +49,21 @@ const Limiter = rateLimit({
 
 /* ------------------ MESSAGING ROUTES ------------------ */
 
-// Send a message (supports text + media)
-router.post(
-  "/send",
-  upload.array("media"), // handle files
+
+// Update your route to use multer middleware
+router.post('/send', 
+  upload.array('media', 10), // Handle up to 10 files in 'media' field
   sendMessage
 );
 
+router.get('/media/:id', serveMediaFile);
+
+// Download files
+router.get('/files/:id', downloadEncryptedFile);
 
 // Mark message as delivered/seen
-router.patch("/ack/:id", ackMessage);
+router.post('/mark-read',  markMessageAsRead);
+router.post('/mark-delivered', markMessageAsDelivered);
 
 // Sidebar chat list
 router.get("/sidebar/list", getUserForSideBar);
