@@ -1,84 +1,92 @@
-// lib/socket.ts - COMPLETE UPDATED VERSION
+// lib/socket.ts - UPDATED FOR BACKEND COMPATIBILITY
 import { io, Socket } from "socket.io-client";
 import {
   Message,
   MessageSeenEvent,
-  Notification,
   TypingEvent,
   OnlineStatusEvent,
-  NotificationCountEvent,
-  MediaForBackend // ✅ ADD THIS
+  Notification, MediaForBackend, FriendRequestAcceptedData, FriendRequestReceivedData,FriendRequestRejectedData,
+  FriendRequestSentData,FriendRequestWithdrawnData
 } from "@/types";
-
 
 type EventCallback<T = unknown> = (data: T) => void;
 
-interface FriendRequestReceivedData {
-  requestId: string;
-  sender: {
-    _id: string;
-    fullName: string;
-    username: string;
-    profilePic: string;
-  };
-  timestamp: string;
-}
 
-interface FriendRemovedData {
+interface UserStatusChangedData {
   userId: string;
-  friendId: string;
-  timestamp: string;
+  isOnline: boolean;
+  lastSeen: string;
+
+  
 }
 
-interface FriendRequestAcceptedData {
-  requestId: string;
+
+interface OnlineFriendsResponseData {
+  success: boolean;
+  onlineFriends: string[]; // Array of friend IDs
+  timestamp: string;
+}
+interface TypingStatusData {
   senderId: string;
   receiverId: string;
-  receiver: {
-    _id: string;
-    fullName?: string;
-    username?: string;
-    profilePic?: string;
-  };
+  isTyping: boolean;
   timestamp: string;
 }
 
-interface FriendRequestWithdrawnData {
-  requestId: string;
-  senderId: string;
-  receiverId: string;
-  timestamp: string;
-}
-
-interface FriendRequestSentData {
-  senderId: string;
-  receiverId: string;
-  requestId: string;
-  timestamp: string;
-}
-
-interface PendingRequestsCountData {
-  count: number;
-}
-
-interface FriendsListUpdatedData {
-  userId: string;
-}
-
-// New interfaces for enhanced features
-interface MessageDeliveredEvent {
+interface MessageDeliveredData {
   messageId: string;
   receiverId: string;
+  deliveredAt: string;
+  status: string;
 }
 
-interface TypingStartEvent {
+interface MessageReadData {
+  messageId: string;
+  readerId: string;
   senderId: string;
-  isTyping: boolean;
+  readAt: string;
+  status: string;
 }
 
-interface TypingStopEvent {
+interface ConversationReadData {
+  senderId: string;
+  readerId: string;
+  readAt: string;
+  messageCount: number;
+}
+
+interface OnlineStatusResponseData {
+  statuses: {
+    [userId: string]: {
+      isOnline: boolean;
+      lastSeen: number | null;
+    };
+  };
+}
+
+interface TypingStatusResponseData {
   senderId: string;
   isTyping: boolean;
+  typingTo?: string;
+}
+
+interface AuthenticatedData {
+  userId: string;
+  socketId: string;
+  onlineFriends?: string[];
+}
+
+interface SendMessageData {
+  sender: string;
+  receiver: string;
+  ciphertext: string;
+  type: "preKey" | "ratcheted";
+  encryptedKey: string;
+  senderEncryptedKey: string;
+  isGroup?: boolean;
+  contentType?: string;
+  media?: MediaForBackend[];
+  messageType?: string;
 }
 
 class SocketService {
@@ -86,297 +94,320 @@ class SocketService {
   private userId: string | null = null;
   private listeners: Map<string, EventCallback<unknown>[]> = new Map();
   private connectionState: 'connecting' | 'connected' | 'disconnected' | 'error' = 'disconnected';
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private connectionPromise: Promise<boolean> | null = null;
 
-  connect(userId: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (this.socket && this.socket.connected) {
-        console.log('✅ Socket already connected');
-        this.userId = userId;
-        resolve(true);
-        return;
-      }
+   connect(userId: string): Promise<boolean> {
+  // Return existing promise if already connecting
+  if (this.connectionPromise) {
+    return this.connectionPromise;
+  }
 
+  this.connectionPromise = new Promise((resolve) => {
+    if (this.socket && this.socket.connected) {
+      console.log('✅ Socket already connected');
       this.userId = userId;
-      this.connectionState = 'connecting';
+      this.startHeartbeat(userId);
+      resolve(true);
+      this.connectionPromise = null;
+      return;
+    }
 
-      this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001", {
-        auth: { userId },
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        timeout: 20000
-      });
+    this.userId = userId;
+    this.connectionState = 'connecting';
 
-      this.socket.on("connect", () => {
-        console.log("✅ Connected to socket server:", this.socket?.id);
-        this.connectionState = 'connected';
-        this.emit("user-online", { userId });
-        this.emit("join-user-room", userId);
-        resolve(true);
-      });
+    this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001", {
+      auth: { userId },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+      query: { userId }
+    });
 
-      this.socket.on("disconnect", (reason) => {
-        console.log("❌ Disconnected from socket server. Reason:", reason);
-        this.connectionState = 'disconnected';
-      });
+    // ✅ Set up listeners BEFORE connect event fires
+    this.setupDefaultListeners();
+    this.debugSocketEvents(); // Only call this ONCE!
+    
+    this.socket.on("connect", () => {
+      console.log("✅ Connected to socket server:", this.socket?.id);
+      this.connectionState = 'connected';
+      this.reconnectAttempts = 0;
+      
+      // Authenticate with backend after connection
+      console.log(`🔐 Emitting authenticate event for user: ${userId}`);
+      this.emit("authenticate", userId);
+      
+      // Start heartbeat
+      this.startHeartbeat(userId);
+      this.emit("request-online-friends");
 
-      this.socket.on("connect_error", (error) => {
-        console.error("❌ Socket connection error:", error);
+    });
+
+    this.socket.on("authenticated", (data: AuthenticatedData) => {
+      console.log("✅ Socket authenticated:", data);
+      this.connectionState = 'connected';
+      resolve(true);
+      this.connectionPromise = null;
+      this.emitEvent('authenticated', data);
+    });
+
+    this.socket.on("authentication-error", (error: { message: string }) => {
+      console.error("❌ Authentication error:", error);
+      this.connectionState = 'error';
+      resolve(false);
+      this.connectionPromise = null;
+      this.emitEvent('authentication-error', error);
+    });
+
+    this.socket.on("disconnect", (reason) => {
+      console.log("❌ Disconnected from socket server. Reason:", reason);
+      this.connectionState = 'disconnected';
+      this.stopHeartbeat();
+      this.emitEvent('disconnected', { reason });
+      
+      // Auto-reconnect logic
+      if (this.reconnectAttempts < this.maxReconnectAttempts && this.userId) {
+        this.reconnectAttempts++;
+        console.log(`🔄 Attempting reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+        
+        setTimeout(() => {
+          if (this.userId && !this.socket?.connected) {
+            this.connect(this.userId).catch(err => 
+              console.error('Reconnect failed:', err)
+            );
+          }
+        }, 2000);
+      }
+    });
+
+    this.socket.on("connect_error", (error) => {
+      console.error("❌ Socket connection error:", error);
+      this.connectionState = 'error';
+      this.stopHeartbeat();
+      resolve(false);
+      this.connectionPromise = null;
+      this.emitEvent('connect-error', error);
+    });
+
+    this.socket.on("reconnect", (attemptNumber) => {
+      console.log("🔄 Reconnected to socket server. Attempt:", attemptNumber);
+      this.connectionState = 'connected';
+      this.reconnectAttempts = 0;
+      
+      if (this.userId) {
+        this.emit("authenticate", this.userId);
+        this.startHeartbeat(this.userId);
+      }
+    });
+
+    this.socket.on("reconnect_error", (error) => {
+      console.error("❌ Reconnection error:", error);
+    });
+
+    this.socket.on("reconnect_failed", () => {
+      console.error("❌ Reconnection failed after multiple attempts");
+    });
+
+    // ✅ Add timeout to prevent hanging promise
+    setTimeout(() => {
+      if (this.connectionState === 'connecting') {
+        console.log('⏰ Connection timeout after 10 seconds');
         this.connectionState = 'error';
         resolve(false);
-      });
-
-      this.socket.on("reconnect", (attemptNumber) => {
-        console.log("🔄 Reconnected to socket server. Attempt:", attemptNumber);
-        this.connectionState = 'connected';
-        if (this.userId) {
-          this.emit("user-online", { userId: this.userId });
-          this.emit("join-user-room", this.userId);
+        this.connectionPromise = null;
+        
+        // Clean up socket on timeout
+        if (this.socket) {
+          this.socket.removeAllListeners();
+          this.socket.disconnect();
+          this.socket = null;
         }
-      });
+      }
+    }, 10000);
+  });
 
-      this.setupDefaultListeners();
+  return this.connectionPromise;
+}
+
+// Keep only ONE debug method (remove setupDebugListeners since they're the same)
+private debugSocketEvents() {
+  if (!this.socket) {
+    console.log('❌ No socket instance available');
+    return;
+  }
+
+  console.log('🔍 [SOCKET DEBUG] Setting up debug listeners...', {
+    connected: this.socket.connected,
+    socketId: this.socket.id,
+    userId: this.userId
+  });
+
+  // Listen to ALL incoming events
+  this.socket.onAny((eventName, ...args) => {
+    console.log(`🔍 [SOCKET DEBUG INCOMING] Event: "${eventName}"`, {
+      data: args[0],
+      timestamp: new Date().toISOString(),
+      socketId: this.socket?.id,
+      // Add event size for debugging
+      dataSize: JSON.stringify(args[0])?.length || 0
     });
+  });
+
+  
+
+  // Listen to ALL outgoing events
+  this.socket.onAnyOutgoing((eventName, ...args) => {
+    console.log(`📤 [SOCKET DEBUG OUTGOING] Emitting: "${eventName}"`, {
+      data: args[0],
+      timestamp: new Date().toISOString(),
+      socketId: this.socket?.id
+    });
+  });
+
+  console.log('✅ Debug listeners activated - check console for all socket events');
+}
+
+  private startHeartbeat(userId: string) {
+    // Clear any existing interval
+    this.stopHeartbeat();
+    
+    // Send heartbeat every 30 seconds
+    this.heartbeatInterval = setInterval(() => {
+      if (this.socket?.connected && userId) {
+        this.emit("heartbeat", { userId });
+      }
+    }, 15000); // 20 seconds
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   private setupDefaultListeners() {
     if (!this.socket) return;
-
-    // Message Events
-    this.socket.on("new-message", (message: Message) => {
-      this.emitEvent('new-message', message);
-    });
-
-    this.socket.on("message-sent", (message: Message) => {
-      this.emitEvent('message-sent', message);
-    });
-
-    this.socket.on("message-delivered", (data: MessageDeliveredEvent) => {
-      this.emitEvent('message-delivered', data);
-    });
-
-    this.socket.on("message-error", (error: { error: string }) => {
-      this.emitEvent('message-error', error);
-    });
-
-    // Enhanced Typing Events
-    this.socket.on("typing-start", (data: TypingStartEvent) => {
-      this.emitEvent('typing-start', data);
-    });
-
-    this.socket.on("typing-stop", (data: TypingStopEvent) => {
-      this.emitEvent('typing-stop', data);
-    });
-
-    // Legacy Typing Events (for backward compatibility)
-    this.socket.on("typing", (data: TypingEvent) => {
-      this.emitEvent('typing', data);
-    });
-
-    this.socket.on("stop-typing", (data: TypingEvent) => {
-      this.emitEvent('stop-typing', data);
-    });
-
-    this.socket.on("messages-seen", (data: MessageSeenEvent) => {
-      this.emitEvent('messages-seen', data);
-    });
-
-    this.socket.on("user-online-status", (data: OnlineStatusEvent) => {
-      this.emitEvent('user-online-status', data);
-    });
-
-    this.socket.on("user-online", (data: { userId: string }) => {
-      this.emitEvent('user-online', data);
-    });
-
-    this.socket.on("user-offline", (data: { userId: string; lastSeen: string }) => {
-      this.emitEvent('user-offline', data);
-    });
-
-    this.socket.on("new-notification", (notification: Notification) => {
-      this.emitEvent('new-notification', notification);
-    });
-
-    this.socket.on("notification-count-update", (data: NotificationCountEvent) => {
-      this.emitEvent('notification-count-update', data);
-    });
-
-    // --- FRIEND REQUEST EVENTS ---
-
-    this.socket.on("friend-request-sent-realtime", (data: FriendRequestSentData) => {
-      this.emitEvent('friend-request-sent-realtime', data);
-    });
-
-    this.socket.on("friend-request-received", (data: FriendRequestReceivedData) => {
-      this.emitEvent('friend-request-received', data);
-    });
-
-    this.socket.on("friend-request-accepted-realtime", (data: FriendRequestAcceptedData) => {
-      this.emitEvent('friend-request-accepted-realtime', data);
-    });
-
-    this.socket.on("friend-request-withdrawn", (data: FriendRequestWithdrawnData) => {
-      this.emitEvent('friend-request-withdrawn', data);
-    });
-
-    this.socket.on("friend-request-rejected", (data: FriendRequestWithdrawnData) => {
-      this.emitEvent('friend-request-rejected', data);
-    });
-
-    this.socket.on("friend-removed", (data: FriendRemovedData) => {
-      this.emitEvent('friend-removed', data);
-    });
-
-    this.socket.on("pending-requests-count-updated", (data: PendingRequestsCountData) => {
-      this.emitEvent('pending-requests-count-updated', data);
-    });
-
-    this.socket.on("friends-list-updated", (data: FriendsListUpdatedData) => {
-      this.emitEvent('friends-list-updated', data);
-    });
-
-    // --- GROUP EVENTS ---
-    this.socket.on("new-group-message", (message: Message) => {
-      this.emitEvent('new-group-message', message);
-    });
-
-    this.socket.on("group-message-sent", (message: Message) => {
-      this.emitEvent('group-message-sent', message);
-    });
-
-    this.socket.on("group-message-error", (error: { error: string }) => {
-      this.emitEvent('group-message-error', error);
-    });
-
-    this.socket.on("group-typing", (data: { groupId: string; sender: string }) => {
-      this.emitEvent('group-typing', data);
-    });
-
-    this.socket.on("group-stop-typing", (data: { groupId: string; sender: string }) => {
-      this.emitEvent('group-stop-typing', data);
-    });
-
-    this.socket.on("group-message-seen", (data: { messageId: string; userId: string }) => {
-      this.emitEvent('group-message-seen', data);
-    });
-
-    // --- NOTIFICATION EVENTS ---
-    this.socket.on("notification-read", (data: { notificationId: string }) => {
-      this.emitEvent('notification-read', data);
-    });
-
-    this.socket.on("error", (error: { message: string }) => {
-      console.error('Socket error:', error);
-      this.emitEvent('error', error);
-    });
+ this.socket.onAny((eventName, data) => {
+    console.log(`📨 Socket event "${eventName}":`, data);
+    this.emitEvent(eventName, data);
+  });
   }
 
   disconnect() {
+    // Stop heartbeat
+    this.stopHeartbeat();
+    
     if (this.socket) {
-      if (this.userId) {
-        this.emit("user-offline", { userId: this.userId });
-      }
       this.socket.disconnect();
       this.socket = null;
       this.listeners.clear();
       this.connectionState = 'disconnected';
+      this.reconnectAttempts = 0;
+      this.connectionPromise = null;
     }
   }
 
   emit(event: string, data?: unknown) {
-    if (this.socket) {
+    if (this.socket && this.socket.connected) {
+      console.log(`📤 Emitting ${event}:`, data);
       this.socket.emit(event, data);
     } else {
       console.warn(`⚠️ Cannot emit ${event}: Socket not connected`);
     }
   }
 
-  // Message Methods
-sendMessage(messageData: {
-  sender: string;
-  receiver: string;
-  ciphertext: string;
-  type: "preKey" | "ratcheted";
-  media?: MediaForBackend[]; // ✅ STRICTLY BACKEND MEDIA
-}) {
-  this.emit("send-message", messageData);
-}
-
-  markMessageAsDelivered(messageId: string, receiverId: string) {
-    this.emit("message-delivered", { messageId, receiverId });
+  // Heartbeat method (can be called manually if needed)
+  sendHeartbeat() {
+    if (this.userId && this.socket?.connected) {
+      this.emit("heartbeat", { userId: this.userId });
+    }
   }
 
-  // Enhanced Typing Methods
-  startTypingEnhanced(receiverId: string) {
+
+
+
+  confirmMessageDelivery(data: { messageId: string; receiverId: string; senderId: string }) {
+    this.emit("confirm-message-delivery", data);
+  }
+
+  markMessageRead(data: { messageId: string; senderId: string; readerId: string }) {
+    this.emit("mark-message-read", data);
+  }
+
+  markConversationRead(data: { senderId: string; receiverId: string }) {
+    this.emit("mark-conversation-read", data);
+  }
+
+  // ========== TYPING METHODS ==========
+  startTyping(receiverId: string, senderId?: string) {
     this.emit("typing-start", { 
       receiverId, 
-      senderId: this.userId 
+      senderId: senderId || this.userId 
     });
   }
 
-  stopTypingEnhanced(receiverId: string) {
+  stopTyping(receiverId: string, senderId?: string) {
     this.emit("typing-stop", { 
       receiverId, 
-      senderId: this.userId 
+      senderId: senderId || this.userId 
     });
   }
 
-  // Legacy Typing Methods
-  startTyping(to: string) {
-    this.emit("typing", { to, from: this.userId } as TypingEvent);
+  // ========== FRIEND REQUEST METHODS ==========
+  sendFriendRequest(data: { senderId: string; receiverId: string }) {
+    this.emit("send-friend-request", data);
   }
 
-  stopTyping(to: string) {
-    this.emit("stop-typing", { to, from: this.userId } as TypingEvent);
+  acceptFriendRequest(data: { requestId: string; acceptorId: string; senderId: string }) {
+    this.emit("accept-friend-request", data);
   }
 
-  markMessageSeen(messageId: string, from: string) {
-    const payload: MessageSeenEvent = {
-      messageId,
-      from
-    };
-    this.emit("message-seen", payload);
+  rejectFriendRequest(data: { requestId: string; rejectorId: string; senderId: string }) {
+    this.emit("reject-friend-request", data);
   }
 
-  // Group Methods
-  joinGroup(groupId: string) {
-    this.emit("join-group", groupId);
+  // ========== STATUS QUERY METHODS ==========
+  checkOnlineStatus(userIds: string[]) {
+    this.emit("check-online-status", { userIds });
   }
 
-  leaveGroup(groupId: string) {
-    this.emit("leave-group", groupId);
-  }
-
-sendGroupMessage(data: {
-  groupId: string;
-  sender: string;
-  ciphertext: string;
-  type: "preKey" | "ratcheted";
-  media?: MediaForBackend[];
-}) {
-  this.emit("send-group-message", data);
-}
-
-
-  groupTyping(data: { groupId: string; sender: string }) {
-    this.emit("group-typing", data);
-  }
-
-  groupStopTyping(data: { groupId: string; sender: string }) {
-    this.emit("group-stop-typing", data);
-  }
-
-  markGroupMessageSeen(data: { messageId: string; groupId: string; userId: string }) {
-    this.emit("group-message-seen", data);
-  }
-
-  // Notification Methods
-  markNotificationRead(data: { notificationId: string; userId: string }) {
-    this.emit("mark-notification-read", data);
+  getTypingStatus(senderId: string) {
+    this.emit("get-typing-status", { senderId });
   }
 
   // ========== EVENT LISTENERS ==========
+  // Authentication Events
+  onAuthenticated(callback: (data: AuthenticatedData) => void) {
+    this.addEventListener('authenticated', callback);
+  }
+
+  onAuthenticationError(callback: (error: { message: string }) => void) {
+    this.addEventListener('authentication-error', callback);
+  }
+
+onOnlineFriendsResponse(callback: (data: OnlineFriendsResponseData) => void) {
+  this.addEventListener('online-friends-response', callback);
+}
+
+
+  public removeOnlineFriendsListener() {
+    this.socket?.off('online-friends-response');
+  }
+   onSendMessage(callback: (message: Message) => void)  {
+    this.addEventListener('send-message', callback);
+}
+
+
+  public requestOnlineFriends() {
+    if (this.socket?.connected) {
+      this.socket.emit('request-online-friends');
+    }
+  }
 
   // Message Event Listeners
   onNewMessage(callback: (message: Message) => void) {
@@ -387,177 +418,57 @@ sendGroupMessage(data: {
     this.addEventListener('message-sent', callback);
   }
 
-  onMessageDelivered(callback: (data: MessageDeliveredEvent) => void) {
+  onMessageDelivered(callback: (data: MessageDeliveredData) => void) {
     this.addEventListener('message-delivered', callback);
   }
 
-  onMessageError(callback: (error: { error: string }) => void) {
+  onMessageRead(callback: (data: MessageReadData) => void) {
+    this.addEventListener('message-read', callback);
+  }
+
+  onConversationRead(callback: (data: ConversationReadData) => void) {
+    this.addEventListener('conversation-read', callback);
+  }
+
+  onMessageError(callback: (error: { error: string; data?: unknown; originalError?: string }) => void) {
     this.addEventListener('message-error', callback);
   }
 
-  // Enhanced Typing Listeners
-  onTypingStart(callback: (data: TypingStartEvent) => void) {
-    this.addEventListener('typing-start', callback);
+  // Typing Listeners
+  onUserTyping(callback: (data: TypingStatusData) => void) {
+    this.addEventListener('user-typing', callback);
   }
 
-  onTypingStop(callback: (data: TypingStopEvent) => void) {
-    this.addEventListener('typing-stop', callback);
+  // User Status Listeners
+  onUserStatusChanged(callback: (data: UserStatusChangedData) => void) {
+    this.addEventListener('user-status-changed', callback);
   }
 
-  // Legacy Typing Listeners
-  onTyping(callback: (data: TypingEvent) => void) {
-    this.addEventListener('typing', callback);
-  }
 
-  onStopTyping(callback: (data: TypingEvent) => void) {
-    this.addEventListener('stop-typing', callback);
-  }
-
-  onMessagesSeen(callback: (data: MessageSeenEvent) => void) {
-    this.addEventListener('messages-seen', callback);
-  }
-
-  onUserOnlineStatus(callback: (data: OnlineStatusEvent) => void) {
-    this.addEventListener('user-online-status', callback);
-  }
-
-  onUserOnline(callback: (data: { userId: string }) => void) {
-    this.addEventListener('user-online', callback);
-  }
-
-  onUserOffline(callback: (data: { userId: string; lastSeen: string }) => void) {
-    this.addEventListener('user-offline', callback);
-  }
-
-  onNewNotification(callback: (notification: Notification) => void) {
-    this.addEventListener('new-notification', callback);
-  }
-
-  onNotificationCountUpdate(callback: (data: NotificationCountEvent) => void) {
-    this.addEventListener('notification-count-update', callback);
-  }
-
-  // --- Friend Request Realtime Methods ---
-
-  sendFriendRequestRealtime(data: {
-    senderId: string;
-    receiverId: string;
-    requestId: string;
-  }) {
-    this.emit("send-friend-request-realtime", {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  acceptFriendRequestRealtime(data: {
-    requestId: string;
-    senderId: string;
-    receiverId: string;
-  }) {
-    this.emit("accept-friend-request-realtime", {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  rejectFriendRequest(data: {
-    requestId: string;
-    senderId: string;
-    receiverId: string;
-  }) {
-    this.emit("reject-friend-request", {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  withdrawFriendRequest(data: {
-    requestId: string;
-    senderId: string;
-    receiverId: string;
-  }) {
-    this.emit("withdraw-friend-request", {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  removeFriend(data: {
-    userId: string;
-    friendId: string;
-  }) {
-    this.emit("remove-friend", {
-      ...data,
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  joinUserRoom(userId: string) {
-    this.emit("join-user-room", userId);
+  onTypingStatusResponse(callback: (data: TypingStatusResponseData) => void) {
+    this.addEventListener('typing-status-response', callback);
   }
 
   // Friend Request Listeners
   onFriendRequestReceived(callback: (data: FriendRequestReceivedData) => void) {
-    this.addEventListener('friend-request-received', callback);
+    this.addEventListener('new-friend-request', callback);
   }
 
-  onFriendRequestAcceptedRealtime(callback: (data: FriendRequestAcceptedData) => void) {
-    this.addEventListener('friend-request-accepted-realtime', callback);
+
+   onFriendRequestWithdrawn(callback: (data: FriendRequestWithdrawnData) => void) {
+    this.addEventListener('new-friend-request', callback);
   }
 
-  onFriendRequestWithdrawn(callback: (data: FriendRequestWithdrawnData) => void) {
-    this.addEventListener('friend-request-withdrawn', callback);
+  onFriendRequestSent(callback: (data: FriendRequestSentData) => void) {
+    this.addEventListener('friend-request-sent', callback);
   }
 
-  onFriendRequestRejected(callback: (data: FriendRequestWithdrawnData) => void) {
+  onFriendRequestAccepted(callback: (data: FriendRequestAcceptedData) => void) {
+    this.addEventListener('friend-request-accepted', callback);
+  }
+
+  onFriendRequestRejected(callback: (data: FriendRequestRejectedData) => void) {
     this.addEventListener('friend-request-rejected', callback);
-  }
-
-  onFriendRemoved(callback: (data: FriendRemovedData) => void) {
-    this.addEventListener('friend-removed', callback);
-  }
-
-  onFriendRequestSentRealtime(callback: (data: FriendRequestSentData) => void) {
-    this.addEventListener('friend-request-sent-realtime', callback);
-  }
-  
-  onPendingRequestsCountUpdated(callback: (data: PendingRequestsCountData) => void) {
-    this.addEventListener('pending-requests-count-updated', callback);
-  }
-
-  onFriendsListUpdated(callback: (data: FriendsListUpdatedData) => void) {
-    this.addEventListener('friends-list-updated', callback);
-  }
-
-  // Group Event Listeners - ADDING MISSING METHODS
-  onNewGroupMessage(callback: (message: Message) => void) {
-    this.addEventListener('new-group-message', callback);
-  }
-
-  onGroupMessageSent(callback: (message: Message) => void) {
-    this.addEventListener('group-message-sent', callback);
-  }
-
-  onGroupMessageError(callback: (error: { error: string }) => void) {
-    this.addEventListener('group-message-error', callback);
-  }
-
-  onGroupTyping(callback: (data: { groupId: string; sender: string }) => void) {
-    this.addEventListener('group-typing', callback);
-  }
-
-  onGroupStopTyping(callback: (data: { groupId: string; sender: string }) => void) {
-    this.addEventListener('group-stop-typing', callback);
-  }
-
-  onGroupMessageSeen(callback: (data: { messageId: string; userId: string }) => void) {
-    this.addEventListener('group-message-seen', callback);
-  }
-
-  // Notification Event Listeners
-  onNotificationRead(callback: (data: { notificationId: string }) => void) {
-    this.addEventListener('notification-read', callback);
   }
 
   // Connection Events
@@ -566,15 +477,23 @@ sendGroupMessage(data: {
   }
 
   onDisconnect(callback: () => void) {
-    this.socket?.on("disconnect", callback);
+    this.addEventListener('disconnected', callback);
   }
 
   onError(callback: (error: { message: string }) => void) {
-    this.addEventListener('error', callback);
+    this.addEventListener('socket-error', callback);
   }
 
   onConnectError(callback: (error: unknown) => void) {
-    this.socket?.on("connect_error", callback);
+    this.addEventListener('connect-error', callback);
+  }
+
+  onReconnect(callback: (attemptNumber: number) => void) {
+    this.socket?.on("reconnect", callback);
+  }
+
+  onReconnectError(callback: (error: unknown) => void) {
+    this.socket?.on("reconnect_error", callback);
   }
 
   // Generic event listener method
@@ -632,6 +551,25 @@ sendGroupMessage(data: {
   getUserId(): string | null {
     return this.userId;
   }
+
+  // Helper to wait for connection
+  async waitForConnection(timeout = 10000): Promise<boolean> {
+    if (this.isConnected()) return true;
+    
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      
+      const checkInterval = setInterval(() => {
+        if (this.isConnected()) {
+          clearInterval(checkInterval);
+          resolve(true);
+        } else if (Date.now() - startTime > timeout) {
+          clearInterval(checkInterval);
+          resolve(false);
+        }
+      }, 100);
+    });
+  }
 }
 
 export const socketService = new SocketService();
@@ -639,12 +577,18 @@ export const socketService = new SocketService();
 export type {
   FriendRequestReceivedData,
   FriendRequestAcceptedData,
-  FriendRequestWithdrawnData,
+  FriendRequestRejectedData,
   FriendRequestSentData,
-  FriendRemovedData,
-  PendingRequestsCountData,
-  FriendsListUpdatedData,
-  MessageDeliveredEvent,
-  TypingStartEvent,
-  TypingStopEvent
+  UserStatusChangedData,
+  TypingStatusData,
+  MessageDeliveredData,
+  MessageReadData,
+  ConversationReadData,
+  OnlineStatusResponseData,
+  TypingStatusResponseData,
+  AuthenticatedData,
+  SendMessageData,
+  OnlineFriendsResponseData  // ADD THIS LINE
 };
+
+

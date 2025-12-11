@@ -1,22 +1,10 @@
 import mongoose from "mongoose";
 import Message from "../models/Message.js";
-import Group from "../models/Group.js";
-import GroupMessage from "../models/GroupMessage.js";
 import User from "../models/User.js";
-import { getIO, getOnlineUsers, emitToUser, emitToGroup } from "../lib/socket.js";
-import cloudinary from "../lib/cloudinary.js";
-
-// message.controller.js
-
+import { getOnlineUsers, emitToUser } from "../lib/socket.js";
 import { GridFSBucket } from 'mongodb';
 
-
-
-
-
 // Save encrypted file to GridFS
-// Update saveEncryptedFileToGridFS to include file type in metadata
-// In saveEncryptedFileToGridFS function, extract and store extension:
 const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileType = "document") => {
   return new Promise((resolve, reject) => {
     try {
@@ -36,7 +24,7 @@ const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileTy
         metadata: {
           originalName: originalName,
           type: fileType,
-          extension: extension, // ⭐ Store extension
+          extension: extension,
           isEncrypted: true,
           uploadedAt: new Date(),
           isTemp: false
@@ -48,7 +36,7 @@ const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileTy
       uploadStream.on('finish', () => {
         console.log(`✅ Encrypted file saved to GridFS: ${uploadStream.id}`);
         resolve({ 
-          url: `/api/messages/media/${uploadStream.id}`, // For display
+          url: `/api/messages/media/${uploadStream.id}`,
           fileId: uploadStream.id.toString(),
           fileName: fileName
         });
@@ -72,6 +60,7 @@ function getDefaultExtension(fileType) {
     default: return '.bin';
   }
 }
+
 // Serve media files for display (img/video tags)
 export const serveMediaFile = async (req, res) => {
   try {
@@ -92,7 +81,7 @@ export const serveMediaFile = async (req, res) => {
     
     const file = files[0];
     
-    // ⭐ Set CORS headers for media display
+    // Set CORS headers for media display
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
@@ -113,7 +102,6 @@ export const serveMediaFile = async (req, res) => {
         contentType = 'application/octet-stream';
     }
     
-    // ⭐ IMPORTANT: Use 'inline' for media display
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', 'inline');
     
@@ -131,8 +119,6 @@ export const serveMediaFile = async (req, res) => {
   }
 };
 
-// Download encrypted files (for documents)
-// Download encrypted files (for documents)
 // Download encrypted files (for documents)
 export const downloadEncryptedFile = async (req, res) => {
   try {
@@ -184,7 +170,7 @@ export const downloadEncryptedFile = async (req, res) => {
         } else if (extension.toLowerCase() === '.bmp') {
           contentType = 'image/bmp';
         } else {
-          contentType = 'image/jpeg'; // Default for images
+          contentType = 'image/jpeg';
         }
         break;
       case 'video':
@@ -195,7 +181,7 @@ export const downloadEncryptedFile = async (req, res) => {
         } else if (extension.toLowerCase() === '.mov') {
           contentType = 'video/quicktime';
         } else {
-          contentType = 'video/mp4'; // Default for videos
+          contentType = 'video/mp4';
         }
         break;
       case 'audio':
@@ -206,7 +192,7 @@ export const downloadEncryptedFile = async (req, res) => {
         } else if (extension.toLowerCase() === '.m4a') {
           contentType = 'audio/mp4';
         } else {
-          contentType = 'audio/mpeg'; // Default for audio
+          contentType = 'audio/mpeg';
         }
         break;
       case 'document':
@@ -229,7 +215,6 @@ export const downloadEncryptedFile = async (req, res) => {
     if (!fileName.includes('.') && extension) {
       fileName += extension;
     } else if (!fileName.includes('.')) {
-      // Add default extension based on type
       switch (file.metadata?.type) {
         case 'image': fileName += '.jpg'; break;
         case 'video': fileName += '.mp4'; break;
@@ -258,6 +243,7 @@ export const downloadEncryptedFile = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 export const sendMessage = async (req, res) => {
   try {
     console.log("📨 Received message request");
@@ -279,7 +265,6 @@ export const sendMessage = async (req, res) => {
       type = "ratcheted",
       encryptedKey, 
       senderEncryptedKey,
-      isGroup = false,
       contentType = "text"
     } = messageData;
 
@@ -322,189 +307,146 @@ export const sendMessage = async (req, res) => {
           console.log(`📁 File ${i + 1}: ${originalName}, type: ${fileType}, size: ${file.buffer.length} bytes`);
 
           // Save encrypted blob to GridFS
-          // In sendMessage function, update the file saving part:
-const savedFile = await saveEncryptedFileToGridFS(
-  file.buffer, 
-  originalName, 
-  i, 
-  fileType // Pass file type
-);
+          const savedFile = await saveEncryptedFileToGridFS(
+            file.buffer, 
+            originalName, 
+            i, 
+            fileType
+          );
 
-mediaArray.push({
-  url: savedFile.url, // GridFS media URL
-  type: fileType,
-  encryptedKey: mediaEncryptedKey,
-  senderEncryptedKey: mediaSenderEncryptedKey,
-  originalName: originalName,
-  fileSize: file.buffer.length,
-  isEncrypted: true,
-  fileId: savedFile.fileId
-});
+          mediaArray.push({
+            url: savedFile.url,
+            type: fileType,
+            encryptedKey: mediaEncryptedKey,
+            senderEncryptedKey: mediaSenderEncryptedKey,
+            originalName: originalName,
+            fileSize: file.buffer.length,
+            isEncrypted: true,
+            fileId: savedFile.fileId
+          });
 
           console.log(`✅ Encrypted file ${i + 1} saved to GridFS`);
 
         } catch (fileError) {
           console.error(`❌ Error processing encrypted file ${i}:`, fileError);
-          // Continue with other files even if one fails
           continue;
         }
       }
     }
 
-    let msg;
-    let responseData;
-    
-    if (isGroup) {
-      console.log("👥 Processing group message...");
-      
-      // Verify user is member of the group
-      const group = await Group.findOne({
-        _id: receiver,
-        members: sender
-      });
-
-      if (!group) {
-        console.error("❌ User not member of group:", { sender, receiver });
-        return res.status(403).json({ message: "Not a member of this group" });
-      }
-
-      msg = await GroupMessage.create({
-        sender,
-        group: receiver,
-        ciphertext,
-        type,
-        contentType,
-        encryptedKey: encryptedKey,
-        senderEncryptedKey: senderEncryptedKey,
-        media: mediaArray
-      });
-
-      console.log("✅ Group message created:", msg._id);
-
-      // Prepare response data
-      responseData = {
-        _id: msg._id,
-        sender: msg.sender.toString(),
-        group: msg.group.toString(),
-        ciphertext: msg.ciphertext,
-        type: msg.type,
-        contentType: msg.contentType,
-        encryptedKey: msg.encryptedKey,
-        senderEncryptedKey: msg.senderEncryptedKey,
-        media: msg.media,
-        sentAt: msg.sentAt,
-        readBy: msg.readBy || []
-      };
-
-      // ---- REAL-TIME GROUP EMISSIONS ----
-      const onlineUsers = getOnlineUsers();
-      
-      // Emit to all group members who are online
-      group.members.forEach(memberId => {
-        const memberStr = memberId.toString();
-        
-        // Don't emit to sender (they'll get message-sent)
-        if (memberStr === sender) return;
-        
-        if (onlineUsers.has(memberStr)) {
-          console.log(`📡 Emitting new-group-message to member: ${memberStr}`);
-          emitToUser(memberStr, "new-group-message", responseData);
-        }
-      });
-      
-      // Emit to sender that message was sent successfully
-      console.log(`📡 Emitting group-message-sent to sender: ${sender}`);
-      emitToUser(sender, "group-message-sent", responseData);
-
-      // Update group activity
-      await Group.findByIdAndUpdate(receiver, {
-        lastActivity: new Date()
-      });
-
-      console.log("📢 Group message broadcasted");
-
-    } else {
-      console.log("👤 Processing private message...");
-      
-      // Verify receiver exists
-      const receiverExists = await User.findById(receiver);
-      if (!receiverExists) {
-        console.error("❌ Receiver not found:", receiver);
-        return res.status(404).json({ message: "Receiver not found" });
-      }
-
-      // Create message
-      msg = await Message.create({
-        sender,
-        receiver,
-        ciphertext,
-        type,
-        contentType,
-        encryptedKey: encryptedKey,
-        senderEncryptedKey: senderEncryptedKey,
-        media: mediaArray
-      });
-
-      console.log("✅ Private message created:", msg._id);
-
-      // Prepare response data
-      responseData = {
-        _id: msg._id,
-        sender: msg.sender.toString(),
-        receiver: msg.receiver.toString(),
-        ciphertext: msg.ciphertext,
-        type: msg.type,
-        contentType: msg.contentType,
-        encryptedKey: msg.encryptedKey,
-        senderEncryptedKey: msg.senderEncryptedKey,
-        media: msg.media,
-        sentAt: msg.sentAt,
-        delivered: msg.delivered,
-        read: msg.read
-      };
-
-      // ---- REAL-TIME PRIVATE EMISSIONS ----
-      const onlineUsers = getOnlineUsers();
-      const receiverStr = receiver.toString();
-      const senderStr = sender.toString();
-      
-      // Check if receiver is online
-      if (onlineUsers.has(receiverStr)) {
-        console.log(`✅ Receiver ${receiverStr} is online, marking as delivered`);
-        
-        // Mark as delivered
-        await Message.findByIdAndUpdate(
-          msg._id, 
-          { delivered: true }, 
-          { new: true }
-        );
-        
-        responseData.delivered = true;
-        
-        // Emit delivered status to sender
-        console.log(`📡 Emitting message-delivered to sender: ${senderStr}`);
-        emitToUser(senderStr, "message-delivered", { 
-          messageId: msg._id,
-          receiverId: receiverStr,
-          deliveredAt: new Date()
-        });
-      } else {
-        console.log(`📴 Receiver ${receiverStr} is offline, message will be delivered when they come online`);
-      }
-      
-      // Emit new message to receiver (if online)
-      if (onlineUsers.has(receiverStr)) {
-        console.log(`📡 Emitting new-message to receiver: ${receiverStr}`);
-        emitToUser(receiverStr, "new-message", responseData);
-      }
-      
-      // Emit message-sent to sender
-      console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
-      emitToUser(senderStr, "message-sent", responseData);
-      
-      console.log("📢 Private message broadcasted");
+    // Verify receiver exists
+    const receiverExists = await User.findById(receiver);
+    if (!receiverExists) {
+      console.error("❌ Receiver not found:", receiver);
+      return res.status(404).json({ message: "Receiver not found" });
     }
 
+    // Create message
+    const msg = await Message.create({
+      sender,
+      receiver,
+      ciphertext,
+      type,
+      contentType,
+      encryptedKey: encryptedKey,
+      senderEncryptedKey: senderEncryptedKey,
+      media: mediaArray
+    });
+
+    console.log("✅ Private message created:", msg._id);
+
+    // Convert IDs to strings for socket operations
+    const receiverStr = receiver.toString();
+    const senderStr = sender.toString();
+    const onlineUsers = getOnlineUsers();
+    
+    // Prepare response data
+    const responseData = {
+      _id: msg._id,
+      sender: senderStr,
+      receiver: receiverStr,
+      ciphertext: msg.ciphertext,
+      type: msg.type,
+      contentType: msg.contentType,
+      encryptedKey: msg.encryptedKey,
+      senderEncryptedKey: msg.senderEncryptedKey,
+      media: msg.media,
+      sentAt: msg.sentAt,
+      delivered: false, // Will update if receiver is online
+      read: false
+    };
+
+    // Payload for the RECEIVER — they should get THEIR encryptedKey
+    const receiverPayload = {
+      _id: msg._id,
+      sender: senderStr,
+      receiver: receiverStr,
+      ciphertext: msg.ciphertext,
+      type: msg.type,
+      contentType: msg.contentType,
+      encryptedKey: msg.encryptedKey,          // receiver's key
+      media: msg.media,
+      sentAt: msg.sentAt,
+      delivered: false,
+      read: false
+    };
+
+    // Payload for the SENDER — they should get THEIR OWN senderEncryptedKey
+    const senderPayload = {
+      _id: msg._id,
+      sender: senderStr,
+      receiver: receiverStr,
+      ciphertext: msg.ciphertext,
+      type: msg.type,
+      contentType: msg.contentType,
+      encryptedKey: msg.senderEncryptedKey,     // sender's key
+      media: msg.media,
+      sentAt: msg.sentAt,
+      delivered: false,
+      read: false
+    };
+
+    // ---- REAL-TIME PRIVATE EMISSIONS ----
+    console.log("Online users:", onlineUsers);
+    
+    // Check if receiver is online
+    if (onlineUsers.includes(receiverStr)) {
+      console.log(`✅ Receiver ${receiverStr} is online, marking as delivered`);
+      
+      // Mark as delivered
+      await Message.findByIdAndUpdate(
+        msg._id, 
+        { delivered: true }, 
+        { new: true }
+      );
+      
+      // Update payloads with delivered status
+      responseData.delivered = true;
+      receiverPayload.delivered = true;
+      senderPayload.delivered = true;
+      
+      // Emit delivered status to sender
+      console.log(`📡 Emitting message-delivered to sender: ${senderStr}`);
+      emitToUser(senderStr, "message-delivered", { 
+        messageId: msg._id,
+        receiverId: receiverStr,
+        deliveredAt: new Date()
+      });
+    } else {
+      console.log(`📴 Receiver ${receiverStr} is offline, message will be delivered when they come online`);
+    }
+    
+    // Emit new message to receiver (if online)
+    if (onlineUsers.includes(receiverStr)) {
+      console.log(`📡 Emitting new-message to receiver: ${receiverStr}`);
+      emitToUser(receiverStr, "new-message", receiverPayload);
+    }
+    
+    // Emit message-sent to sender
+    console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
+    emitToUser(senderStr, "message-sent", senderPayload);
+    
+    console.log("📢 Private message broadcasted");
     console.log("🎉 Message processing complete");
     
     // Return response
@@ -524,12 +466,11 @@ mediaArray.push({
         if (data.sender) {
           const errorPayload = { 
             error: "Failed to send message",
-            isGroup: data.isGroup || false,
             timestamp: new Date()
           };
           
           console.log(`📡 Emitting message-error to sender: ${data.sender}`);
-          emitToUser(data.sender, "message-error", errorPayload);
+          emitToUser(data.sender.toString(), "message-error", errorPayload);
         }
       } catch (e) {
         console.error("Could not parse data for error emission:", e);
@@ -544,60 +485,44 @@ mediaArray.push({
   }
 };
 
-
-
 // Additional real-time endpoints
 export const markMessageAsRead = async (req, res) => {
   try {
-    const { messageId, userId } = req.body;
+    const { messageId } = req.params;
     const currentUserId = req.user._id;
 
-    if (!messageId || !userId) {
-      return res.status(400).json({ message: "Message ID and user ID are required" });
+    if (!messageId) {
+      return res.status(400).json({ message: "Message ID is required" });
     }
 
-    let updatedMessage;
-
-    // Check if it's a group message
-    const groupMessage = await GroupMessage.findById(messageId);
-    if (groupMessage) {
-      // Add user to readBy array if not already there
-      if (!groupMessage.readBy.includes(userId)) {
-        groupMessage.readBy.push(userId);
-        updatedMessage = await groupMessage.save();
-        
-        // Emit read receipt to sender
-        emitToUser(groupMessage.sender.toString(), "message-read", {
-          messageId: groupMessage._id,
-          readerId: userId,
-          readAt: new Date()
-        });
-      }
-    } else {
-      // Private message
-      const message = await Message.findById(messageId);
-      if (!message) {
-        return res.status(404).json({ message: "Message not found" });
-      }
-
-      // Verify user is receiver
-      if (message.receiver.toString() !== currentUserId.toString()) {
-        return res.status(403).json({ message: "Not authorized to mark this message as read" });
-      }
-
-      updatedMessage = await Message.findByIdAndUpdate(
-        messageId,
-        { read: true },
-        { new: true }
-      );
-
-      // Emit read receipt to sender
-      emitToUser(message.sender.toString(), "message-read", {
-        messageId: message._id,
-        readerId: currentUserId,
-        readAt: new Date()
-      });
+    // Private message
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
     }
+
+    // Verify user is receiver
+    if (message.receiver.toString() !== currentUserId.toString()) {
+      return res.status(403).json({ message: "Not authorized to mark this message as read" });
+    }
+
+    const updatedMessage = await Message.findByIdAndUpdate(
+      messageId,
+      { read: true },
+      { new: true }
+    );
+   
+
+    console.log("Message Updated to read");
+    // Emit read receipt to sender
+    emitToUser(message.sender.toString(), "message-read", {
+      messageId: message._id,
+      readerId: currentUserId,
+      readAt: new Date()
+    });
+
+
+    console.log9("EVen emeited message read");
 
     res.json({
       success: true,
@@ -613,7 +538,7 @@ export const markMessageAsRead = async (req, res) => {
 
 export const markMessageAsDelivered = async (req, res) => {
   try {
-    const { messageId } = req.body;
+    const { messageId } = req.params;
     const currentUserId = req.user._id;
 
     if (!messageId) {
@@ -656,157 +581,75 @@ export const markMessageAsDelivered = async (req, res) => {
   }
 };
 
-
 const resolveEncryptedKey = (msg, currentUserId) => {
   return String(msg.sender._id) === String(currentUserId)
-    ? msg.senderEncryptedKey   // sender decrypts with this
-    : msg.encryptedKey;        // receiver decrypts with this
+    ? msg.senderEncryptedKey
+    : msg.encryptedKey;
 };
-
-
 
 export const getMessages = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { receiverId } = req.params;
-    const { isGroup } = req.query;
 
     // Validate receiverId
     if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
       return res.status(400).json({ message: "Invalid receiver ID" });
     }
 
-    if (isGroup === 'true') {
-      // ---- GET GROUP MESSAGES ----
-      
-      // Validate group ID
-      if (!mongoose.Types.ObjectId.isValid(receiverId)) {
-        return res.status(400).json({ message: "Invalid group ID" });
-      }
-
-      // Verify user is member of the group
-      const group = await Group.findOne({
-        _id: receiverId,
-        members: currentUserId
-      });
-
-      if (!group) {
-        return res.status(403).json({ message: "Not a member of this group" });
-      }
-
-      // Query for GroupMessage model
-      const messages = await GroupMessage.find({
-        group: receiverId
-      })
-      .populate('sender', 'username fullName profilePic email')
-      .sort({ sentAt: 1 });
-
-      // ✅ Normalize to string IDs with GridFS URLs
-      const normalizedMessages = messages.map(msg => {
-        const encryptedKeyForUser = resolveEncryptedKey(msg, currentUserId);
-
-        return {
-          _id: msg._id,
-          sender: msg.sender._id,
-          group: receiverId, // Group ID from params
-          ciphertext: msg.ciphertext,
-          type: msg.type,
-          contentType: msg.contentType,
-          
-          // ✅ ONLY send the correct AES key
-          encryptedKey: encryptedKeyForUser,
-          senderEncryptedKey: msg.senderEncryptedKey, // Keep for sender
-
-          // ✅ Process media with GridFS URLs
-          media: msg.media ? msg.media.map(media => {
-            // Determine correct encrypted key for this user
-            const mediaEncryptedKey = String(msg.sender._id) === String(currentUserId)
-              ? media.senderEncryptedKey
-              : media.encryptedKey;
-
-            return {
-              url: media.url, // This should be /api/messages/media/:id from GridFS
-              type: media.type,
-              encryptedKey: mediaEncryptedKey,
-              senderEncryptedKey: media.senderEncryptedKey, // Keep for sender
-              originalName: media.originalName,
-              fileSize: media.fileSize,
-              isEncrypted: media.isEncrypted !== false, // Default to true
-              fileId: media.fileId // Keep fileId for reference
-            };
-          }) : [],
-
-          sentAt: msg.sentAt,
-          delivered: msg.delivered,
-          read: msg.read,
-          readBy: msg.readBy || []
-        };
-      });
-
-      return res.json(normalizedMessages);
-
-    } else {
-      // ---- GET PRIVATE MESSAGES ----
-      
-      // Validate user IDs
-      if (!mongoose.Types.ObjectId.isValid(receiverId)) {
-        return res.status(400).json({ message: "Invalid user ID" });
-      }
-
-      // Query for private messages
-      const messages = await Message.find({
-        $or: [
-          { sender: currentUserId, receiver: receiverId },
-          { sender: receiverId, receiver: currentUserId }
-        ]
-      })
-      .populate('sender', 'username fullName profilePic email')
-      .populate('receiver', 'username fullName profilePic email')
-      .sort({ sentAt: 1 });
-
-      // ✅ Normalize to string IDs with GridFS URLs
-      const normalizedMessages = messages.map(msg => {
-        const encryptedKeyForUser = resolveEncryptedKey(msg, currentUserId);
-
-        return {
-          _id: msg._id,
-          sender: msg.sender._id,
-          receiver: msg.receiver._id,
-          ciphertext: msg.ciphertext,
-          type: msg.type,
-          contentType: msg.contentType,
-
-          // ✅ Only correct key sent
-          encryptedKey: encryptedKeyForUser,
-          senderEncryptedKey: msg.senderEncryptedKey, // Keep for sender
-
-          // ✅ Process media with GridFS URLs
-          media: msg.media ? msg.media.map(media => {
-            // Determine correct encrypted key for this user
-            const mediaEncryptedKey = String(msg.sender._id) === String(currentUserId)
-              ? media.senderEncryptedKey
-              : media.encryptedKey;
-
-            return {
-              url: media.url, // This should be /api/messages/media/:id from GridFS
-              type: media.type,
-              encryptedKey: mediaEncryptedKey,
-              senderEncryptedKey: media.senderEncryptedKey, // Keep for sender
-              originalName: media.originalName,
-              fileSize: media.fileSize,
-              isEncrypted: media.isEncrypted !== false, // Default to true
-              fileId: media.fileId // Keep fileId for reference
-            };
-          }) : [],
-
-          sentAt: msg.sentAt,
-          delivered: msg.delivered,
-          read: msg.read
-        };
-      });
-
-      return res.json(normalizedMessages);
+    // Validate user IDs
+    if (!mongoose.Types.ObjectId.isValid(receiverId)) {
+      return res.status(400).json({ message: "Invalid user ID" });
     }
+
+    // Query for private messages
+    const messages = await Message.find({
+      $or: [
+        { sender: currentUserId, receiver: receiverId },
+        { sender: receiverId, receiver: currentUserId }
+      ]
+    })
+    .populate('sender', 'username fullName profilePic email')
+    .populate('receiver', 'username fullName profilePic email')
+    .sort({ sentAt: 1 });
+
+    // Normalize to string IDs with GridFS URLs
+    const normalizedMessages = messages.map(msg => {
+      const encryptedKeyForUser = resolveEncryptedKey(msg, currentUserId);
+
+      return {
+        _id: msg._id,
+        sender: msg.sender._id,
+        receiver: msg.receiver._id,
+        ciphertext: msg.ciphertext,
+        type: msg.type,
+        contentType: msg.contentType,
+        encryptedKey: encryptedKeyForUser,
+        senderEncryptedKey: msg.senderEncryptedKey,
+        media: msg.media ? msg.media.map(media => {
+          // Determine correct encrypted key for this user
+          const mediaEncryptedKey = String(msg.sender._id) === String(currentUserId)
+            ? media.senderEncryptedKey
+            : media.encryptedKey;
+
+          return {
+            url: media.url,
+            type: media.type,
+            encryptedKey: mediaEncryptedKey,
+            senderEncryptedKey: media.senderEncryptedKey,
+            originalName: media.originalName,
+            fileSize: media.fileSize,
+            isEncrypted: media.isEncrypted !== false,
+            fileId: media.fileId
+          };
+        }) : [],
+        sentAt: msg.sentAt,
+        delivered: msg.delivered,
+        read: msg.read
+      };
+    });
+
+    return res.json(normalizedMessages);
 
   } catch (err) {
     console.error("getMessages error:", err);
@@ -818,13 +661,10 @@ export const getMessages = async (req, res) => {
   }
 };
 
-
-
 export const getUserForSideBar = async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user._id);
 
-    // ✅ PRIVATE CHATS
     const privateChats = await Message.aggregate([
       {
         $match: {
@@ -845,7 +685,10 @@ export const getUserForSideBar = async (req, res) => {
           read: 1,
           encryptedKey: 1,
           senderEncryptedKey: 1,
-          isGroup: { $literal: false }
+          // Add isFromOtherUser field to identify messages from others
+          isFromOtherUser: {
+            $cond: [{ $eq: ["$sender", userId] }, false, true]
+          }
         }
       },
       { $sort: { sentAt: -1 } },
@@ -857,25 +700,25 @@ export const getUserForSideBar = async (req, res) => {
           lastMessageTime: { $first: "$sentAt" },
           lastMessageEncryptedKey: { $first: "$encryptedKey" },
           lastMessageEncryptedKeySender: { $first: "$senderEncryptedKey" },
-          lastMessageSenderId: { $first: "$sender" }, // ✅ added
-          lastMessageDelivered: { $first: "$delivered" }, // ✅ added
-          lastMessageRead: { $first: "$read" }, // ✅ added
+          lastMessageSenderId: { $first: "$sender" },
+          lastMessageDelivered: { $first: "$delivered" },
+          lastMessageRead: { $first: "$read" },
+          // CORRECTED: Count unread messages from the other user to current user
           unreadCount: {
             $sum: {
               $cond: [
                 {
                   $and: [
-                    { $eq: ["$receiver", userId] },
-                    { $eq: ["$delivered", false] },
-                    { $eq: ["$read", false] }
+                    { $eq: ["$receiver", userId] }, // Messages to current user
+                    { $eq: ["$read", false] }, // Not read yet
+                    { $ne: ["$sender", userId] } // From other user (not self)
                   ]
                 },
                 1,
                 0
               ]
             }
-          },
-          isGroup: { $first: "$isGroup" }
+          }
         }
       },
       {
@@ -896,91 +739,39 @@ export const getUserForSideBar = async (req, res) => {
           lastMessage: 1,
           lastMessageMedia: 1,
           lastMessageTime: 1,
-          lastMessageEncryptedKey: 1,
-          lastMessageEncryptedKeySender: 1,
-          lastMessageSenderId: 1, // ✅ added
-          lastMessageDelivered: 1, // ✅ added
-          lastMessageRead: 1, // ✅ added
+          encryptedKey: {
+            $cond: [
+              { $eq: ["$lastMessageSenderId", userId] },
+              "$lastMessageEncryptedKeySender",
+              "$lastMessageEncryptedKey"
+            ]
+          },
+          lastMessageDelivered: 1,
+          lastMessageRead: 1,
           unreadCount: 1,
-          isGroup: 1,
-          isOnline: "$user.isOnline"
-        }
-      }
-    ]);
-
-    // ✅ GROUP CHATS
-    const groupChats = await Group.aggregate([
-      { $match: { members: userId } },
-      {
-        $lookup: {
-          from: "groupmessages",
-          let: { groupId: "$_id" },
-          pipeline: [
-            { $match: { $expr: { $eq: ["$group", "$$groupId"] } } },
-            { $sort: { sentAt: -1 } },
-            { $limit: 1 },
-            {
-              $project: {
-                ciphertext: 1,
-                media: 1,
-                sentAt: 1,
-                sender: 1,
-                encryptedKey: 1,
-                senderEncryptedKey: 1,
-                delivered: 1,
-                read: 1
-              }
-            }
-          ],
-          as: "lastMessage"
+          isOnline: "$user.isOnline",
+          // Add this for frontend to know if there are unread messages
+          hasUnread: { $gt: ["$unreadCount", 0] }
         }
       },
-      {
-        $lookup: {
-          from: "users",
-          localField: "lastMessage.sender",
-          foreignField: "_id",
-          as: "lastMessageSender"
-        }
-      },
-      {
-        $project: {
-          _id: 1,
-          name: 1,
-          admin: 1,
-          members: 1,
-          createdAt: 1,
-          lastMessage: { $arrayElemAt: ["$lastMessage.ciphertext", 0] },
-          lastMessageMedia: { $arrayElemAt: ["$lastMessage.media", 0] },
-          lastMessageTime: { $arrayElemAt: ["$lastMessage.sentAt", 0] },
-          lastMessageEncryptedKey: { $arrayElemAt: ["$lastMessage.encryptedKey", 0] },
-          lastMessageEncryptedKeySender: { $arrayElemAt: ["$lastMessage.senderEncryptedKey", 0] },
-          lastMessageSenderId: { $arrayElemAt: ["$lastMessage.sender", 0] }, // ✅ added
-          lastMessageDelivered: { $arrayElemAt: ["$lastMessage.delivered", 0] }, // ✅ added
-          lastMessageRead: { $arrayElemAt: ["$lastMessage.read", 0] }, // ✅ added
-          lastMessageSender: { $arrayElemAt: ["$lastMessageSender", 0] },
-          isGroup: { $literal: true },
-          unreadCount: { $literal: 0 }
-        }
-      }
+      { $sort: { lastMessageTime: -1 } }
     ]);
 
-    // ✅ MERGE + SORT
-    const allChats = [...privateChats, ...groupChats].sort(
-      (a, b) => new Date(b.lastMessageTime || 0).getTime() - new Date(a.lastMessageTime || 0).getTime()
-    );
-
-    res.status(200).json(allChats);
+    res.status(200).json(privateChats);
   } catch (err) {
     console.error("❌ getUserForSideBar error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
+
+
+
+
 export const searchUsers = async (req, res) => {
   try {
     console.log('🔍 Search controller called with query:', req.query.q);
-    
+
     if (!req.user || !req.user._id) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
@@ -998,7 +789,6 @@ export const searchUsers = async (req, res) => {
     const searchRegex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     const currentUserObjectId = new mongoose.Types.ObjectId(currentUserId);
 
-    // 1) Search friend's list with last message and unread count
     const friends = await User.aggregate([
       { $match: { _id: currentUserObjectId } },
       {
@@ -1015,7 +805,8 @@ export const searchUsers = async (req, res) => {
                 ],
               },
             },
-            // Get last message with this user
+
+            // ⭐ Last Message Lookup
             {
               $lookup: {
                 from: "messages",
@@ -1051,14 +842,43 @@ export const searchUsers = async (req, res) => {
                       delivered: 1,
                       read: 1,
                       encryptedKey: 1,
-                      encryptedKeySender: 1 // ⭐ Include for search results
+                      senderEncryptedKey: 1,
+                      sender: 1
                     }
                   }
                 ],
                 as: "lastMessage"
               }
             },
-            // Get unread count
+
+            // ⭐ Safe Media Type Extraction
+            {
+              $addFields: {
+                lastMessageMediaType: {
+                  $let: {
+                    vars: {
+                      mediaArray: {
+                        $ifNull: [
+                          { $arrayElemAt: ["$lastMessage.media", 0] },
+                          []
+                        ]
+                      }
+                    },
+                    in: {
+                      $cond: {
+                        if: { $gt: [{ $size: "$$mediaArray" }, 0] },
+                        then: {
+                          $arrayElemAt: ["$$mediaArray.type", 0]
+                        },
+                        else: null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+
+            // ⭐ Unread Messages
             {
               $lookup: {
                 from: "messages",
@@ -1070,7 +890,6 @@ export const searchUsers = async (req, res) => {
                         $and: [
                           { $eq: ["$sender", "$$friendId"] },
                           { $eq: ["$receiver", currentUserObjectId] },
-                          { $eq: ["$delivered", false] },
                           { $eq: ["$read", false] }
                         ]
                       }
@@ -1081,6 +900,8 @@ export const searchUsers = async (req, res) => {
                 as: "unreadMessages"
               }
             },
+
+            // ⭐ Final Shape
             {
               $project: {
                 _id: 1,
@@ -1088,144 +909,59 @@ export const searchUsers = async (req, res) => {
                 username: 1,
                 profilePic: 1,
                 isOnline: 1,
+
                 lastMessage: { $arrayElemAt: ["$lastMessage.ciphertext", 0] },
                 lastMessageTime: { $arrayElemAt: ["$lastMessage.sentAt", 0] },
-                lastMessageMedia: { $arrayElemAt: ["$lastMessage.media", 0] },
-                lastMessageEncryptedKey: { $arrayElemAt: ["$lastMessage.encryptedKey", 0] },
-                lastMessageEncryptedKeySender: { $arrayElemAt: ["$lastMessage.encryptedKeySender", 0] }, // ⭐ Add
+                lastMessageMedia: "$lastMessageMediaType",
+                lastMessageSenderId: { $arrayElemAt: ["$lastMessage.sender", 0] },
+
+                encryptedKeyRaw: { $arrayElemAt: ["$lastMessage.encryptedKey", 0] },
+                encryptedKeySenderRaw: { $arrayElemAt: ["$lastMessage.senderEncryptedKey", 0] },
+
                 unreadCount: { $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0] },
                 lastMessageDelivered: { $arrayElemAt: ["$lastMessage.delivered", 0] },
                 lastMessageRead: { $arrayElemAt: ["$lastMessage.read", 0] }
               },
             },
+
             { $limit: 20 },
           ],
           as: "matches",
         },
       },
+
       { $unwind: "$matches" },
       { $replaceRoot: { newRoot: "$matches" } },
     ]);
 
-    // 2) Search groups where user is a member with last message
-    const groups = await Group.aggregate([
-      {
-        $match: {
-          members: currentUserObjectId,
-          name: { $regex: searchRegex },
-        },
-      },
-      // Get last group message
-      {
-        $lookup: {
-          from: "groupmessages",
-          let: { groupId: "$_id" },
-          pipeline: [
-            { $match: { $expr: { $eq: ["$group", "$$groupId"] } } },
-            { $sort: { sentAt: -1 } },
-            { $limit: 1 },
-            {
-              $project: {
-                ciphertext: 1,
-                media: 1,
-                sentAt: 1,
-                sender: 1,
-                encryptedKey: 1,
-                encryptedKeySender: 1 // ⭐ Include for group messages
-              }
-            }
-          ],
-          as: "lastMessage"
-        }
-      },
-      // Get unread count
-      {
-        $lookup: {
-          from: "groupmessages",
-          let: { groupId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { 
-                  $and: [
-                    { $eq: ["$group", "$$groupId"] },
-                    { $ne: [currentUserObjectId, "$readBy"] }
-                  ]
-                }
-              }
-            },
-            { $count: "count" }
-          ],
-          as: "unreadMessages"
-        }
-      },
-      // Get sender info for last message
-      {
-        $lookup: {
-          from: "users",
-          localField: "lastMessage.sender",
-          foreignField: "_id",
-          as: "lastMessageSender"
-        }
-      },
-      {
-        $project: {
-          _id: 1,
-          name: 1,
-          profilePic: 1,
-          admin: 1,
-          members: 1,
-          lastMessage: { $arrayElemAt: ["$lastMessage.ciphertext", 0] },
-          lastMessageTime: { $arrayElemAt: ["$lastMessage.sentAt", 0] },
-          lastMessageMedia: { $arrayElemAt: ["$lastMessage.media", 0] },
-          lastMessageEncryptedKey: { $arrayElemAt: ["$lastMessage.encryptedKey", 0] },
-          lastMessageEncryptedKeySender: { $arrayElemAt: ["$lastMessage.encryptedKeySender", 0] }, // ⭐ Add
-          lastMessageSender: { $arrayElemAt: ["$lastMessageSender.username", 0] },
-          unreadCount: { $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0] },
-          type: { $literal: "group" }
-        }
-      },
-      { $limit: 20 },
-    ]);
-
-    // Format users for response
-    const userResults = (friends || []).map((u) => ({
+    // ⭐ Map encrypted keys correctly and include lastMessageSenderId
+    const results = friends.map(u => ({
       _id: u._id,
       name: u.fullName || u.username,
       profilePic: u.profilePic || null,
       isOnline: !!u.isOnline,
+
       lastMessage: u.lastMessage || null,
       lastMessageTime: u.lastMessageTime || null,
       lastMessageMedia: u.lastMessageMedia || null,
-      lastMessageEncryptedKey: u.lastMessageEncryptedKey || null,
-      lastMessageEncryptedKeySender: u.lastMessageEncryptedKeySender || null, // ⭐ Add to response
+      lastMessageSenderId: u.lastMessageSenderId ? String(u.lastMessageSenderId) : null,
+
+      encryptedKey:
+        String(u.lastMessageSenderId) === String(currentUserId)
+          ? u.encryptedKeySenderRaw
+          : u.encryptedKeyRaw,
+
       unreadCount: u.unreadCount || 0,
       lastMessageDelivered: u.lastMessageDelivered || false,
       lastMessageRead: u.lastMessageRead || false,
       type: "user",
     }));
 
-    // Format groups for response
-    const groupResults = (groups || []).map((g) => ({
-      _id: g._id,
-      name: g.name,
-      profilePic: g.profilePic || null,
-      lastMessage: g.lastMessage ? 
-        (g.lastMessageSender ? `${g.lastMessageSender}: ${g.lastMessage}` : g.lastMessage) : 
-        null,
-      lastMessageTime: g.lastMessageTime || null,
-      lastMessageMedia: g.lastMessageMedia || null,
-      lastMessageEncryptedKey: g.lastMessageEncryptedKey || null,
-      lastMessageEncryptedKeySender: g.lastMessageEncryptedKeySender || null, // ⭐ Add to response
-      unreadCount: g.unreadCount || 0,
-      type: "group",
-    }));
-
-    // Combine and sort by last message time (newest first)
-    const results = [...userResults, ...groupResults].sort((a, b) => {
-      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-      return timeB - timeA;
+    // ⭐ Sort by last message time
+    results.sort((a, b) => {
+      const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return tB - tA;
     });
 
     console.log(`✅ Search complete: ${results.length} results`);
@@ -1235,11 +971,90 @@ export const searchUsers = async (req, res) => {
       count: results.length,
       results,
     });
+
   } catch (error) {
     console.error("❌ Search error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error during search",
+    });
+  }
+};
+
+
+
+export const markChatAsRead = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const { userId } = req.params;
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Valid user ID is required" 
+      });
+    }
+
+    // Get unread messages before updating
+    const unreadMessages = await Message.find({
+      sender: userId,
+      receiver: currentUserId,
+      read: false
+    }).select('_id sender');
+
+    if (unreadMessages.length === 0) {
+      return res.json({
+        success: true,
+        message: "No unread messages to mark",
+        data: { markedCount: 0 }
+      });
+    }
+
+    // Mark all as read
+    const result = await Message.updateMany(
+      {
+        sender: userId,
+        receiver: currentUserId,
+        read: false
+      },
+      {
+        $set: { 
+          read: true, 
+          readAt: new Date(),
+          delivered: true // Also ensure delivered is true when read
+        }
+      }
+    );
+
+    console.log("All Messages Marked as Read");
+
+    // Emit events for all marked messages
+    unreadMessages.forEach(msg => {
+      emitToUser(msg.sender.toString(), "message-read", {
+        messageIds: unreadMessages.map(m => m._id.toString()),
+        readerId: currentUserId.toString(),
+        readAt: new Date()
+      });
+    });
+
+    console.log("event message read emitted");
+
+    res.json({
+      success: true,
+      message: `Marked ${result.modifiedCount} messages as read`,
+      data: {
+        markedCount: result.modifiedCount,
+        chatWith: userId,
+        messageIds: unreadMessages.map(msg => msg._id.toString())
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error marking chat as read:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error",
+      error: error.message 
     });
   }
 };

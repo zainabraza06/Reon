@@ -15,7 +15,7 @@ import {
   resetForgotPassword,
   googleCallback,
   onboard,
-  getMe,
+  getMe, UserDetails
 } from "../controllers/auth.controller.js";
 
 import {
@@ -55,6 +55,8 @@ router.get("/verify-email", verifyEmail);
 
 // 🔄 FORGOT PASSWORD
 router.post("/forgot-password", validateForgotPassword,  forgotPassword);
+
+router.get("/details/:userId", UserDetails);
 
 // 🔁 RESET PASSWORD
 router.post("/forgot-password/reset", validateResetPassword,  resetForgotPassword);

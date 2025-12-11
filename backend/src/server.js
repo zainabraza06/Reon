@@ -11,7 +11,7 @@ import settingRoutes from "./routes/settings.route.js";
 import friendRoutes from "./routes/friend.route.js";
 import messageRoutes from "./routes/message.route.js";
 import keyRoutes from "./routes/key.route.js";
-import groupRoutes from "./routes/group.route.js";
+
 
 
 import { connectDB } from "./lib/db.js";
@@ -45,7 +45,7 @@ app.use("/api/settings", settingRoutes);
 app.use("/api/users", friendRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/keys", keyRoutes);
-app.use("/api/messages/group", groupRoutes);
+
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
 

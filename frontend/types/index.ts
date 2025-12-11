@@ -16,9 +16,70 @@ export interface ChatMessage {
 // Base interface for search results
 export interface SearchedUserBase {
   _id: string;
-  type: 'user' | 'group';
+  type: 'user' ;
   profilePic?: string;
 }
+
+// Update your types file
+
+// Base encrypted content structure
+export interface EncryptedContent {
+  ciphertext?: string;
+  encryptedKey?: string;
+  senderEncryptedKey?: string;
+  media?: Array<{
+    url: string;
+    type: string;
+    encryptedKey?: string;
+    senderEncryptedKey?: string;
+    fileName?: string;
+    fileSize?: number;
+  }>;
+  type?: string;
+}
+
+export interface MessageDeliveredEvent {
+  messageId: string;
+  receiverId: string; // The receiver of the message
+}
+
+// When a message is seen/read
+export interface MessageSeenEvent {
+  messageId: string;
+  readerId: string; // The person who read the message
+  senderId: string; // The sender of the original message
+}
+
+// For conversation read (batch)
+export interface ConversationReadEvent {
+  senderId: string;
+  readerId: string;
+  readAt: string;
+  messageCount: number;
+}
+
+// New message event
+export interface NewMessageEvent {
+  messageId: string;
+  sender: string;
+  receiver: string;
+  content: EncryptedContent | string;
+  messageType: string;
+  sentAt: string;
+  status: string;
+}
+
+// Message sent confirmation
+export interface MessageSentEvent {
+  messageId: string;
+  sender: string;
+  receiver: string;
+  content: EncryptedContent | string;
+  messageType: string;
+  sentAt: string;
+
+}
+
 
 // For user search results
 export interface SearchedUser extends SearchedUserBase {
@@ -29,18 +90,9 @@ export interface SearchedUser extends SearchedUserBase {
   lastSeen: string;
 }
 
-// For group search results  
-export interface SearchedGroup extends SearchedUserBase {
-  type: 'group';
-  name: string;
-  description?: string;
-  admin: string | User;
-  members: (string | User)[];
-  memberCount?: number;
-}
 
 // Union type for search results
-export type SearchResult = SearchedUser | SearchedGroup;
+export type SearchResult = SearchedUser ;
 
 
 export interface ToastMessage {
@@ -54,7 +106,7 @@ export interface ToastMessage {
 export interface Notification {
   _id: string;
   user: string;
-  type: 'message' | 'friend_request' | 'group_invite' | 'system';
+  type: 'message' | 'friend_request'  | 'system';
   title: string;
   message: string;
   read: boolean;
@@ -99,7 +151,7 @@ export interface FlashMessage {
 // ----------------------------
 export interface User {
   _id: string;
-  username: string;
+  username?: string;
   profilePic?: string;
   lastMessage?: string;
   lastMessageTime?: string;
@@ -111,13 +163,12 @@ export interface User {
   
    lastMessageSenderId?:string;
   lastMessageMedia?:"image" | "video" | "audio" | "document";
-  unreadCount?: number;
+  unreadCount: number;
   isOnline?: boolean;
   lastSeen?: string;
   fullName?: string;
   isOnboarded?: boolean;
-   lastMessageEncryptedKey?:string;
-  lastMessageEncryptedKeySender?:string;
+    encryptedKey?:string;
    pendingFriendRequests?: number;
    location?:string;
    bio?:string;
@@ -126,8 +177,8 @@ export interface User {
   chats?: { _id: string }[];
 }
 
-export type ChatItem = User | Group;
-
+export type ChatItem =User;
+ 
 export interface NotificationCountEvent {
   unreadCount: number;
 }
@@ -160,11 +211,7 @@ export interface Chat {
 // ----------------------------
 // Socket events
 // ----------------------------
-export interface MessageSeenEvent {
-  from: string;
-  messageId: string;
-  status?: string; 
-}
+
 
 export interface OnlineStatusEvent {
   userId: string;
@@ -186,23 +233,64 @@ export interface AuthContextType {
 }
 
 
+export interface FriendRequestReceivedData {
+  requestId: string;
+  sender: {
+    _id: string;
+    fullName: string;
+    username: string;
+    profilePic: string;
+  };
+  timestamp: string;
+}
+
+export interface FriendRemovedData {
+  userId: string;
+  friendId: string;
+  timestamp: string;
+}
+
 export interface FriendRequestAcceptedData {
   requestId: string;
-  friend?: User;
+  senderId: string;
   receiverId: string;
-  timestamp: Date;
+  receiver: {
+    _id: string;
+    fullName?: string;
+    username?: string;
+    profilePic?: string;
+  };
+  timestamp: string;
 }
+
+export interface FriendRequestData {
+  requestId: string;
+  senderId: string;
+  receiverId: string;
+  timestamp: string;
+}
+
+ export interface FriendRequestRejectedData {
+  requestId: string;
+  rejectorId: string;
+  senderId: string;
+  rejectedAt: string;
+}
+
 
 export interface FriendRequestWithdrawnData {
   requestId: string;
   senderId: string;
-  timestamp: Date;
+  receiverId: string;
+  timestamp: string;
+}
+export interface FriendRequestSentData {
+  senderId: string;
+  receiverId: string;
+  requestId: string;
+  timestamp: string;
 }
 
-export interface FriendRemovedData {
-  friendId: string;
-  timestamp: Date;
-}
 
 export interface PendingRequestsCountData {
   pendingCount: number;
@@ -259,18 +347,6 @@ export interface Message extends BaseMessage {
   // media is already inherited from BaseMessage as MediaForUI[]
 }
 
-export interface GroupMessage extends BaseMessage {
-  groupId: string;
-  isGroup: true;
-  // For group, media can have encryptedKeys mapping userId → AES key
-  // media?: Array<{
-  //   url: string;
-  //   type: string;
-  //   encryptedKeys?: Record<string, string>;
-  // }>;
-  // Group text can have encrypted keys per user
-  encryptedKeys?: Record<string, string>;
-}
 
 
 
@@ -292,18 +368,6 @@ export interface UserChatItem extends ChatItemBase {
   email?: string;
 }
 
-export interface GroupChatItem extends ChatItemBase {
-  type: 'group';
-  members: string[]; // Array of user IDs
-  membersDetails?: User[]; // Full user objects
-  admin: string;
-  description?: string;
-}
-
-export interface MessageSeenEvent {
-  messageId: string;
-  from: string;
-}
 
 export interface OnlineStatusEvent {
   userId: string;
@@ -317,43 +381,4 @@ export interface TypingEvent {
   isTyping: boolean;
 }
 
-
-// types/index.ts
-
-// Use a more specific type for Group to avoid union type issues
-export interface Group {
-  _id: string;
-  name: string;
-  description?: string;
-  profilePic?: string;
-  coverPhoto?: string;
-  read?:boolean;
-  sent?:boolean;
-  delivered?:boolean;
-  tickStatus?:string;
-
-  // Allow both string IDs (unpopulated) and User objects (populated)
-  admin: string | User;
-  members: (string | User)[];
-  createdAt: string | Date;
-  updatedAt: string | Date;
-  lastActivity?: string | Date;
-  lastMessage?: string ;
-  lastMessageSenderId?:string;
-  lastMessageMedia?: "image" | "video" | "audio" | "document";
-  lastMessageEncryptedKey?:string;
-  lastMessageEncryptedKeySender?:string;
-  settings?: {
-    allowInvites?: boolean;
-    adminOnlyMessages?: boolean;
-    membersCanAddMembers?: boolean;
-    approvalRequired?: boolean;
-  };
-  metadata?: {
-    memberCount?: number;
-    unreadCount?: number;
-    isMuted?: boolean;
-    isPinned?: boolean;
-  };
-}
 

@@ -93,7 +93,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Register listeners
       socketService.onFriendRequestReceived(handleFriendRequestReceived);
-      socketService.onFriendRequestAcceptedRealtime(handleFriendRequestAccepted);
+      socketService.onFriendRequestAccepted(handleFriendRequestAccepted);
       socketService.onFriendRequestWithdrawn(handleFriendRequestWithdrawn);
 
       // Cleanup

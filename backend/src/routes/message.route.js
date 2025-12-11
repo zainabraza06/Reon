@@ -15,7 +15,8 @@ import {
   getMessages,
 
   getUserForSideBar,
-  searchUsers,downloadEncryptedFile, markMessageAsDelivered, markMessageAsRead, serveMediaFile
+  searchUsers,downloadEncryptedFile, markMessageAsDelivered, markMessageAsRead, serveMediaFile,
+  markChatAsRead
 } from "../controllers/message.controller.js";
 
 
@@ -62,8 +63,8 @@ router.get('/media/:id', serveMediaFile);
 router.get('/files/:id', downloadEncryptedFile);
 
 // Mark message as delivered/seen
-router.post('/mark-read',  markMessageAsRead);
-router.post('/mark-delivered', markMessageAsDelivered);
+router.post('/read/:messageId',  markMessageAsRead);
+router.post('delivered/:messageid', markMessageAsDelivered);
 
 // Sidebar chat list
 router.get("/sidebar/list", getUserForSideBar);
@@ -76,5 +77,7 @@ router.get("/search", searchUsers);
 
 // Get messages between two users
 router.get("/:receiverId", getMessages);
+
+router.put("/chat/read/:userId", markChatAsRead);
 
 export default router;
