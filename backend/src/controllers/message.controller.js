@@ -372,8 +372,10 @@ export const sendMessage = async (req, res) => {
       senderEncryptedKey: msg.senderEncryptedKey,
       media: msg.media,
       sentAt: msg.sentAt,
-      delivered: false, // Will update if receiver is online
-      read: false
+      delivered: false,
+      deliveredAt: null,
+      read: false,
+      status: 'sent' // Default status
     };
 
     // Payload for the RECEIVER — they should get THEIR encryptedKey
@@ -388,7 +390,9 @@ export const sendMessage = async (req, res) => {
       media: msg.media,
       sentAt: msg.sentAt,
       delivered: false,
-      read: false
+      deliveredAt: null,
+      read: false,
+      status: 'sent'
     };
 
     // Payload for the SENDER — they should get THEIR OWN senderEncryptedKey
@@ -403,52 +407,65 @@ export const sendMessage = async (req, res) => {
       media: msg.media,
       sentAt: msg.sentAt,
       delivered: false,
-      read: false
+      deliveredAt: null,
+      read: false,
+      status: 'sent'
     };
 
     // ---- REAL-TIME PRIVATE EMISSIONS ----
     console.log("Online users:", onlineUsers);
     
     // Check if receiver is online
-    if (onlineUsers.includes(receiverStr)) {
-      console.log(`✅ Receiver ${receiverStr} is online, marking as delivered`);
-      
-      // Mark as delivered
-      await Message.findByIdAndUpdate(
-        msg._id, 
-        { delivered: true }, 
-        { new: true }
-      );
-      
-      // Update payloads with delivered status
-      responseData.delivered = true;
-      receiverPayload.delivered = true;
-      senderPayload.delivered = true;
-      
-      // Emit delivered status to sender
-      console.log(`📡 Emitting message-delivered to sender: ${senderStr}`);
-      emitToUser(senderStr, "message-delivered", { 
-        messageId: msg._id,
-        receiverId: receiverStr,
-        deliveredAt: new Date()
-      });
+    const isReceiverOnline = onlineUsers.includes(receiverStr);
+    
+    if (isReceiverOnline) {
+        console.log(`✅ Receiver ${receiverStr} is online`);
+        
+        // Mark as delivered immediately since receiver is online
+        await Message.findByIdAndUpdate(
+            msg._id, 
+            { 
+                delivered: true, 
+                deliveredAt: new Date(),
+                status: 'delivered' 
+            }, 
+            { new: true }
+        );
+        
+        // Update payloads with delivered status
+        responseData.delivered = true;
+        responseData.deliveredAt = new Date();
+        responseData.status = 'delivered';
+        
+        receiverPayload.delivered = true;
+        receiverPayload.deliveredAt = new Date();
+        receiverPayload.status = 'delivered';
+        
+        senderPayload.delivered = true;
+        senderPayload.deliveredAt = new Date();
+        senderPayload.status = 'delivered';
+        
+        // Emit to receiver (they are online)
+        console.log(`📡 Emitting new-message to receiver: ${receiverStr}`);
+        emitToUser(receiverStr, "new-message", receiverPayload);
+        
+        // Emit SINGLE status to sender - message is sent AND delivered
+        console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
+        emitToUser(senderStr, "message-sent", senderPayload);
+        
     } else {
-      console.log(`📴 Receiver ${receiverStr} is offline, message will be delivered when they come online`);
+        console.log(`📴 Receiver ${receiverStr} is offline`);
+        
+        // Message is sent but not delivered
+        responseData.status = 'sent';
+        senderPayload.status = 'sent';
+        receiverPayload.status = 'sent';
+        
+        // Emit SINGLE status to sender - message is sent but NOT delivered
+        console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
+        emitToUser(senderStr, "message-sent", senderPayload);
     }
-    
-    // Emit new message to receiver (if online)
-    if (onlineUsers.includes(receiverStr)) {
-      console.log(`📡 Emitting new-message to receiver: ${receiverStr}`);
-      emitToUser(receiverStr, "new-message", receiverPayload);
-    }
-    
-    // Emit message-sent to sender
-    console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
-    emitToUser(senderStr, "message-sent", senderPayload);
-    
-    console.log("📢 Private message broadcasted");
-    console.log("🎉 Message processing complete");
-    
+  
     // Return response
     res.status(201).json({
       success: true,
@@ -466,7 +483,8 @@ export const sendMessage = async (req, res) => {
         if (data.sender) {
           const errorPayload = { 
             error: "Failed to send message",
-            timestamp: new Date()
+            timestamp: new Date(),
+            messageId: data.messageId || null
           };
           
           console.log(`📡 Emitting message-error to sender: ${data.sender}`);
@@ -484,7 +502,6 @@ export const sendMessage = async (req, res) => {
     });
   }
 };
-
 // Additional real-time endpoints
 export const markMessageAsRead = async (req, res) => {
   try {
@@ -536,50 +553,6 @@ export const markMessageAsRead = async (req, res) => {
   }
 };
 
-export const markMessageAsDelivered = async (req, res) => {
-  try {
-    const { messageId } = req.params;
-    const currentUserId = req.user._id;
-
-    if (!messageId) {
-      return res.status(400).json({ message: "Message ID is required" });
-    }
-
-    const message = await Message.findById(messageId);
-    if (!message) {
-      return res.status(404).json({ message: "Message not found" });
-    }
-
-    // Verify user is receiver
-    if (message.receiver.toString() !== currentUserId.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    // Mark as delivered
-    const updatedMessage = await Message.findByIdAndUpdate(
-      messageId,
-      { delivered: true },
-      { new: true }
-    );
-
-    // Emit delivered receipt to sender
-    emitToUser(message.sender.toString(), "message-delivered", {
-      messageId: message._id,
-      receiverId: currentUserId,
-      deliveredAt: new Date()
-    });
-
-    res.json({
-      success: true,
-      message: "Message marked as delivered",
-      data: updatedMessage
-    });
-
-  } catch (error) {
-    console.error("Error marking message as delivered:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
 
 const resolveEncryptedKey = (msg, currentUserId) => {
   return String(msg.sender._id) === String(currentUserId)
@@ -661,6 +634,7 @@ export const getMessages = async (req, res) => {
   }
 };
 
+
 export const getUserForSideBar = async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user._id);
@@ -681,11 +655,10 @@ export const getUserForSideBar = async (req, res) => {
           ciphertext: 1,
           media: 1,
           sentAt: 1,
-          delivered: 1,
-          read: 1,
+          delivered: 1, // use your boolean field
+          read: 1,      // use your boolean field
           encryptedKey: 1,
           senderEncryptedKey: 1,
-          // Add isFromOtherUser field to identify messages from others
           isFromOtherUser: {
             $cond: [{ $eq: ["$sender", userId] }, false, true]
           }
@@ -701,17 +674,16 @@ export const getUserForSideBar = async (req, res) => {
           lastMessageEncryptedKey: { $first: "$encryptedKey" },
           lastMessageEncryptedKeySender: { $first: "$senderEncryptedKey" },
           lastMessageSenderId: { $first: "$sender" },
-          lastMessageDelivered: { $first: "$delivered" },
-          lastMessageRead: { $first: "$read" },
-          // CORRECTED: Count unread messages from the other user to current user
+          delivered: { $first: "$delivered" }, // boolean
+          read: { $first: "$read" },           // boolean
           unreadCount: {
             $sum: {
               $cond: [
                 {
                   $and: [
-                    { $eq: ["$receiver", userId] }, // Messages to current user
-                    { $eq: ["$read", false] }, // Not read yet
-                    { $ne: ["$sender", userId] } // From other user (not self)
+                    { $eq: ["$receiver", userId] },
+                    { $eq: ["$read", false] },
+                    { $ne: ["$sender", userId] }
                   ]
                 },
                 1,
@@ -739,6 +711,7 @@ export const getUserForSideBar = async (req, res) => {
           lastMessage: 1,
           lastMessageMedia: 1,
           lastMessageTime: 1,
+          lastMessageSenderId: 1,
           encryptedKey: {
             $cond: [
               { $eq: ["$lastMessageSenderId", userId] },
@@ -746,11 +719,11 @@ export const getUserForSideBar = async (req, res) => {
               "$lastMessageEncryptedKey"
             ]
           },
-          lastMessageDelivered: 1,
-          lastMessageRead: 1,
+          delivered: 1, // boolean
+          read: 1,      // boolean
+          sent: { $cond: [{ $ne: ["$lastMessageTime", null] }, true, false] }, // derived from sentAt
           unreadCount: 1,
           isOnline: "$user.isOnline",
-          // Add this for frontend to know if there are unread messages
           hasUnread: { $gt: ["$unreadCount", 0] }
         }
       },
@@ -919,9 +892,18 @@ export const searchUsers = async (req, res) => {
                 encryptedKeySenderRaw: { $arrayElemAt: ["$lastMessage.senderEncryptedKey", 0] },
 
                 unreadCount: { $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0] },
+
                 lastMessageDelivered: { $arrayElemAt: ["$lastMessage.delivered", 0] },
-                lastMessageRead: { $arrayElemAt: ["$lastMessage.read", 0] }
-              },
+                lastMessageRead: { $arrayElemAt: ["$lastMessage.read", 0] },
+
+                // ⭐ Derived sent field
+                sent: { $cond: [{ $ne: [{ $arrayElemAt: ["$lastMessage.sentAt", 0] }, null] }, true, false] },
+
+                // ⭐ Frontend-friendly hasUnread
+                hasUnread: {
+                  $gt: [{ $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0] }, 0]
+                }
+              }
             },
 
             { $limit: 20 },
@@ -934,7 +916,7 @@ export const searchUsers = async (req, res) => {
       { $replaceRoot: { newRoot: "$matches" } },
     ]);
 
-    // ⭐ Map encrypted keys correctly and include lastMessageSenderId
+    // ⭐ Map encrypted keys correctly
     const results = friends.map(u => ({
       _id: u._id,
       name: u.fullName || u.username,
@@ -952,8 +934,10 @@ export const searchUsers = async (req, res) => {
           : u.encryptedKeyRaw,
 
       unreadCount: u.unreadCount || 0,
-      lastMessageDelivered: u.lastMessageDelivered || false,
-      lastMessageRead: u.lastMessageRead || false,
+      hasUnread: u.hasUnread || false,
+      delivered: u.lastMessageDelivered || false,
+      read: u.lastMessageRead || false,
+      sent: u.sent || false,
       type: "user",
     }));
 
@@ -980,6 +964,7 @@ export const searchUsers = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -1010,34 +995,31 @@ export const markChatAsRead = async (req, res) => {
       });
     }
 
+    const messageIds = unreadMessages.map(m => m._id.toString());
+
     // Mark all as read
     const result = await Message.updateMany(
-      {
-        sender: userId,
-        receiver: currentUserId,
-        read: false
-      },
-      {
-        $set: { 
-          read: true, 
-          readAt: new Date(),
-          delivered: true // Also ensure delivered is true when read
-        }
-      }
+      { sender: userId, receiver: currentUserId, read: false },
+      { $set: { read: true, readAt: new Date(), delivered: true } }
     );
 
     console.log("All Messages Marked as Read");
 
-    // Emit events for all marked messages
-    unreadMessages.forEach(msg => {
-      emitToUser(msg.sender.toString(), "message-read", {
-        messageIds: unreadMessages.map(m => m._id.toString()),
-        readerId: currentUserId.toString(),
-        readAt: new Date()
-      });
-    });
+    // 🔥 Emit events ONCE
+    const payload = {
+      messageIds,
+      readerId: currentUserId.toString(),
+      readAt: new Date(),
+      status: "read"
+    };
 
-    console.log("event message read emitted");
+    // Notify the sender once
+    emitToUser(userId, "message-read", payload);
+
+    // Notify the current user (receiver) once
+    emitToUser(currentUserId.toString(), "message-read", payload);
+
+    console.log("Event message-read emitted to sender and receiver");
 
     res.json({
       success: true,
@@ -1045,7 +1027,7 @@ export const markChatAsRead = async (req, res) => {
       data: {
         markedCount: result.modifiedCount,
         chatWith: userId,
-        messageIds: unreadMessages.map(msg => msg._id.toString())
+        messageIds
       }
     });
 

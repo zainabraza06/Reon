@@ -7,16 +7,21 @@ import Sidebar from "./SideBar";
 import ChatWindow from "./ChatWindow";
 import InputArea from "./InputArea";
 import { cn } from "@/lib/utils";
-import { User } from "@/types";
+import { ChatItem } from "@/types";
 import styles from "./ChatPage.module.css";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 const ChatPage: React.FC = () => {
   const { user: currentUser, loading: authLoading } = useAuth();
-  const loadedUsers = useRef(false);
+  const initialLoad = useRef(true);
+  const shouldLoadMessagesRef = useRef(false);
+  const loadMessagesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
 
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const userIdParam = searchParams.get("userId");
 
   const {
     messages,
@@ -28,60 +33,116 @@ const ChatPage: React.FC = () => {
     isSending,
     sendMessage,
     searchUsers,
+    searchResults,
+    clearSearchResults,
     setSelectedUser,
     loadMessages,
-    loadChatUsers,
     setMessages,
     setDecryptedMessages,
     decryptSingleMedia,
     decryptMessage,
     resetUnreadCount,
     markMessagesAsRead,
-    startTyping,  // Already provided by useChatLogic
-    stopTyping,   // Already provided by useChatLogic
+    triggerTyping,
+    stopTyping,
   } = useChatLogic({
     userId: currentUser?._id || "",
     onError: (err) => console.error(err),
-    onNewNotification: (n) => console.log("Notification", n),
   });
 
-  // Load chat users once
+  // Keep a ref of the selected user for event handlers
+  const selectedUserRef = useRef(selectedUser);
   useEffect(() => {
-    if (currentUser?._id && !loadedUsers.current) {
-      loadedUsers.current = true;
-      loadChatUsers();
-    }
-  }, [currentUser?._id, loadChatUsers]);
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
 
-  // Handle selecting a user
-  const handleSelectUser = async (user: User) => {
+  // Load messages with debounce
+  const debounceLoadMessages = useCallback(() => {
+    if (loadMessagesTimeoutRef.current) {
+      clearTimeout(loadMessagesTimeoutRef.current);
+    }
+    
+    loadMessagesTimeoutRef.current = setTimeout(async () => {
+      if (selectedUser?._id) {
+        try {
+          await loadMessages();
+          await markMessagesAsRead(selectedUser._id);
+        } catch (err) {
+          console.error("Failed to load messages:", err);
+        }
+      }
+    }, 300);
+  }, [selectedUser, loadMessages, markMessagesAsRead]);
+
+  // Handle typing events
+  const handleTyping = useCallback((isTyping: boolean) => {
+    if (!selectedUserRef.current?._id || !currentUser?._id) return;
+
+    if (isTyping && !isTypingRef.current) {
+      isTypingRef.current = true;
+      triggerTyping?.();
+    } else if (!isTyping && isTypingRef.current) {
+      isTypingRef.current = false;
+      stopTyping?.();
+    }
+  }, [currentUser, triggerTyping, stopTyping]);
+
+  // Handle user selection
+  const handleSelectUser = useCallback((user: ChatItem) => {
+    // Stop typing if active
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      stopTyping?.();
+    }
+
+    // Clear pending message loads
+    if (loadMessagesTimeoutRef.current) {
+      clearTimeout(loadMessagesTimeoutRef.current);
+    }
+
+    // Update URL
     const params = new URLSearchParams();
     params.set("userId", user._id);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 
+    // Update state
     setSelectedUser(user);
     setMessages([]);
     setDecryptedMessages({});
-
     resetUnreadCount(user._id);
+    
+    // Load messages
+    shouldLoadMessagesRef.current = true;
+  }, [router, pathname, setSelectedUser, setMessages, setDecryptedMessages, resetUnreadCount, stopTyping]);
 
-    try {
-      await loadMessages();
-      await markMessagesAsRead(user._id);
-    } catch (error) {
-      console.error("Failed to load messages:", error);
+  // Handle closing chat
+  const handleCloseChat = () => {
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      stopTyping?.();
     }
-  };
 
-  const handleBack = () => {
+    if (loadMessagesTimeoutRef.current) {
+      clearTimeout(loadMessagesTimeoutRef.current);
+    }
+    
     router.replace(pathname, { scroll: false });
     setSelectedUser(null);
     setMessages([]);
     setDecryptedMessages({});
+    shouldLoadMessagesRef.current = false;
+    clearSearchResults?.();
   };
 
+  // Handle sending messages
   const handleSendMessage = async (text: string, files: File[] = []) => {
     if (!selectedUser) return;
+
+    // Stop typing
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      stopTyping?.();
+    }
 
     const media = files.map((file) => {
       const rawType = file.type.split("/")[0];
@@ -99,6 +160,7 @@ const ChatPage: React.FC = () => {
     });
   };
 
+  // Handle media decryption
   const handleDecryptMedia = async (messageId: string, mediaIndex: number) => {
     if (!decryptSingleMedia) return undefined;
     try {
@@ -109,28 +171,59 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const handleTyping = useCallback((isTyping: boolean) => {
-    if (!selectedUser?._id || !currentUser?._id) return;
-    
-    console.log(`⌨️ [ChatPage] Typing ${isTyping ? 'started' : 'stopped'} to ${selectedUser._id}`);
-    
-    // Use functions already provided by useChatLogic
-    if (isTyping) {
-      startTyping();
-    } else {
-      stopTyping();
+  // Initial load from URL
+  useEffect(() => {
+    if (initialLoad.current && currentUser?._id && userIdParam && users.length > 0) {
+      const userFromParam = users.find((user) => user._id === userIdParam);
+      if (userFromParam) {
+        setSelectedUser(userFromParam);
+        shouldLoadMessagesRef.current = true;
+      }
+      initialLoad.current = false;
     }
-  }, [selectedUser, currentUser?._id, startTyping, stopTyping]);
+  }, [currentUser, userIdParam, users, setSelectedUser]);
 
-  const isTyping = selectedUser ? typingUsers.includes(selectedUser._id) : false;
+  // Load messages when selected user changes
+  useEffect(() => {
+    if (!selectedUser?._id || !shouldLoadMessagesRef.current) return;
+    debounceLoadMessages();
+    shouldLoadMessagesRef.current = false;
+  }, [selectedUser, debounceLoadMessages]);
+
+  // Auto-load messages when user is already selected
+  useEffect(() => {
+    if (selectedUser?._id && !shouldLoadMessagesRef.current) {
+      shouldLoadMessagesRef.current = true;
+    }
+  }, [selectedUser]);
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (loadMessagesTimeoutRef.current) {
+        clearTimeout(loadMessagesTimeoutRef.current);
+      }
+      if (isTypingRef.current) {
+        stopTyping?.();
+      }
+    };
+  }, [stopTyping]);
+
+  // Check if current chat user is typing
+  const isUserTypingInChat = useCallback(() => {
+    return selectedUser ? typingUsers[selectedUser._id] === true : false;
+  }, [selectedUser, typingUsers]);
 
   if (authLoading || !currentUser) {
-    return <div className={styles.loadingContainer}>Loading...</div>;
+    return (
+      <div className={styles.loadingContainer}>
+        <div className={styles.spinner}></div>
+        <p>Loading chat...</p>
+      </div>
+    );
   }
 
   const mobileView = selectedUser ? "chat" : "list";
-
-  
 
   return (
     <div className={styles.pageContainer}>
@@ -140,12 +233,10 @@ const ChatPage: React.FC = () => {
 
       <div className={styles.mainContainer}>
         <div className={styles.chatWrapper}>
-          <div
-            className={cn(
-              styles.sidebarContainer,
-              mobileView === "chat" ? styles.sidebarHidden : styles.sidebarVisible
-            )}
-          >
+          <div className={cn(
+            styles.sidebarContainer,
+            mobileView === "chat" ? styles.sidebarHidden : styles.sidebarVisible
+          )}>
             <Sidebar
               users={users}
               currentUserId={currentUser._id}
@@ -153,27 +244,27 @@ const ChatPage: React.FC = () => {
               selectedId={selectedUser?._id}
               onSelectUser={handleSelectUser}
               onSearch={searchUsers}
+              searchResults={searchResults}
+              clearSearchResults={clearSearchResults}
             />
           </div>
 
-          <div
-            className={cn(
-              styles.chatAreaContainer,
-              mobileView === "list" ? styles.chatAreaHidden : styles.chatAreaVisible
-            )}
-          >
+          <div className={cn(
+            styles.chatAreaContainer,
+            mobileView === "list" ? styles.chatAreaHidden : styles.chatAreaVisible
+          )}>
             {selectedUser ? (
               <>
                 <ChatWindow
-                  selectedUser={selectedUser}
+                  selectedUser={users.find(u => u._id === selectedUser?._id) || selectedUser}
                   messages={messages}
                   currentUserId={currentUser._id}
                   decryptedMessages={decryptedMessages}
                   decryptedMedia={decryptedMedia}
                   onDecryptMessage={decryptMessage}
                   onDecryptMedia={handleDecryptMedia}
-                  isTyping={isTyping}
-                  onBack={handleBack}
+                  isTyping={isUserTypingInChat()}
+                  onClose={handleCloseChat}
                 />
                 <InputArea
                   onSendMessage={handleSendMessage}
@@ -182,9 +273,17 @@ const ChatPage: React.FC = () => {
                 />
               </>
             ) : (
-              <div className={styles.emptyState}>
-                Select a chat to start messaging
-              </div>
+              <ChatWindow
+                selectedUser={null}
+                messages={[]}
+                currentUserId={currentUser._id}
+                decryptedMessages={{}}
+                decryptedMedia={{}}
+                onDecryptMessage={decryptMessage}
+                onDecryptMedia={handleDecryptMedia}
+                isTyping={false}
+                onClose={handleCloseChat}
+              />
             )}
           </div>
         </div>

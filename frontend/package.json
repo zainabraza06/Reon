@@ -9,18 +9,23 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.9.17",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "idb": "^8.0.3",
+    "livekit-client": "^2.16.1",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.554.0",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-icons": "^5.5.0",
+    "react-native-webrtc": "^124.0.7",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/lodash": "^4.17.21",
     "@types/node": "^20",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",

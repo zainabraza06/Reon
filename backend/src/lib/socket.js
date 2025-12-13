@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 import FriendRequest from "../models/FriendRequest.js";
+import Call from "../models/Call.js"; // Add Call model import
 import * as messageController from "../controllers/message.controller.js";
 import * as friendController from "../controllers/friend.controller.js";
 
@@ -11,10 +12,158 @@ const userSockets = new Map(); // userId → Set(socketIds) for multiple devices
 const typingUsers = new Map(); // Map of userId → { typingTo: userId, timestamp }
 const heartbeatMap = new Map(); // userId → lastHeartbeat timestamp
 const disconnectedDueToHeartbeat = new Set(); // Track users disconnected due to heartbeat timeout
+const activeCalls = new Map(); // roomName → { participants: [userId1, userId2], callType, startTime }
+const callRooms = new Map(); // userId → roomName (for quick lookup)
 
 const HEARTBEAT_TIMEOUT = 15000; // 15 seconds (WhatsApp-like)
 const HEARTBEAT_CHECK_INTERVAL = 5000; // Check every 5 seconds
 
+// Track which messages have been processed for delivery during this session
+const processedMessageDeliveries = new Map(); // userId → Set(messageIds)
+
+// -------------------- TYPING INDICATORS --------------------
+// Store typing status: userId → { typingTo: receiverId, timestamp: Date.now() }
+const typingStatus = new Map(); // userId → typing data
+const typingTimeouts = new Map(); // userId → timeout for auto-clear
+
+// -------------------- CALL HANDLING FUNCTIONS --------------------
+// Initialize a call room
+const initCallRoom = (roomName, callerId, receiverId, callType) => {
+  activeCalls.set(roomName, {
+    participants: [callerId, receiverId],
+    callerId,
+    receiverId,
+    callType,
+    startTime: new Date(),
+    status: 'ringing'
+  });
+  
+  callRooms.set(callerId, roomName);
+  callRooms.set(receiverId, roomName);
+  
+  console.log(`📞 Call room initialized: ${roomName}, Type: ${callType}`);
+  return roomName;
+};
+
+// End a call room
+const endCallRoom = (roomName) => {
+  const call = activeCalls.get(roomName);
+  if (call) {
+    // Remove from callRooms
+    callRooms.delete(call.callerId);
+    callRooms.delete(call.receiverId);
+    
+    activeCalls.delete(roomName);
+    console.log(`📞 Call room ended: ${roomName}`);
+  }
+};
+
+// Check if user is in a call
+const isUserInCall = (userId) => {
+  return callRooms.has(userId);
+};
+
+// Get call info for user
+const getUserCallInfo = (userId) => {
+  const roomName = callRooms.get(userId);
+  if (roomName) {
+    return activeCalls.get(roomName);
+  }
+  return null;
+};
+
+// Clear typing status after timeout
+const clearTypingStatus = (userId) => {
+  if (typingStatus.has(userId)) {
+    const typingData = typingStatus.get(userId);
+    
+    // Clear timeout
+    if (typingTimeouts.has(userId)) {
+      clearTimeout(typingTimeouts.get(userId));
+      typingTimeouts.delete(userId);
+    }
+    
+    // Remove typing status
+    typingStatus.delete(userId);
+    
+    // Notify the receiver that typing stopped
+    if (typingData.typingTo) {
+      emitToUser(typingData.typingTo, "user-typing", {
+        senderId: userId,
+        receiverId: typingData.typingTo,
+        isTyping: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log(`⌨️ Auto-cleared typing status for user ${userId}`);
+  }
+};
+
+// Handle typing start
+const handleTypingStart = (senderId, receiverId, socketId) => {
+  console.log(`⌨️ User ${senderId} started typing to ${receiverId}`);
+  
+  // Clear any existing timeout
+  if (typingTimeouts.has(senderId)) {
+    clearTimeout(typingTimeouts.get(senderId));
+  }
+  
+  // Set typing status
+  typingStatus.set(senderId, {
+    typingTo: receiverId,
+    socketId,
+    timestamp: Date.now()
+  });
+  
+  // Set auto-clear timeout (3 seconds of inactivity)
+  const timeoutId = setTimeout(() => {
+    clearTypingStatus(senderId);
+  }, 3000);
+  
+  typingTimeouts.set(senderId, timeoutId);
+  
+  // Notify receiver
+  emitToUser(receiverId, "user-typing", {
+    senderId,
+    receiverId,
+    isTyping: true,
+    timestamp: new Date().toISOString()
+  });
+};
+
+// Handle typing stop
+const handleTypingStop = (senderId, receiverId) => {
+  console.log(`⌨️ User ${senderId} stopped typing to ${receiverId}`);
+  
+  // Clear typing status
+  clearTypingStatus(senderId);
+  
+  // Notify receiver
+  emitToUser(receiverId, "user-typing", {
+    senderId,
+    receiverId,
+    isTyping: false,
+    timestamp: new Date().toISOString()
+  });
+};
+
+// Check if user is currently typing
+export const isUserTyping = (userId) => {
+  return typingStatus.has(userId);
+};
+
+// Get who a user is typing to
+export const getUserTypingStatus = (userId) => {
+  return typingStatus.get(userId);
+};
+
+// Clean up typing status on disconnect
+const cleanupUserTyping = (userId) => {
+  clearTypingStatus(userId);
+};
+
+// -------------------- EXISTING HELPER FUNCTIONS --------------------
 // Helper function to simulate HTTP request/response pattern
 const createSocketRequest = (socket, data) => {
   const user = socket.user || { _id: data?.sender || data?.userId };
@@ -40,31 +189,72 @@ const createSocketResponse = (socket, callback) => {
   };
 };
 
-// Function to update all "sent" messages to "delivered" when user comes online
-const updateSentMessagesToDelivered = async (receiverId) => {
+// Function to mark messages as delivered and notify senders
+const deliverPendingMessages = async (receiverId, socket = null) => {
   try {
-    console.log(`📨 Updating sent messages to delivered for user ${receiverId}`);
+    console.log(`📨 Processing pending messages for user ${receiverId}`);
     
-    // Find all messages sent to this user that are still in "sent" status
-    const sentMessages = await Message.find({
-      receiver: receiverId,
-      status: "sent"
-    })
-    .populate('sender', '_id username')
-    .sort({ createdAt: 1 }); // Sort by creation date
-    
-    if (sentMessages.length === 0) {
-      console.log(`📭 No pending sent messages for user ${receiverId}`);
-      return { updatedCount: 0, messagesBySender: {} };
+    // Initialize processed messages set for this user if not exists
+    if (!processedMessageDeliveries.has(receiverId)) {
+      processedMessageDeliveries.set(receiverId, new Set());
     }
     
+    // Find all messages sent to this user that are NOT delivered yet
+    const pendingMessages = await Message.find({
+      receiver: receiverId,
+      delivered: false, // Changed from status field
+      sentAt: { $ne: null }
+    })
+    .populate('sender', '_id username')
+    .sort({ createdAt: 1 });
+    
+    if (pendingMessages.length === 0) {
+      console.log(`📭 No pending messages for user ${receiverId}`);
+      return { deliveredCount: 0, messagesBySender: {} };
+    }
+    
+    // Filter out messages that have already been processed
+    const userProcessedMessages = processedMessageDeliveries.get(receiverId);
+    const newPendingMessages = pendingMessages.filter(
+      msg => !userProcessedMessages.has(msg._id.toString())
+    );
+    
+    if (newPendingMessages.length === 0) {
+      console.log(`📭 All ${pendingMessages.length} messages already processed for user ${receiverId}`);
+      return { deliveredCount: 0, messagesBySender: {} };
+    }
+    
+    console.log(`📨 Found ${newPendingMessages.length} new pending messages out of ${pendingMessages.length} total`);
+    
+    // Group messages by sender
+    const messagesBySender = {};
+    const messageIdsToUpdate = [];
+    
+    newPendingMessages.forEach(message => {
+      const senderId = message.sender._id.toString();
+      
+      if (!messagesBySender[senderId]) {
+        messagesBySender[senderId] = [];
+      }
+      
+      messagesBySender[senderId].push({
+        messageId: message._id,
+        content: message.content,
+        sentAt: message.createdAt,
+        deliveredAt: new Date()
+      });
+      
+      messageIdsToUpdate.push(message._id);
+      // Mark as processed
+      userProcessedMessages.add(message._id.toString());
+    });
+    
     // Update all messages to "delivered" status
-    const messageIds = sentMessages.map(msg => msg._id);
     const updateResult = await Message.updateMany(
-      { _id: { $in: messageIds } },
+      { _id: { $in: messageIdsToUpdate } },
       {
         $set: {
-          status: "delivered",
+          delivered: true, // Changed from status field
           deliveredAt: new Date(),
           updatedAt: new Date()
         }
@@ -73,63 +263,44 @@ const updateSentMessagesToDelivered = async (receiverId) => {
     
     console.log(`✅ Updated ${updateResult.modifiedCount} messages to delivered for user ${receiverId}`);
     
-    // Group messages by sender to send batch notifications
-    const messagesBySender = {};
-    const senderMessageMap = {}; // Map for individual message notifications
-    
-    sentMessages.forEach(message => {
-      const senderId = message.sender._id.toString();
-      
-      // Group for batch notifications
-      if (!messagesBySender[senderId]) {
-        messagesBySender[senderId] = [];
-      }
-      messagesBySender[senderId].push({
-        messageId: message._id,
-        content: message.content,
-        sentAt: message.createdAt,
-        deliveredAt: new Date()
-      });
-      
-      // Map for individual message notifications
-      if (!senderMessageMap[senderId]) {
-        senderMessageMap[senderId] = [];
-      }
-      senderMessageMap[senderId].push(message._id);
-    });
-    
-    // Send notifications to each sender
+    // Notify each sender about their delivered messages
     for (const [senderId, messages] of Object.entries(messagesBySender)) {
-      // Send batch delivery confirmation
+      // Send batch delivery notification
       emitToUser(senderId, "messages-delivered-batch", {
         receiverId,
         messages: messages,
         count: messages.length,
-        deliveredAt: new Date().toISOString(),
-        type: "batch"
+        deliveredAt: new Date().toISOString()
       });
       
-      console.log(`📬 Notified sender ${senderId} about ${messages.length} delivered messages`);
-      
-      // Also send individual notifications for each message
-      // (optional, if frontend needs individual updates)
+      // Also send individual notifications for real-time updates
       messages.forEach(message => {
         emitToUser(senderId, "message-delivered", {
           messageId: message.messageId,
-          receiverId
+          receiverId,
+          deliveredAt: message.deliveredAt.toISOString()
         });
+      });
+      
+      console.log(`📬 Notified sender ${senderId} about ${messages.length} delivered messages`);
+    }
+    
+    // Notify the receiver (if socket provided)
+    if (socket) {
+      socket.emit("pending-messages-processed", {
+        count: updateResult.modifiedCount,
+        timestamp: new Date().toISOString()
       });
     }
     
     return {
-      updatedCount: updateResult.modifiedCount,
-      messagesBySender,
-      senderMessageMap
+      deliveredCount: updateResult.modifiedCount,
+      messagesBySender
     };
     
   } catch (error) {
-    console.error(`❌ Error updating sent messages for user ${receiverId}:`, error);
-    return { updatedCount: 0, messagesBySender: {}, error: error.message };
+    console.error(`❌ Error delivering pending messages for user ${receiverId}:`, error);
+    return { deliveredCount: 0, messagesBySender: {}, error: error.message };
   }
 };
 
@@ -141,6 +312,9 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
   
   // Clean up heartbeat
   heartbeatMap.delete(userId);
+  
+  // Clean up typing status
+  cleanupUserTyping(userId);
   
   // Remove from userSockets
   if (userSockets.has(userId)) {
@@ -156,7 +330,7 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
       // Track if disconnected due to heartbeat
       if (reason === 'heartbeat_timeout') {
         disconnectedDueToHeartbeat.add(userId);
-        console.log(`⚠️ User ${userId} added to disconnectedDueToHeartbeat set`);
+        console.log(`⚠️ User ${userId} marked as disconnected due to heartbeat timeout`);
       }
       
       // Broadcast offline status
@@ -194,10 +368,13 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
 const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
   console.log(`🔗 [markUserAsOnline] User ${userId}, Socket ${socketId}, Reconnection: ${isReconnection}`);
   
+  // Check if this is a reconnection after heartbeat timeout
+  const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
+  
   // Remove from disconnected due to heartbeat set if present
-  if (disconnectedDueToHeartbeat.has(userId)) {
+  if (wasDisconnectedDueToTimeout) {
     disconnectedDueToHeartbeat.delete(userId);
-    console.log(`🔄 User ${userId} removed from disconnectedDueToHeartbeat set`);
+    console.log(`🔄 User ${userId} reconnecting after heartbeat timeout`);
   }
   
   // Clean up any previous heartbeat
@@ -214,24 +391,11 @@ const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
       userId, 
       isOnline: true,
       isReconnection,
+      wasDisconnectedDueToTimeout,
       timestamp: new Date().toISOString()
     });
     
     console.log(`✅ User ${userId} is online (${isReconnection ? 'reconnected' : 'first socket connection'})`);
-    
-    // 🔥 CRITICAL: Update all sent messages to delivered when user comes online
-    const deliveryResult = await updateSentMessagesToDelivered(userId);
-    
-    // Notify the newly online user about the delivery updates
-    if (deliveryResult.updatedCount > 0) {
-      emitToUser(userId, "messages-updated-status", {
-        status: "delivered",
-        count: deliveryResult.updatedCount,
-        timestamp: new Date().toISOString(),
-        message: `${deliveryResult.updatedCount} messages marked as delivered`
-      });
-    }
-    
   } else {
     // User already has other sockets, just add this one
     console.log(`📱 User ${userId} connected ${isReconnection ? 'reconnected device' : 'additional device'}, total sockets: ${userSockets.get(userId).size + 1}`);
@@ -242,6 +406,8 @@ const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
   
   // Record initial heartbeat
   heartbeatMap.set(userId, Date.now());
+  
+  return wasDisconnectedDueToTimeout;
 };
 
 // Heartbeat watcher function
@@ -272,16 +438,21 @@ const handleUserReconnection = async (userId, socket) => {
     console.log(`🔄 Handling reconnection for user ${userId}`);
     
     // Mark user as online again
-    await markUserAsOnline(userId, socket.id, true);
+    const wasDisconnectedDueToTimeout = await markUserAsOnline(userId, socket.id, true);
     
     // Get online friends
     const onlineFriends = await getOnlineFriends(userId);
+    
+    // Deliver pending messages ONLY ONCE
+    const deliveryResult = await deliverPendingMessages(userId, socket);
     
     // Notify the reconnected user
     socket.emit("reconnected", {
       userId,
       socketId: socket.id,
+      wasDisconnectedDueToTimeout,
       onlineFriends,
+      deliveredMessagesCount: deliveryResult.deliveredCount,
       reconnectedAt: new Date().toISOString()
     });
     
@@ -291,6 +462,7 @@ const handleUserReconnection = async (userId, socket) => {
         userId,
         isOnline: true,
         reason: "reconnected",
+        wasDisconnectedDueToTimeout,
         timestamp: new Date().toISOString()
       });
     });
@@ -317,6 +489,18 @@ export const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
 
+    // Clear processed messages when user disconnects completely
+    socket.on("disconnect", () => {
+      const userId = socket.userId;
+      if (userId) {
+        // Only clear if user is completely offline
+        if (!userSockets.has(userId) || userSockets.get(userId).size === 0) {
+          processedMessageDeliveries.delete(userId);
+          console.log(`🧹 Cleared processed messages tracking for user ${userId}`);
+        }
+      }
+    });
+
     // ---- AUTHENTICATION & JOIN USER ROOM ----
     socket.on("authenticate", async (userId) => {
       if (!userId) {
@@ -331,21 +515,28 @@ export const initSocket = (server) => {
       const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
       
       // Mark user as online
-      await markUserAsOnline(userId, socket.id, wasDisconnectedDueToTimeout);
+      const isReconnection = await markUserAsOnline(userId, socket.id, wasDisconnectedDueToTimeout);
       
       // Get online friends
       const onlineFriends = await getOnlineFriends(userId);
+      
+      // Deliver pending messages if this is the first socket connection
+      if (isReconnection || userSockets.get(userId).size === 1) {
+        const deliveryResult = await deliverPendingMessages(userId, socket);
+        
+        console.log(`📦 Delivered ${deliveryResult.deliveredCount} pending messages for user ${userId}`);
+      }
       
       // Notify user of successful authentication with online friends
       socket.emit("authenticated", { 
         userId, 
         socketId: socket.id,
         onlineFriends,
-        wasReconnection: wasDisconnectedDueToTimeout,
+        wasDisconnectedDueToTimeout,
         timestamp: new Date().toISOString()
       });
       
-      console.log(`✅ User ${userId} authenticated on socket ${socket.id}, Online friends: ${onlineFriends.length}, Reconnection: ${wasDisconnectedDueToTimeout}`);
+      console.log(`✅ User ${userId} authenticated on socket ${socket.id}, Online friends: ${onlineFriends.length}, Was disconnected due to timeout: ${wasDisconnectedDueToTimeout}`);
     });
 
     // ---- HEARTBEAT ----
@@ -364,9 +555,408 @@ export const initSocket = (server) => {
       if (wasOfflineDueToTimeout) {
         console.log(`💓 Heartbeat from user ${userId} after timeout - handling reconnection`);
         await handleUserReconnection(userId, socket);
+      } else {
+        console.log(`💓 Heartbeat from user ${userId} on socket ${socket.id}`);
+      }
+    });
+
+    // ---- CALL HANDLING EVENTS ----
+    // Initiate a call
+    socket.on("call:initiate", async (data) => {
+      try {
+        const { callId, roomName, receiverId, callType } = data;
+        const callerId = socket.userId;
+        
+        if (!callerId || !receiverId || !roomName) {
+          socket.emit("call:error", { 
+            message: "Missing required call data" 
+          });
+          return;
+        }
+
+        // Check if receiver is online
+        if (!isUserOnline(receiverId)) {
+          socket.emit("call:error", {
+            message: "User is offline",
+            receiverId
+          });
+          return;
+        }
+
+        // Check if either user is already in a call
+        if (isUserInCall(callerId) || isUserInCall(receiverId)) {
+          socket.emit("call:error", {
+            message: "User is already in a call"
+          });
+          return;
+        }
+
+        // Initialize call room
+        initCallRoom(roomName, callerId, receiverId, callType);
+
+        // Notify receiver
+        emitToUser(receiverId, "call:incoming", {
+          callId,
+          roomName,
+          callerId,
+          callType,
+          timestamp: new Date().toISOString()
+        });
+
+        // Confirm to caller
+        socket.emit("call:initiated", {
+          callId,
+          roomName,
+          receiverId,
+          callType,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📞 Call initiated: ${callerId} -> ${receiverId}, Room: ${roomName}`);
+
+      } catch (error) {
+        console.error("Error initiating call:", error);
+        socket.emit("call:error", {
+          message: "Failed to initiate call",
+          error: error.message
+        });
+      }
+    });
+
+    // Accept a call
+    socket.on("call:accept", async (data) => {
+      try {
+        const { callId, roomName } = data;
+        const receiverId = socket.userId;
+        
+        if (!receiverId || !roomName) {
+          socket.emit("call:error", {
+            message: "Missing required data"
+          });
+          return;
+        }
+
+        const call = activeCalls.get(roomName);
+        if (!call) {
+          socket.emit("call:error", {
+            message: "Call not found or expired"
+          });
+          return;
+        }
+
+        // Update call status
+        call.status = 'ongoing';
+        activeCalls.set(roomName, call);
+
+        // Notify caller that call was accepted
+        emitToUser(call.callerId, "call:accepted", {
+          callId,
+          roomName,
+          receiverId,
+          timestamp: new Date().toISOString()
+        });
+
+        // Confirm to receiver
+        socket.emit("call:accepted", {
+          callId,
+          roomName,
+          callerId: call.callerId,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📞 Call accepted: ${receiverId} accepted call from ${call.callerId}`);
+
+      } catch (error) {
+        console.error("Error accepting call:", error);
+        socket.emit("call:error", {
+          message: "Failed to accept call",
+          error: error.message
+        });
+      }
+    });
+
+    // Reject a call
+    socket.on("call:reject", async (data) => {
+      try {
+        const { callId, roomName } = data;
+        const receiverId = socket.userId;
+        
+        if (!receiverId || !roomName) {
+          socket.emit("call:error", {
+            message: "Missing required data"
+          });
+          return;
+        }
+
+        const call = activeCalls.get(roomName);
+        if (!call) {
+          socket.emit("call:error", {
+            message: "Call not found"
+          });
+          return;
+        }
+
+        // End the call room
+        endCallRoom(roomName);
+
+        // Notify caller
+        emitToUser(call.callerId, "call:rejected", {
+          callId,
+          roomName,
+          receiverId,
+          reason: "User rejected call",
+          timestamp: new Date().toISOString()
+        });
+
+        // Confirm to receiver
+        socket.emit("call:rejected", {
+          callId,
+          roomName,
+          callerId: call.callerId,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📞 Call rejected: ${receiverId} rejected call from ${call.callerId}`);
+
+      } catch (error) {
+        console.error("Error rejecting call:", error);
+        socket.emit("call:error", {
+          message: "Failed to reject call",
+          error: error.message
+        });
+      }
+    });
+
+    // End a call
+    socket.on("call:end", async (data) => {
+      try {
+        const { callId, roomName } = data;
+        const userId = socket.userId;
+        
+        if (!userId || !roomName) {
+          socket.emit("call:error", {
+            message: "Missing required data"
+          });
+          return;
+        }
+
+        const call = activeCalls.get(roomName);
+        if (!call) {
+          socket.emit("call:error", {
+            message: "Call not found"
+          });
+          return;
+        }
+
+        // Determine other participant
+        const otherParticipant = call.participants.find(p => p !== userId);
+
+        // End the call room
+        endCallRoom(roomName);
+
+        // Notify other participant
+        if (otherParticipant) {
+          emitToUser(otherParticipant, "call:ended", {
+            callId,
+            roomName,
+            endedBy: userId,
+            reason: "Call ended by other participant",
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Confirm to caller
+        socket.emit("call:ended", {
+          callId,
+          roomName,
+          endedBy: userId,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📞 Call ended: ${userId} ended call in room ${roomName}`);
+
+      } catch (error) {
+        console.error("Error ending call:", error);
+        socket.emit("call:error", {
+          message: "Failed to end call",
+          error: error.message
+        });
+      }
+    });
+
+    // Call missed (no answer)
+    socket.on("call:missed", async (data) => {
+      try {
+        const { callId, roomName } = data;
+        const receiverId = socket.userId;
+        
+        if (!receiverId || !roomName) {
+          return;
+        }
+
+        const call = activeCalls.get(roomName);
+        if (!call) return;
+
+        // End the call room
+        endCallRoom(roomName);
+
+        // Notify caller
+        emitToUser(call.callerId, "call:missed", {
+          callId,
+          roomName,
+          receiverId,
+          reason: "No answer",
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📞 Call missed: ${receiverId} didn't answer call from ${call.callerId}`);
+
+      } catch (error) {
+        console.error("Error handling missed call:", error);
+      }
+    });
+
+    // Toggle audio (mute/unmute)
+    socket.on("call:toggle-audio", (data) => {
+      const { roomName, isMuted } = data;
+      const userId = socket.userId;
+      
+      if (!userId || !roomName) return;
+
+      const call = activeCalls.get(roomName);
+      if (!call) return;
+
+      // Notify other participant
+      const otherParticipant = call.participants.find(p => p !== userId);
+      if (otherParticipant) {
+        emitToUser(otherParticipant, "call:audio-toggled", {
+          userId,
+          isMuted,
+          roomName,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log(`📞 Audio toggled: ${userId} ${isMuted ? 'muted' : 'unmuted'}`);
+    });
+
+    // Toggle video (camera on/off)
+    socket.on("call:toggle-video", (data) => {
+      const { roomName, isVideoOff } = data;
+      const userId = socket.userId;
+      
+      if (!userId || !roomName) return;
+
+      const call = activeCalls.get(roomName);
+      if (!call) return;
+
+      // Notify other participant
+      const otherParticipant = call.participants.find(p => p !== userId);
+      if (otherParticipant) {
+        emitToUser(otherParticipant, "call:video-toggled", {
+          userId,
+          isVideoOff,
+          roomName,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log(`📞 Video toggled: ${userId} ${isVideoOff ? 'camera off' : 'camera on'}`);
+    });
+
+    // ICE Candidate exchange
+    socket.on("call:ice-candidate", (data) => {
+      const { roomName, candidate, targetUserId } = data;
+      const userId = socket.userId;
+      
+      if (!userId || !roomName || !targetUserId) return;
+
+      // Forward ICE candidate to target user
+      emitToUser(targetUserId, "call:ice-candidate", {
+        candidate,
+        roomName,
+        senderId: userId,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // SDP Offer/Answer exchange
+    socket.on("call:sdp-offer", (data) => {
+      const { roomName, offer, targetUserId } = data;
+      const userId = socket.userId;
+      
+      if (!userId || !roomName || !targetUserId) return;
+
+      emitToUser(targetUserId, "call:sdp-offer", {
+        offer,
+        roomName,
+        senderId: userId,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    socket.on("call:sdp-answer", (data) => {
+      const { roomName, answer, targetUserId } = data;
+      const userId = socket.userId;
+      
+      if (!userId || !roomName || !targetUserId) return;
+
+      emitToUser(targetUserId, "call:sdp-answer", {
+        answer,
+        roomName,
+        senderId: userId,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // ---- TYPING INDICATORS ----
+    socket.on("start-typing", (data) => {
+      const { senderId, receiverId, isTyping, timestamp } = data;
+      
+      if (!senderId || !receiverId || typeof isTyping !== 'boolean') {
+        console.error('❌ [Server] Invalid typing data received:', data);
+        return;
       }
       
-      console.log(`💓 Heartbeat from user ${userId} on socket ${socket.id}`);
+      // Verify sender matches authenticated user
+      if (senderId !== socket.userId) {
+        console.error(`❌ [Server] User ${socket.userId} tried to send typing as ${senderId}`);
+        socket.emit("error", { message: "Authentication mismatch" });
+        return;
+      }
+      
+      // Update heartbeat when typing (activity)
+      heartbeatMap.set(senderId, Date.now());
+      
+      if (isTyping) {
+        // User started typing
+        handleTypingStart(senderId, receiverId, socket.id);
+      } else {
+        // User stopped typing
+        handleTypingStop(senderId, receiverId);
+      }
+    });
+    
+    socket.on("stop-typing", (data) => {
+      const { senderId, receiverId, isTyping, timestamp } = data;
+      
+      if (!senderId || !receiverId) {
+        console.error('❌ [Server] Invalid stop-typing data received:', data);
+        return;
+      }
+      
+      // Verify sender matches authenticated user
+      if (senderId !== socket.userId) {
+        console.error(`❌ [Server] User ${socket.userId} tried to stop typing as ${senderId}`);
+        socket.emit("error", { message: "Authentication mismatch" });
+        return;
+      }
+      
+      // Update heartbeat when stopping typing (activity)
+      heartbeatMap.set(senderId, Date.now());
+      
+      // User stopped typing
+      handleTypingStop(senderId, receiverId);
     });
 
     // ---- REQUEST ONLINE FRIENDS ----
@@ -405,7 +995,7 @@ export const initSocket = (server) => {
       });
     });
 
-    // ---- TYPING INDICATORS ----
+    // ---- TYPING INDICATORS (Legacy support - can remove if not used) ----
     socket.on("typing-start", async (data) => {
       const { receiverId, senderId = socket.userId } = data;
       
@@ -458,6 +1048,60 @@ export const initSocket = (server) => {
       console.log(`✍️ User ${senderId} stopped typing to ${receiverId}`);
     });
 
+    // ---- NEW MESSAGE HANDLER ----
+    socket.on("new-message", async (data) => {
+      try {
+        const req = createSocketRequest(socket, data);
+        const res = createSocketResponse(socket, async (response) => {
+          if (response.status === 201) {
+            const { receiverId, senderId } = data;
+            const message = response.data.data;
+            
+            // Clear typing status when message is sent
+            cleanupUserTyping(senderId);
+            
+            // Check if receiver is online
+            const isReceiverOnline = isUserOnline(receiverId);
+            
+            if (isReceiverOnline) {
+              // If receiver is online, mark as delivered immediately
+              await Message.findByIdAndUpdate(message._id, {
+                delivered: true, // Changed from status field
+                deliveredAt: new Date()
+              });
+              
+              // Emit to receiver
+              emitToUser(receiverId, "new-message", {
+                ...message,
+                delivered: true
+              });
+              
+              // Emit delivery confirmation to sender
+              emitToUser(senderId, "message-delivered", {
+                messageId: message._id,
+                receiverId,
+                deliveredAt: new Date().toISOString()
+              });
+              
+              console.log(`📨 Message ${message._id} sent and delivered immediately to online user ${receiverId}`);
+            } else {
+              // If receiver is offline, mark as sent only (delivered: false)
+              emitToUser(receiverId, "new-message", {
+                ...message,
+                delivered: false // Still not delivered
+              });
+              
+              console.log(`📨 Message ${message._id} sent to offline user ${receiverId} (will be delivered when online)`);
+            }
+          }
+        });
+
+        await messageController.createMessage(req, res);
+      } catch (error) {
+        console.error('Error in new-message:', error);
+      }
+    });
+
     // ---- MESSAGE DELIVERY CONFIRMATION ----
     socket.on("confirm-message-delivery", async (data) => {
       try {
@@ -474,15 +1118,13 @@ export const initSocket = (server) => {
         const updatedMessage = await Message.findByIdAndUpdate(
           messageId,
           {
-            status: "delivered",
+            delivered: true, // Changed from status field
             deliveredAt: new Date()
           },
           { new: true }
         );
         
         if (updatedMessage) {
-        
-          
           console.log(`📨 Message ${messageId} delivered to ${receiverId}`);
         }
         
@@ -502,13 +1144,13 @@ export const initSocket = (server) => {
         
         console.log(`🔄 Manual request to update undelivered messages for user ${userId}`);
         
-        const result = await updateSentMessagesToDelivered(userId);
+        const result = await deliverPendingMessages(userId, socket);
         
         socket.emit("messages-updated-response", {
           success: true,
-          updatedCount: result.updatedCount,
+          deliveredCount: result.deliveredCount,
           timestamp: new Date().toISOString(),
-          message: `Updated ${result.updatedCount} messages to delivered`
+          message: `Delivered ${result.deliveredCount} pending messages`
         });
         
       } catch (error) {
@@ -516,253 +1158,6 @@ export const initSocket = (server) => {
         socket.emit("messages-updated-response", {
           success: false,
           message: "Error updating messages"
-        });
-      }
-    });
-
-    // ---- MESSAGE READ RECEIPT ----
-    socket.on("mark-message-read", async (data) => {
-      try {
-        const { messageId, senderId, readerId = socket.userId } = data;
-        
-        if (!messageId || !senderId) return;
-        
-        // Update heartbeat on message activity
-        if (socket.userId) {
-          heartbeatMap.set(socket.userId, Date.now());
-        }
-        
-        // Update message status in database
-        const updatedMessage = await Message.findByIdAndUpdate(
-          messageId,
-          {
-            status: "read",
-            readAt: new Date()
-          },
-          { new: true }
-        );
-        
-        if (updatedMessage) {
-          // Notify sender that message was read
-          emitToUser(senderId, "message-read", {
-            messageId: updatedMessage._id,
-            readerId,
-            readAt: updatedMessage.readAt,
-            status: "read"
-          });
-          
-          // Notify reader (for UI updates)
-          emitToUser(readerId, "message-read", {
-            messageId: updatedMessage._id,
-            senderId,
-            readAt: updatedMessage.readAt,
-            status: "read"
-          });
-          
-          console.log(`👁️ Message ${messageId} read by ${readerId}`);
-        }
-        
-      } catch (error) {
-        console.error("Error marking message as read:", error);
-      }
-    });
-
-    // ---- BATCH MESSAGE READ ----
-    socket.on("mark-conversation-read", async (data) => {
-      try {
-        const { senderId, receiverId = socket.userId } = data;
-        
-        if (!senderId || !receiverId) return;
-        
-        // Update heartbeat on message activity
-        if (socket.userId) {
-          heartbeatMap.set(socket.userId, Date.now());
-        }
-        
-        // Find all messages that are still in sent/delivered status
-        const undeliveredMessages = await Message.find({
-          sender: senderId,
-          receiver: receiverId,
-          status: { $in: ["sent", "delivered"] }
-        });
-        
-        if (undeliveredMessages.length === 0) {
-          console.log(`📭 No undelivered messages from ${senderId} to ${receiverId}`);
-          return;
-        }
-        
-        // Update them all to read
-        const messageIds = undeliveredMessages.map(msg => msg._id);
-        const result = await Message.updateMany(
-          { _id: { $in: messageIds } },
-          {
-            status: "read",
-            readAt: new Date()
-          }
-        );
-        
-        if (result.modifiedCount > 0) {
-          // Send batch read receipt
-          emitToUser(senderId, "messages-read-batch", {
-            receiverId,
-            messageIds: messageIds,
-            count: result.modifiedCount,
-            readAt: new Date().toISOString(),
-            type: "batch"
-          });
-          
-          // Also send individual notifications (optional)
-          undeliveredMessages.forEach(message => {
-            emitToUser(senderId, "message-read", {
-              messageId: message._id,
-              readerId: receiverId,
-              readAt: new Date(),
-              status: "read"
-            });
-          });
-          
-          console.log(`📚 ${result.modifiedCount} messages from ${senderId} marked as read by ${receiverId}`);
-        }
-        
-      } catch (error) {
-        console.error("Error marking conversation as read:", error);
-      }
-    });
-
-    // ---- FRIEND REQUESTS ----
-    socket.on("send-friend-request", async (data) => {
-      try {
-        const req = createSocketRequest(socket, { 
-          ...data, 
-          id: data.receiverId 
-        });
-        const res = createSocketResponse(socket, (response) => {
-          if (response.status === 201) {
-            const { receiverId, senderId } = data;
-            
-            // Notify receiver
-            emitToUser(receiverId, "new-friend-request", {
-              requestId: response.data.data._id,
-              senderId,
-              receiverId,
-              sentAt: new Date().toISOString()
-            });
-            
-            // Notify sender
-            emitToUser(senderId, "friend-request-sent", {
-              requestId: response.data.data._id,
-              receiverId,
-              sentAt: new Date().toISOString()
-            });
-          }
-        });
-
-        await friendController.sendFriendRequest(req, res);
-      } catch (error) {
-        console.error('Error in send-friend-request:', error);
-      }
-    });
-
-    socket.on("accept-friend-request", async (data) => {
-      try {
-        const req = createSocketRequest(socket, { 
-          ...data, 
-          id: data.requestId 
-        });
-        const res = createSocketResponse(socket, (response) => {
-          if (response.status === 200) {
-            const { requestId, acceptorId, senderId } = data;
-            
-            // Notify both users
-            const payload = {
-              requestId,
-              users: [acceptorId, senderId],
-              acceptedAt: new Date().toISOString()
-            };
-            
-            emitToUser(acceptorId, "friend-request-accepted", payload);
-            emitToUser(senderId, "friend-request-accepted", payload);
-          }
-        });
-
-        await friendController.acceptFriendRequest(req, res);
-      } catch (error) {
-        console.error('Error in accept-friend-request:', error);
-      }
-    });
-
-    socket.on("reject-friend-request", async (data) => {
-      try {
-        const req = createSocketRequest(socket, { 
-          ...data, 
-          id: data.requestId 
-        });
-        const res = createSocketResponse(socket, (response) => {
-          if (response.status === 200) {
-            const { requestId, rejectorId, senderId } = data;
-            
-            // Notify sender
-            emitToUser(senderId, "friend-request-rejected", {
-              requestId,
-              rejectorId,
-              rejectedAt: new Date().toISOString()
-            });
-          }
-        });
-
-        await friendController.rejectFriendRequest(req, res);
-      } catch (error) {
-        console.error('Error in reject-friend-request:', error);
-      }
-    });
-
-    // ---- ONLINE STATUS QUERIES ----
-    socket.on("check-online-status", (data) => {
-      const { userIds } = data;
-      const statuses = {};
-      
-      userIds.forEach(userId => {
-        const isOnline = isUserOnline(userId);
-        statuses[userId] = {
-          isOnline,
-          wasDisconnectedDueToTimeout: disconnectedDueToHeartbeat.has(userId),
-          lastHeartbeat: heartbeatMap.get(userId) || null,
-          socketCount: userSockets.get(userId)?.size || 0
-        };
-      });
-      
-      socket.emit("online-status-response", { 
-        statuses,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    socket.on("get-typing-status", (data) => {
-      const { senderId } = data;
-      const typingData = typingUsers.get(senderId);
-      
-      socket.emit("typing-status-response", {
-        senderId,
-        isTyping: !!typingData,
-        typingTo: typingData?.typingTo,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    // ---- MANUAL RECONNECTION ----
-    socket.on("manual-reconnect", async (data) => {
-      const userId = socket.userId || data.userId;
-      if (!userId) return;
-      
-      console.log(`🔄 Manual reconnection requested by user ${userId}`);
-      
-      if (disconnectedDueToHeartbeat.has(userId)) {
-        await handleUserReconnection(userId, socket);
-      } else {
-        socket.emit("reconnect-response", {
-          success: false,
-          message: "Not disconnected due to heartbeat timeout",
-          timestamp: new Date().toISOString()
         });
       }
     });
@@ -776,10 +1171,11 @@ export const initSocket = (server) => {
           return;
         }
         
-        // Count pending sent messages
+        // Count pending undelivered messages
         const pendingCount = await Message.countDocuments({
           receiver: userId,
-          status: "sent"
+          delivered: false, // Changed from status field
+          sentAt: { $ne: null }
         });
         
         socket.emit("pending-messages-response", {
@@ -806,6 +1202,29 @@ export const initSocket = (server) => {
       
       const userId = socket.userId;
       if (userId) {
+        // Clean up typing status
+        cleanupUserTyping(userId);
+        
+        // End any active calls for this user
+        const userCallInfo = getUserCallInfo(userId);
+        if (userCallInfo) {
+          const { roomName } = userCallInfo;
+          endCallRoom(roomName);
+          
+          // Notify other participant
+          const otherParticipant = userCallInfo.participants.find(p => p !== userId);
+          if (otherParticipant) {
+            emitToUser(otherParticipant, "call:ended", {
+              roomName,
+              endedBy: userId,
+              reason: "User disconnected",
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+          console.log(`📞 Call ended due to disconnect: ${userId} disconnected from room ${roomName}`);
+        }
+        
         markUserAsOffline(userId, socket.id, 'disconnect');
       }
       
@@ -864,12 +1283,8 @@ export const emitToUser = (userId, event, data) => {
   
   const userIdStr = userId.toString();
   
-  console.log(`🔍 [emitToUser] Emitting "${event}" to user ${userIdStr}`);
-  
   if (userSockets.has(userIdStr)) {
     const sockets = userSockets.get(userIdStr);
-    console.log(`📡 User ${userIdStr} has ${sockets.size} active socket(s)`);
-    
     sockets.forEach(socketId => {
       io.to(socketId).emit(event, data);
     });
@@ -879,18 +1294,30 @@ export const emitToUser = (userId, event, data) => {
   }
 };
 
+// Get call status for user
+export const getUserCallStatus = (userId) => {
+  const callInfo = getUserCallInfo(userId);
+  return {
+    isInCall: !!callInfo,
+    callInfo: callInfo || null
+  };
+};
+
 export const getOnlineUsers = () => Array.from(userSockets.keys());
 export const isUserOnline = (userId) => onlineUsers.has(userId);
 export const getUserSockets = (userId) => userSockets.get(userId) || new Set();
 
 export const getUserStatus = (userId) => {
   const isOnline = isUserOnline(userId);
-  const typingData = typingUsers.get(userId);
+  const typingData = typingStatus.get(userId);
+  const callInfo = getUserCallInfo(userId);
   
   return {
     isOnline,
     isTyping: !!typingData,
     typingTo: typingData?.typingTo,
+    isInCall: !!callInfo,
+    callType: callInfo?.callType,
     lastHeartbeat: heartbeatMap.get(userId) || null,
     socketCount: userSockets.get(userId)?.size || 0,
     wasDisconnectedDueToTimeout: disconnectedDueToHeartbeat.has(userId)

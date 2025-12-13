@@ -158,14 +158,14 @@ export interface User {
   read?:boolean;
   sent?:boolean;
   delivered?:boolean;
-  tickStatus?:string;
+  tickStatus?:'none' | 'sent' | 'delivered' | 'read';
+  isTyping?:boolean;
   
   
    lastMessageSenderId?:string;
   lastMessageMedia?:"image" | "video" | "audio" | "document";
   unreadCount: number;
   isOnline?: boolean;
-  lastSeen?: string;
   fullName?: string;
   isOnboarded?: boolean;
     encryptedKey?:string;
@@ -298,9 +298,6 @@ export interface PendingRequestsCountData {
 
 
 
-
-// Keep everything exactly as you have it
-// Update your types file
 export interface MediaForUI {
   url: string | File | Blob;
   type: "image" | "video" | "audio" | "document" | "blob"; // Add "blob" here
@@ -308,6 +305,8 @@ export interface MediaForUI {
   senderEncryptedKey?: string;
   fileName?: string;
   fileSize?: number;
+    isVoiceMessage?:boolean;
+    duration?:number;
 }
 
 
@@ -340,6 +339,9 @@ export interface BaseMessage {
   read?: boolean;
   isTemp?: boolean;
   sent?: boolean;
+  status?:string;
+  isVoiceMessage?:boolean;
+
 }
 
 export interface Message extends BaseMessage {

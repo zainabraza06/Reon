@@ -41,11 +41,10 @@ interface MessageDeliveredData {
 }
 
 interface MessageReadData {
-  messageId: string;
+  messageIds: string[];
   readerId: string;
   senderId: string;
   readAt: string;
-  status: string;
 }
 
 interface ConversationReadData {
@@ -107,7 +106,6 @@ class SocketService {
 
   this.connectionPromise = new Promise((resolve) => {
     if (this.socket && this.socket.connected) {
-      console.log('✅ Socket already connected');
       this.userId = userId;
       this.startHeartbeat(userId);
       resolve(true);
@@ -133,12 +131,10 @@ class SocketService {
     this.debugSocketEvents(); // Only call this ONCE!
     
     this.socket.on("connect", () => {
-      console.log("✅ Connected to socket server:", this.socket?.id);
+
       this.connectionState = 'connected';
       this.reconnectAttempts = 0;
       
-      // Authenticate with backend after connection
-      console.log(`🔐 Emitting authenticate event for user: ${userId}`);
       this.emit("authenticate", userId);
       
       // Start heartbeat
@@ -148,7 +144,7 @@ class SocketService {
     });
 
     this.socket.on("authenticated", (data: AuthenticatedData) => {
-      console.log("✅ Socket authenticated:", data);
+
       this.connectionState = 'connected';
       resolve(true);
       this.connectionPromise = null;
@@ -164,7 +160,7 @@ class SocketService {
     });
 
     this.socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected from socket server. Reason:", reason);
+  
       this.connectionState = 'disconnected';
       this.stopHeartbeat();
       this.emitEvent('disconnected', { reason });
@@ -172,7 +168,7 @@ class SocketService {
       // Auto-reconnect logic
       if (this.reconnectAttempts < this.maxReconnectAttempts && this.userId) {
         this.reconnectAttempts++;
-        console.log(`🔄 Attempting reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+       
         
         setTimeout(() => {
           if (this.userId && !this.socket?.connected) {
@@ -194,7 +190,7 @@ class SocketService {
     });
 
     this.socket.on("reconnect", (attemptNumber) => {
-      console.log("🔄 Reconnected to socket server. Attempt:", attemptNumber);
+  
       this.connectionState = 'connected';
       this.reconnectAttempts = 0;
       
@@ -215,7 +211,7 @@ class SocketService {
     // ✅ Add timeout to prevent hanging promise
     setTimeout(() => {
       if (this.connectionState === 'connecting') {
-        console.log('⏰ Connection timeout after 10 seconds');
+     
         this.connectionState = 'error';
         resolve(false);
         this.connectionPromise = null;
@@ -236,15 +232,11 @@ class SocketService {
 // Keep only ONE debug method (remove setupDebugListeners since they're the same)
 private debugSocketEvents() {
   if (!this.socket) {
-    console.log('❌ No socket instance available');
+   
     return;
   }
 
-  console.log('🔍 [SOCKET DEBUG] Setting up debug listeners...', {
-    connected: this.socket.connected,
-    socketId: this.socket.id,
-    userId: this.userId
-  });
+
 
   // Listen to ALL incoming events
   this.socket.onAny((eventName, ...args) => {
@@ -268,7 +260,7 @@ private debugSocketEvents() {
     });
   });
 
-  console.log('✅ Debug listeners activated - check console for all socket events');
+
 }
 
   private startHeartbeat(userId: string) {
@@ -293,7 +285,6 @@ private debugSocketEvents() {
   private setupDefaultListeners() {
     if (!this.socket) return;
  this.socket.onAny((eventName, data) => {
-    console.log(`📨 Socket event "${eventName}":`, data);
     this.emitEvent(eventName, data);
   });
   }
@@ -314,7 +305,7 @@ private debugSocketEvents() {
 
   emit(event: string, data?: unknown) {
     if (this.socket && this.socket.connected) {
-      console.log(`📤 Emitting ${event}:`, data);
+
       this.socket.emit(event, data);
     } else {
       console.warn(`⚠️ Cannot emit ${event}: Socket not connected`);
@@ -343,20 +334,27 @@ private debugSocketEvents() {
     this.emit("mark-conversation-read", data);
   }
 
-  // ========== TYPING METHODS ==========
-  startTyping(receiverId: string, senderId?: string) {
-    this.emit("typing-start", { 
-      receiverId, 
-      senderId: senderId || this.userId 
-    });
+    startTyping(data: { senderId: string; receiverId: string; isTyping: boolean; timestamp: string }) {
+    this.emit('start-typing', data);
+  }
+  
+  stopTyping(data: { senderId: string; receiverId: string; isTyping: boolean; timestamp: string }) {
+    this.emit('stop-typing', data);
+  }
+  
+  onTypingStart(callback: (data: TypingStatusData) => void) {
+    this.on('user-start-typing', callback);
   }
 
-  stopTyping(receiverId: string, senderId?: string) {
-    this.emit("typing-stop", { 
-      receiverId, 
-      senderId: senderId || this.userId 
-    });
+  onTypingStop(callback:(data:TypingStatusData)=>void){
+    this.on('user-stop-typing', callback);
   }
+
+    // Typing Listeners
+  onUserTyping(callback: (data: TypingStatusData) => void) {
+    this.addEventListener('user-typing', callback);
+  }
+
 
   // ========== FRIEND REQUEST METHODS ==========
   sendFriendRequest(data: { senderId: string; receiverId: string }) {
@@ -426,18 +424,13 @@ onOnlineFriendsResponse(callback: (data: OnlineFriendsResponseData) => void) {
     this.addEventListener('message-read', callback);
   }
 
-  onConversationRead(callback: (data: ConversationReadData) => void) {
-    this.addEventListener('conversation-read', callback);
-  }
 
   onMessageError(callback: (error: { error: string; data?: unknown; originalError?: string }) => void) {
     this.addEventListener('message-error', callback);
   }
 
-  // Typing Listeners
-  onUserTyping(callback: (data: TypingStatusData) => void) {
-    this.addEventListener('user-typing', callback);
-  }
+
+  
 
   // User Status Listeners
   onUserStatusChanged(callback: (data: UserStatusChangedData) => void) {
@@ -445,9 +438,6 @@ onOnlineFriendsResponse(callback: (data: OnlineFriendsResponseData) => void) {
   }
 
 
-  onTypingStatusResponse(callback: (data: TypingStatusResponseData) => void) {
-    this.addEventListener('typing-status-response', callback);
-  }
 
   // Friend Request Listeners
   onFriendRequestReceived(callback: (data: FriendRequestReceivedData) => void) {

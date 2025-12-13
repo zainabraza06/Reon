@@ -21,8 +21,6 @@ import {
 // Import new socket types
 import type {
   MessageDeliveredData,
-  MessageReadData,
-  ConversationReadData,
   TypingStatusData,
   UserStatusChangedData,
   AuthenticatedData,
@@ -55,13 +53,13 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
   const [users, setUsers] = useState<ChatItem[]>([]);
   const [selectedUser, setSelectedUser] = useState<ChatItem| null>(null);
   const [decryptedMessages, setDecryptedMessages] = useState<DecryptedMessage>({});
-  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [connectionState, setConnectionState] = useState<string>('disconnected');
   const [decryptedMedia, setDecryptedMedia] = useState<Record<string, DecryptedMediaForUI[]>>({});
   const [onlineFriends, setOnlineFriends] = useState<Set<string>>(new Set());
+  const [searchResults, setSearchResults] = useState<ChatItem[]>([]);
 
   // -------------------- Refs --------------------
   const isMountedRef = useRef(true);
@@ -70,8 +68,12 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
   const pendingDecryptionRef = useRef<PendingDecryption>({});
   const userPublicKeyCache = useRef<Map<string, CryptoKey>>(new Map());
   const onlineFriendsRef = useRef<Set<string>>(new Set());
+  
 
-  // Refs for state access inside callbacks to prevent dependency loops
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+
+  // Refs for state access inside callbacks to prevent dependency loops (Stale Closures Fix)
   const usersRef = useRef(users);
   const selectedUserRef = useRef(selectedUser);
   const decryptedMessagesRef = useRef(decryptedMessages);
@@ -378,6 +380,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
 
   // Load Messages with Decryption
   const loadMessages = useCallback(async () => {
+    console.log("selectedUser", selectedUser);
     if (!userId || (!selectedUser)) {
       return;
     }
@@ -410,13 +413,13 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
       }
     } catch (error) {
       console.error('📥 [loadMessages] ❌ Failed to load messages:', error);
-      onError?.('Failed to load messages');
+      onErrorRef.current?.('Failed to load messages');
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [userId, selectedUser, onError, decryptMessageContent]);
+  }, [userId, selectedUser?._id, decryptMessageContent]);
 
   const decryptSingleMedia = useCallback(async (
     messageId: string,
@@ -567,7 +570,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
     }
   }, [messages, userId]);
 
-  const loadChatUsers = useCallback(async () => {
+ const loadChatUsers = useCallback(async () => {
     if (!userId || !isMountedRef.current || isLoadingRef.current) {
       return;
     }
@@ -576,6 +579,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
       setIsLoading(true);
       isLoadingRef.current = true;
       const response = await api.get('/messages/sidebar/list');
+      console.log("response", response.data);
 
       if (isMountedRef.current && response.data) {
         // Get current online friends
@@ -612,9 +616,15 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
                 tickStatus = 'read';
               } else if (chat.delivered) {
                 tickStatus = 'delivered';
-              } else {
+              } else if (chat.sent) {
                 tickStatus = 'sent';
+              } else {
+                tickStatus = 'none';
               }
+              console.log("tick", tickStatus);
+            } else {
+              // If message is from another user, no tick status
+              tickStatus = 'none';
             }
 
             // Check if this user is online
@@ -628,7 +638,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
             };
           })
         );
-
+       console.log("processedChats",processedChats);
         setUsers(processedChats);
       } else {
         setUsers([]);
@@ -636,7 +646,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
     } catch (error: unknown) {
       console.error('👥 [loadChatUsers] ❌ Failed to load chat list:', error);
       if (isMountedRef.current) {
-        onError?.('Failed to load chat list');
+        onErrorRef.current?.('Failed to load chat list');
         setUsers([]);
       }
     } finally {
@@ -645,295 +655,367 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
         isLoadingRef.current = false;
       }
     }
-  }, [userId, onError]);
+  }, [userId]);
 
-  const handleNewMessage = useCallback(async (message: Message) => {
-    console.log(`📩 [SOCKET EVENT] handleNewMessage received:`, {
-      messageId: message._id,
-      sender: message.sender,
-      receiver: message.receiver
-    });
+const handleNewMessage = useCallback(async (message: Message) => {
+  console.log(`📩 [SOCKET EVENT] handleNewMessage received:`, {
+    messageId: message._id,
+    sender: message.sender,
+    receiver: message.receiver
+  });
 
-    if (!isMountedRef.current) return;
+  if (!isMountedRef.current) return;
 
-    const decryptedText = await decryptMessageContent(message);
+  const decryptedText = await decryptMessageContent(message);
 
-    setMessages(prev => [...prev, message]);
+  setMessages(prev => [...prev, message]);
 
-    const isCurrentUserSender = message.sender === userId;
-    // Use refs to avoid dependency on selectedUser and users state
-    const isChatOpen = selectedUserRef.current?._id === message.sender;
-    const otherUserId = isCurrentUserSender ? message.receiver : message.sender;
+  const isCurrentUserSender = message.sender === userId;
+  const isChatOpen = selectedUserRef.current?._id === message.sender;
+  const otherUserId = isCurrentUserSender ? message.receiver : message.sender;
 
-    // ----------------------------
-    // STEP 1: FETCH USER (if needed)
-    // ----------------------------
-    let fetchedUser: User|null = null;
+  // ----------------------------
+  // STEP 1: FETCH USER (if needed)
+  // ----------------------------
+  let fetchedUser: User | null = null;
+  const userExists = usersRef.current.find(u => u._id === otherUserId);
 
-    // Access users via Ref to avoid dependency loop
-    const userExists = usersRef.current.find(u => u._id === otherUserId);
-
-    if (!userExists) {
-      try {
-        const res = await api.get(`/auth/details/${otherUserId}`);
-        console.log("res data", res);
-        fetchedUser = res.data.data;
-      } catch (err) {
-        console.error("Failed to fetch user:", err);
-      }
+  if (!userExists) {
+    try {
+      const res = await api.get(`/auth/details/${otherUserId}`);
+      fetchedUser = res.data.data;
+    } catch (err) {
+      console.error("Failed to fetch user:", err);
     }
+  }
 
-    // STEP 2: UPDATE SIDEBAR STATE
-    setUsers(prev => {
-      const existingUserIndex = prev.findIndex(u => u._id === otherUserId);
-      let updatedUsers: ChatItem[];
+  // ----------------------------
+  // STEP 2: DETERMINE PREVIEWS
+  // ----------------------------
+  let lastMessageMedia: "image" | "video" | "audio" | "document" | undefined;
+  let sidebarPreview = decryptedText || "";
 
-      let lastMessageMedia: "image" | "video" | "audio" | "document" | undefined;
-      if (message.media?.length) {
-        const mediaType = message.media[0].type;
-        if (['image', 'video', 'audio', 'document'].includes(mediaType)) {
-          lastMessageMedia = mediaType as "image" | "video" | "audio" | "document";
-        }
-      }
+  if (message.media?.length) {
+    const mediaType = message.media[0].type;
+    if (['image', 'video', 'audio', 'document'].includes(mediaType)) {
+      lastMessageMedia = mediaType as "image" | "video" | "audio" | "document";
+      sidebarPreview =
+        mediaType === 'image' ? "📷 Photo" :
+        mediaType === 'video' ? "🎬 Video" :
+        mediaType === 'audio' ? "🎵 Audio" : "📎 Document";
+    }
+  }
 
-      let sidebarPreview = decryptedText || "";
-      if (message.media?.length) {
-        const mediaType = message.media[0].type;
-        sidebarPreview =
-          mediaType === 'image' ? "📷 Photo" :
-          mediaType === 'video' ? "🎬 Video" :
-          mediaType === 'audio' ? "🎵 Audio" : "📎 Document";
-      }
+  // ----------------------------
+  // STEP 3: UPDATE USERS SIDEBAR
+  // ----------------------------
+  setUsers(prev => {
+    const existingUserIndex = prev.findIndex(u => u._id === otherUserId);
+    let updatedUsers: ChatItem[];
 
-      if (existingUserIndex >= 0) {
-        // Update existing user
-        updatedUsers = prev.map(user => {
-          if (user._id !== otherUserId) return user;
+    if (existingUserIndex >= 0) {
+      // Update existing user
+      updatedUsers = prev.map(user => {
+        if (user._id !== otherUserId) return user;
 
-          let unread = user.unreadCount || 0;
-          if (!isCurrentUserSender && !isChatOpen) unread++;
-          if (isChatOpen || isCurrentUserSender) unread = 0;
+        let unread = user.unreadCount || 0;
+        if (!isCurrentUserSender && !isChatOpen) unread++;
+        if (isChatOpen || isCurrentUserSender) unread = 0;
 
-          return {
-            ...user,
-            lastMessage: sidebarPreview,
-            lastMessageTime: message.sentAt || new Date().toISOString(),
-            lastMessageSenderId: message.sender,
-            lastMessageMedia,
-            unreadCount: unread,
-            tickStatus: isCurrentUserSender ? "sent" : user.tickStatus,
-            sent: isCurrentUserSender,
-            delivered: false,
-            read: false
-          };
-        });
-      } else {
-        // Add new user
-        if (!fetchedUser) return prev; // fallback
-
-        const newUser: ChatItem = {
-          ...fetchedUser,
-          _id: otherUserId,
+        return {
+          ...user,
           lastMessage: sidebarPreview,
           lastMessageTime: message.sentAt || new Date().toISOString(),
           lastMessageSenderId: message.sender,
           lastMessageMedia,
-          unreadCount: !isCurrentUserSender && !isChatOpen ? 1 : 0,
-          tickStatus: isCurrentUserSender ? "sent" : "none",
+          unreadCount: unread,
+          tickStatus: isCurrentUserSender ? "sent" : user.tickStatus,
           sent: isCurrentUserSender,
           delivered: false,
           read: false
         };
-
-        updatedUsers = [newUser, ...prev];
-      }
-
-      return updatedUsers.sort((a, b) =>
-        new Date(b.lastMessageTime!).getTime() -
-        new Date(a.lastMessageTime!).getTime()
-      );
-    });
-
-    // MARK AS READ IF WINDOW OPEN
-    if (selectedUserRef.current && selectedUserRef.current._id === message.sender) {
-      try {
-        await api.put(`/messages/chat/read/${selectedUserRef.current._id}`);
-        setUsers(prev =>
-          prev.map(u =>
-            u._id === selectedUserRef.current?._id ? { ...u, unreadCount: 0 } : u
-          )
-        );
-      } catch (err) {
-        console.error("Failed to mark messages as read:", err);
-      }
-    }
-  }, [userId, decryptMessageContent]);
-
-  const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) => {
-    console.log(`✅ [SOCKET EVENT] Message delivered:`, data.messageId);
-
-    if (!isMountedRef.current) return;
-
-    // Update sidebar - show double gray ticks
-    setUsers(prev => {
-      return prev.map(user => {
-        // Check if this user is the receiver of the delivered message
-        // AND if current user is the sender (we sent this message)
-        const shouldUpdate = user._id === data.receiverId && 
-                            user.lastMessageSenderId === userId &&
-                            user.tickStatus === 'sent';
-        
-        if (shouldUpdate) {
-          return { 
-            ...user, 
-            tickStatus: 'delivered', // Double gray ticks
-            delivered: true
-          };
-        }
-
-        console.log("after delivered",user);
-        return user;
       });
-    });
+    } else {
+      // Add new user
+      if (!fetchedUser) return prev;
 
-    // Update message in messages array
-    setMessages(prev =>
-      prev.map(msg => {
-        if (msg._id === data.messageId) {
-          return { ...msg, delivered: true };
-        }
-        return msg;
-      })
+      const newUser: ChatItem = {
+        ...fetchedUser,
+        _id: otherUserId,
+        lastMessage: sidebarPreview,
+        lastMessageTime: message.sentAt || new Date().toISOString(),
+        lastMessageSenderId: message.sender,
+        lastMessageMedia,
+        unreadCount: !isCurrentUserSender && !isChatOpen ? 1 : 0,
+        tickStatus: isCurrentUserSender ? "sent" : "none",
+        sent: isCurrentUserSender,
+        delivered: false,
+        read: false
+      };
+
+      updatedUsers = [newUser, ...prev];
+    }
+
+    return updatedUsers.sort((a, b) =>
+      new Date(b.lastMessageTime!).getTime() -
+      new Date(a.lastMessageTime!).getTime()
     );
+  });
 
-    // Send delivery confirmation
-    try {
-      socketService.confirmMessageDelivery({
-        messageId: data.messageId,
-        receiverId: data.receiverId,
-        senderId: userId
-      });
-    } catch (err) {
-      console.error('Failed to send delivery confirmation:', err);
-    }
-  }, [userId]);
+  // ----------------------------
+  // STEP 4: UPDATE SEARCH RESULTS
+  // ----------------------------
+  setSearchResults(prev => {
+    const userInSearchResults = prev.find(item => item._id === otherUserId);
 
-  const handleMessageRead = useCallback(async (data: MessageReadData) => {
-    console.log(`👁️ [SOCKET EVENT] Message read:`, data.messageId);
+    if (!userInSearchResults) return prev;
 
-    if (!isMountedRef.current) return;
+    console.log(`🔍 [handleNewMessage] Updating search result for ${otherUserId}`);
 
-    // Update sidebar - show double blue ticks
-    setUsers(prev => {
-      return prev.map(user => {
-        // Scenario 1: Current user sent the message, update chat with reader
-        if (userId === data.senderId && user._id === data.readerId) {
-          return { 
-            ...user, 
-            tickStatus: 'read', // Double blue ticks
-            read: true
-          };
-        }
-        
-        // Scenario 2: Current user is the reader, update chat with sender
-        if (userId === data.readerId && user._id === data.senderId) {
-          return { 
-            ...user, 
-            unreadCount: 0,
-            ...(user.tickStatus === 'delivered' ? { tickStatus: 'read' as const } : {})
-          };
-        }
-        
-        return user;
-      });
-    });
+    let unread = userInSearchResults.unreadCount || 0;
+    if (!isCurrentUserSender && !isChatOpen) unread++;
 
-    // Update message in messages array
-    setMessages(prev =>
-      prev.map(msg => {
-        if (msg._id === data.messageId) {
-          return { ...msg, read: true };
-        }
-        return msg;
-      })
+    return prev.map(item => {
+      if (item._id !== otherUserId) return item;
+
+      return {
+        ...item,
+        lastMessage: sidebarPreview,
+        lastMessageTime: message.sentAt || new Date().toISOString(),
+        lastMessageSenderId: message.sender,
+        lastMessageMedia,
+        unreadCount: unread,
+        tickStatus: isCurrentUserSender ? "sent" : item.tickStatus,
+        isOnline: true,
+      };
+    }).sort((a, b) =>
+      new Date(b.lastMessageTime || 0).getTime() -
+      new Date(a.lastMessageTime || 0).getTime()
     );
+  });
 
-    // Send read status
+  // ----------------------------
+  // STEP 5: MARK AS READ IF CHAT OPEN
+  // ----------------------------
+  if (selectedUserRef.current && selectedUserRef.current._id === message.sender) {
     try {
-      socketService.markMessageRead({
-        messageId: data.messageId,
-        senderId: data.senderId,
-        readerId: data.readerId
-      });
+      console.log("calling api");
+      await api.put(`/messages/chat/read/${selectedUserRef.current._id}`);
+
+      setUsers(prev =>
+        prev.map(u =>
+          u._id === selectedUserRef.current?._id ? { ...u, unreadCount: 0 } : u
+        )
+      );
+
+      setSearchResults(prev =>
+        prev.map(item =>
+          item._id === selectedUserRef.current?._id ? { ...item, unreadCount: 0 } : item
+        )
+      );
     } catch (err) {
-      console.error('Failed to send read status:', err);
+      console.error("Failed to mark messages as read:", err);
     }
-  }, [userId]);
+  }
+}, [userId, decryptMessageContent]);
 
-  const handleConversationRead = useCallback(async (data: ConversationReadData) => {
-    console.log(`💬 [SOCKET EVENT] Conversation read`);
+const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) => {
+  console.log(`✅ [SOCKET EVENT] Message delivered:`, data.messageId);
 
-    if (!isMountedRef.current) return;
+  if (!isMountedRef.current) return;
+ 
 
-    // Update sidebar tick status to blue double ticks
-    if (userId === data.senderId) {
-      // Current user sent messages that were read
-      setUsers(prev =>
-        prev.map(user => {
-          if (user._id === data.readerId) {
-            return {
-              ...user,
-              tickStatus: 'read', // Blue double ticks
-              unreadCount: 0,
-              read: true
-            };
-          }
-          return user;
-        })
-      );
-    } else if (userId === data.readerId) {
-      // Current user read messages
-      setUsers(prev =>
-        prev.map(user => {
-          if (user._id === data.senderId) {
-            return {
-              ...user,
-              unreadCount: 0
-            };
-          }
-          return user;
-        })
-      );
-    }
-  }, [userId]);
+  // Update sidebar
+  setUsers(prev => {
+    return prev.map(user => {
+      console.log("lastMessageSenderId", user.lastMessageSenderId);
+      const shouldUpdate = user._id === data.receiverId && 
+                          user.lastMessageSenderId === userId &&
+                          (user.tickStatus === 'sent' || user.tickStatus=='none');
+      console.log("shouldUpdate", shouldUpdate);
+      if (shouldUpdate) {
+        return { 
+          ...user, 
+          tickStatus: 'delivered',
+          delivered: true
+        };
+      }
+      console.log(user);
+      return user;
+    });
+  });
 
-const handleMessageSent = useCallback(async (message: Message) => {
-  console.log(`📤 [SOCKET EVENT] Message sent:`, message._id);
-  console.log(`📤 [handleMessageSent] Starting, users length before:`, users?.length || 0);
+  // 🔥 NEW: Also update search results
+  setSearchResults(prev => {
+    return prev.map(item => {
+      const shouldUpdate = item._id === data.receiverId && 
+                          item.lastMessageSenderId === userId &&
+                          item.tickStatus === 'sent';
+      
+      if (shouldUpdate) {
+        console.log(`🔍 [handleMessageDelivered] Updating search result for ${data.receiverId}`);
+        return { 
+          ...item, 
+          tickStatus: 'delivered',
+          delivered: true
+        };
+      }
+      return item;
+    });
+  });
+
+  // Update message in messages array
+  setMessages(prev =>
+    prev.map(msg => {
+      if (msg._id === data.messageId) {
+        return { ...msg, delivered: true };
+      }
+      return msg;
+    })
+  );
+
+  // Send delivery confirmation
+  try {
+    socketService.confirmMessageDelivery({
+      messageId: data.messageId,
+      receiverId: data.receiverId,
+      senderId: userId
+    });
+  } catch (err) {
+    console.error('Failed to send delivery confirmation:', err);
+  }
+}, [userId]);
+
+const handleMessageRead = useCallback(async (data: {
+  messageIds: string[];
+  readerId: string;
+
+}) => {
+  console.log(`👁️ [SOCKET EVENT] Messages read:`, data.messageIds);
 
   if (!isMountedRef.current) return;
 
-  // Decrypt for sidebar preview
+  const { messageIds, readerId } = data;
+
+    console.log(`👁️  Messages read:`, messageIds);
+
+  // Update sidebar
+  setUsers(prev =>
+    prev.map(user => {
+      // Current user sent messages, update chat with reader
+      if ( user._id === readerId) {
+        return {
+          ...user,
+          tickStatus: 'read',
+          read: true
+        };
+      }
+
+      // Current user is reader, update chat with sender
+      if (userId === readerId && messageIds.some(id => id === user._id)) {
+        return {
+          ...user,
+          unreadCount: 0,
+          ...(user.tickStatus === 'delivered' || user.tickStatus === 'sent' ? { tickStatus: 'read' } : {})
+        };
+      }
+      console.log("User", user);
+      return user;
+    })
+  );
+
+  // Update search results
+  setSearchResults(prev =>
+    prev.map(item => {
+      if ( item._id === readerId) {
+        return {
+          ...item,
+          tickStatus: 'read',
+          read: true
+        };
+      }
+
+      if (messageIds.some(id => id === item._id)) {
+        return {
+          ...item,
+          unreadCount: 0,
+          ...(item.tickStatus === 'delivered' || item.tickStatus === 'sent' ? { tickStatus: 'read' } : {})
+        };
+      }
+
+      return item;
+    })
+  );
+
+  // Update messages array
+  setMessages(prev =>
+    prev.map(msg =>
+      messageIds.includes(msg._id) ? { ...msg, read: true, delivered: true } : msg
+    )
+
+  );
+
+}, [userId]);
+
+
+
+const handleMessageSent = useCallback(async (message: Message) => {
+  console.log(`📤 [SOCKET EVENT] Message sent:`, message._id, `Status: ${message.status}`);
+  
+  if (!isMountedRef.current) return;
+
   const decryptedText = await decryptMessageContent(message);
   
-  // Update messages list
-  setMessages(prev => prev.map(msg => 
-    msg._id.startsWith('temp-') && msg.sender === message.sender && msg.receiver === message.receiver
-      ? { ...message, isTemp: false, status: 'sent' }
-      : msg
-  ));
+  // Determine tick status based on backend status field
+  let tickStatus: 'sent' | 'delivered' = 'sent';
+  if (message.status === 'delivered') {
+    tickStatus = 'delivered';
+  }
 
-  // Update sidebar with one tick
+  // Update messages list - ONLY update status for the real message ID
+  setMessages(prev => {
+    console.log(`🔍 Looking for message ${message._id} in ${prev.length} messages`);
+    
+    const messageExists = prev.some(msg => msg._id === message._id);
+    
+    if (!messageExists) {
+      console.log(`❌ Message ${message._id} not found in current messages`);
+      console.log(`   Current message IDs:`, prev.map(msg => msg._id));
+      return prev; // Don't add new messages, only update existing ones
+    }
+    
+    const updated = prev.map(msg => {
+      // Only update if it's the exact same message ID
+      if (msg._id === message._id) {
+        console.log(`✅ Updating status for message ${msg._id}: ${message.status}`);
+        return { 
+          ...msg, // Keep existing message data (including text)
+          status: message.status, // Update status from backend
+          delivered: message.delivered || false,
+          // Don't overwrite text with undefined
+          text: msg.text || decryptedText
+        };
+      }
+      return msg;
+    });
+    
+    return updated;
+  });
+
+  // Update sidebar with proper tick status
   setUsers(prev => {
-    console.log(`📤 [handleMessageSent] setUsers called, prev users length:`, prev.length);
     const receiverId = message.receiver;
+    const senderId = message.sender;
+    
+    // Only update if this is OUR message (we sent it)
+    if (senderId !== userId) {
+      return prev;
+    }
     
     // Check if user exists in sidebar
     const existingUserIndex = prev.findIndex(u => u._id === receiverId);
-    console.log(`📤 [handleMessageSent] Existing user index:`, existingUserIndex);
     
     if (existingUserIndex >= 0) {
-      console.log(`📤 [handleMessageSent] User exists, updating`);
       // User exists, update it
       const updatedUsers = prev.map(user => {
         if (user._id === receiverId) {
@@ -959,40 +1041,33 @@ const handleMessageSent = useCallback(async (message: Message) => {
             ...user,
             lastMessage: sidebarPreview,
             lastMessageTime: message.sentAt || new Date().toISOString(),
-            tickStatus: 'sent', // One tick
+            tickStatus, // Use the determined tick status
             lastMessageSenderId: message.sender,
             lastMessageMedia,
             unreadCount: 0,
             sent: true,
-            delivered: false,
+            delivered: message.delivered || false,
             read: false
           };
         }
         return user;
-      });
-      
-      // Sort by most recent message
-      const sorted = updatedUsers.sort((a, b) => {
+      }).sort((a, b) => {
         const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
         const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
         return timeB - timeA;
       });
       
-      console.log(`📤 [handleMessageSent] Updated existing user, returning ${sorted.length} users`);
-      return sorted;
+      return updatedUsers;
     } else {
-      console.log(`📤 [handleMessageSent] User doesn't exist, will add async`);
-      // User doesn't exist in sidebar, add them
-      // We'll handle this async
+      // User doesn't exist, add async
       const addUserToSidebar = async () => {
-        console.log(`📤 [addUserToSidebar] Starting to fetch user ${receiverId}`);
         try {
+          console.log(`📡 Fetching user details for ${receiverId}...`);
           const response = await api.get(`/auth/details/${receiverId}`);
           
           if (response.data?.success && response.data.data) {
             const userData = response.data.data;
             
-            // Determine sidebar preview
             let sidebarPreview = decryptedText || '';
             let lastMessageMedia: "image" | "video" | "audio" | "document" | undefined;
             
@@ -1016,42 +1091,38 @@ const handleMessageSent = useCallback(async (message: Message) => {
               fullName: userData.fullName || `User ${receiverId.substring(0, 6)}`,
               profilePic: userData.profilePic,
               isOnline: userData.isOnline || false,
-              lastSeen: userData.lastSeen,
               lastMessage: sidebarPreview,
               lastMessageTime: message.sentAt || new Date().toISOString(),
               lastMessageSenderId: message.sender,
               lastMessageMedia,
               unreadCount: 0,
-              tickStatus: 'sent',
+              tickStatus, // Use the determined tick status
               sent: true,
-              delivered: false,
+              delivered: message.delivered || false,
               read: false
             };
             
-            // Add to sidebar
+            console.log(`✅ Adding new user to sidebar:`, newUser.fullName, `Tick status: ${tickStatus}`);
+            
             setUsers(prevUsers => {
-              console.log(`📤 [addUserToSidebar] setUsers called inside async, prevUsers length:`, prevUsers.length);
-              
-              // Check if user was already added (race condition)
               const alreadyExists = prevUsers.some(u => u._id === receiverId);
               if (alreadyExists) {
-                console.log(`📤 [addUserToSidebar] User ${receiverId} already exists, not adding duplicate`);
-                return prevUsers; // Don't add duplicate
+                console.log(`⚠️ User already added in async, skipping`);
+                return prevUsers;
               }
               
-              const updated = [newUser, ...prevUsers];
-              const sorted = updated.sort((a, b) => {
+              const updated = [newUser, ...prevUsers].sort((a, b) => {
                 const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
                 const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
                 return timeB - timeA;
               });
               
-              console.log(`📤 [addUserToSidebar] Added new user, returning ${sorted.length} users`);
-              return sorted;
+              console.log(`📊 New sidebar count:`, updated.length);
+              return updated;
             });
           }
         } catch (error) {
-          console.error('Failed to fetch user details:', error);
+          console.error('❌ Failed to fetch user details:', error);
           
           // Create minimal user as fallback
           let sidebarPreview = decryptedText || '';
@@ -1071,84 +1142,102 @@ const handleMessageSent = useCallback(async (message: Message) => {
                             (mediaCount > 1 ? `📎 ${mediaCount} files` : '📎 File');
           }
           
+          // Create fallback user
           const fallbackUser: ChatItem = {
             _id: receiverId,
             username: `User ${receiverId.substring(0, 6)}`,
             fullName: `User ${receiverId.substring(0, 6)}`,
+            profilePic: '',
+            isOnline: false,
             lastMessage: sidebarPreview,
             lastMessageTime: message.sentAt || new Date().toISOString(),
             lastMessageSenderId: message.sender,
             lastMessageMedia,
             unreadCount: 0,
-            tickStatus: 'sent',
-            isOnline: false,
+            tickStatus, // Use the determined tick status
             sent: true,
-            delivered: false,
+            delivered: message.delivered || false,
             read: false
           };
           
           setUsers(prevUsers => {
-            console.log(`📤 [addUserToSidebar] setUsers called in fallback, prevUsers length:`, prevUsers.length);
-            
-            // Check if user was already added (race condition)
             const alreadyExists = prevUsers.some(u => u._id === receiverId);
-            if (alreadyExists) {
-              console.log(`📤 [addUserToSidebar] User ${receiverId} already exists in fallback, not adding duplicate`);
-              return prevUsers; // Don't add duplicate
-            }
+            if (alreadyExists) return prevUsers;
             
-            const updated = [fallbackUser, ...prevUsers];
-            const sorted = updated.sort((a, b) => {
+            return [fallbackUser, ...prevUsers].sort((a, b) => {
               const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
               const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
               return timeB - timeA;
             });
-            
-            console.log(`📤 [addUserToSidebar] Added fallback user, returning ${sorted.length} users`);
-            return sorted;
           });
         }
       };
       
-      // Start fetching user details
       addUserToSidebar();
-      
-      // Return current state while fetching
-      console.log(`📤 [handleMessageSent] Returning current state while fetching, length:`, prev.length);
+      console.log(`⏳ User addition in progress...`);
       return prev;
     }
   });
-}, [userId, decryptMessageContent]);
-  const handleUserTyping = useCallback((data: TypingStatusData) => {
-    console.log(`⌨️ [SOCKET EVENT] handleUserTyping received from backend:`, {
-      senderId: data.senderId,
-      receiverId: data.receiverId,
-      isTyping: data.isTyping,
-      timestamp: data.timestamp,
-      currentUserId: userId,
-      timestampReceived: new Date().toISOString()
-    });
 
-    if (!isMountedRef.current || data.receiverId !== userId) {
-      return;
-    }
+  // 🔥 Update search results
+  setSearchResults(prev => {
+    console.log(`🔍 Updating search results for message sent with status: ${message.status}`);
     
-    if (data.isTyping) {
-      // Add user to typing users if not already there
-      setTypingUsers(prev => {
-        if (prev.includes(data.senderId)) {
-          return prev;
-        }
-        return [...prev, data.senderId];
-      });
-    } else {
-      // Remove user from typing users
-      setTypingUsers(prev => {
-        const newList = prev.filter(id => id !== data.senderId);
-        return newList;
-      });
+    const userInSearchResults = prev.find(item => item._id === message.receiver);
+    
+    if (!userInSearchResults) {
+      console.log(`⚠️ User not in search results, skipping`);
+      return prev;
     }
-  }, [userId]);
+
+    console.log(`✅ Updating search result for ${message.receiver} with tickStatus: ${tickStatus}`);
+    
+    const updatedResults = prev.map(item => {
+      if (item._id !== message.receiver) return item;
+
+      let sidebarPreview = decryptedText || '';
+      let lastMessageMedia: "image" | "video" | "audio" | "document" | undefined;
+      
+      if (message.media?.length) {
+        const mediaType = message.media[0].type;
+        const mediaCount = message.media.length;
+        
+        if (['image', 'video', 'audio', 'document'].includes(mediaType)) {
+          lastMessageMedia = mediaType as "image" | "video" | "audio" | "document";
+        }
+        
+        sidebarPreview = mediaType === 'image' ? (mediaCount > 1 ? `📷 ${mediaCount} photos` : '📷 Photo') :
+                        mediaType === 'video' ? (mediaCount > 1 ? `🎬 ${mediaCount} videos` : '🎬 Video') :
+                        mediaType === 'audio' ? (mediaCount > 1 ? `🎵 ${mediaCount} audio` : '🎵 Audio') : 
+                        (mediaCount > 1 ? `📎 ${mediaCount} files` : '📎 File');
+      }
+
+      return {
+        ...item,
+        lastMessage: sidebarPreview,
+        lastMessageTime: message.sentAt || new Date().toISOString(),
+        tickStatus, // Use the determined tick status
+        lastMessageSenderId: message.sender,
+        lastMessageMedia,
+        unreadCount: 0,
+      };
+    }).sort((a, b) => {
+      const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    console.log(`✅ Search results updated with status: ${message.status}`);
+    return updatedResults;
+  });
+  
+  // Log final state
+  setTimeout(() => {
+    console.log(`✅ Expected: tickStatus should be '${tickStatus}' for user ${message.receiver}`);
+    console.log(`✅ Expected: message status from backend: ${message.status}`);
+  }, 100);
+}, [userId, decryptMessageContent]);
+
 
   const handleUserStatusChanged = useCallback((data: UserStatusChangedData) => {
     if (!isMountedRef.current) {
@@ -1176,7 +1265,20 @@ const handleMessageSent = useCallback(async (message: Message) => {
       }
       return item;
     }));
+
+      setSearchResults(prev => prev.map(item => {
+    if (item._id === data.userId) {
+      console.log(`🔍 [handleUserStatusChanged] Updating search result for ${data.userId}`);
+      return { 
+        ...item, 
+        isOnline: data.isOnline
+      };
+    }
+    return item;
+  }));
   }, []);
+
+  
 
   const handleAuthenticated = useCallback((data: AuthenticatedData) => {
     console.log(`✅ [SOCKET EVENT] handleAuthenticated received from backend`);
@@ -1236,8 +1338,8 @@ const handleMessageSent = useCallback(async (message: Message) => {
     console.error(`❌ [SOCKET EVENT] handleAuthenticationError received`);
     
     setConnectionState('error');
-    onError?.(error.message);
-  }, [onError]);
+    onErrorRef.current?.(error.message);
+  }, []);
 
   const handleSocketDisconnect = useCallback(() => {
     console.log(`❌ [SOCKET EVENT] handleSocketDisconnect received`);
@@ -1246,22 +1348,10 @@ const handleMessageSent = useCallback(async (message: Message) => {
 
   const handleSocketError = useCallback((error: { message: string }) => {
     console.error(`❌ [SOCKET EVENT] handleSocketError received:`, error.message);
-    onError?.(error.message);
-  }, [onError]);
-const searchUsers = useCallback(async (query: string): Promise<Array<{
-  _id: string;
-  type: 'user' | 'group';
-  fullName: string;
-  profilePic?: string;
-  lastMessage?: string;
-  lastMessageTime?: string;
-  lastMessageMedia?: "image" | "video" | "audio" | "document";
-  unreadCount: number;
-  isOnline?: boolean;
-  lastMessageDelivered?: boolean;
-  lastMessageRead?: boolean;
-  lastMessageSender?: string;
-}>> => {
+    onErrorRef.current?.(error.message);
+  }, []);
+
+  const searchUsers = useCallback(async (query: string): Promise<ChatItem[]> => {
   try {
     console.log(`🔍 [searchUsers] Starting search for: "${query}"`);
     
@@ -1277,6 +1367,9 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
       lastMessageDelivered?: boolean;
       lastMessageRead?: boolean;
       type: "user" | "group";
+      username?: string;
+      memberCount?: number;
+      admin?: string;
     }
 
     interface SearchResponse {
@@ -1285,13 +1378,12 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     }
 
     const response = await api.get<SearchResponse>(`/messages/search?q=${encodeURIComponent(query)}`);
-    console.log(response.data);
     
-    if (response.data.success) {
+    if (response.data.success && response.data.results) {
       console.log(`🔍 Found ${response.data.results.length} results from backend`);
       
       const formattedResults = await Promise.all(
-        response.data.results.map(async (item) => {
+        response.data.results.map(async (item): Promise<ChatItem> => {
           const id = typeof item._id === 'object' && item._id !== null && 'toString' in item._id
             ? item._id.toString()
             : String(item._id);
@@ -1332,43 +1424,259 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
             displayMessage = 'No messages yet';
           }
           
-          // 🔥 KEY: Get online status from our tracked online friends
-          // This works because:
-          // 1. We get online friends list from backend on connect
-          // 2. We track real-time updates via user-status-changed
-          // 3. All friends (in search) are tracked in onlineFriends Set
+          // Get online status
           const isOnline = onlineFriendsRef.current.has(id);
           
-          console.log(`🔍 ${item.name} (${id}): isOnline = ${isOnline} (in onlineFriends: ${onlineFriendsRef.current.has(id)})`);
+          // 🔥 CORRECTION: Check if this user exists in our current users list for real-time data
+          // This uses the Ref to avoid dependency on rapidly changing state
+          const existingUser = usersRef.current.find(u => u._id === id);
           
-          return {
+          // Determine tick status from search results
+          const getTickStatus = (): 'none' | 'sent' | 'delivered' | 'read' => {
+            if (item.lastMessageRead) return 'read';
+            if (item.lastMessageDelivered) return 'delivered';
+            return 'none';
+          };
+          
+          // If user exists in our current chat list, merge with their real-time data
+          if (existingUser) {
+            console.log(`🔍 ${item.name} (${id}): Found in users list, merging with real-time data`);
+            
+            const result: ChatItem = {
+              _id: id,
+              fullName: existingUser.fullName || item.name,
+              profilePic: existingUser.profilePic || item.profilePic || undefined,
+              isOnline: existingUser.isOnline ?? (item.type === 'user' ? isOnline : undefined),
+              lastMessage: existingUser.lastMessage || displayMessage, // Prefer real-time last message
+              lastMessageTime: existingUser.lastMessageTime || item.lastMessageTime || undefined,
+              lastMessageMedia: existingUser.lastMessageMedia || lastMessageMediaType,
+              unreadCount: existingUser.unreadCount || item.unreadCount || 0,
+              lastMessageSenderId: existingUser.lastMessageSenderId,
+              tickStatus:existingUser.tickStatus || getTickStatus(), // Prefer real-time tick status
+              username: existingUser.username || item.username,
+              // Group specific fields
+              ...(item.type === 'group' && {
+                memberCount: item.memberCount,
+                admin: item.admin,
+              }),
+            };
+            
+            return result;
+          }
+          
+          // New user (not in our current chat list) - return search data
+          console.log(`🔍 ${item.name} (${id}): New user from search`);
+          
+          const result: ChatItem = {
             _id: id,
-            type: item.type,
             fullName: item.name,
             profilePic: item.profilePic || undefined,
-            isOnline: item.type === 'user' ? isOnline : undefined, // Only users have online status
+            isOnline: item.type === 'user' ? isOnline : undefined,
             lastMessage: displayMessage,
             lastMessageTime: item.lastMessageTime || undefined,
             lastMessageMedia: lastMessageMediaType,
             unreadCount: item.unreadCount || 0,
-            lastMessageDelivered: item.lastMessageDelivered,
-            lastMessageRead: item.lastMessageRead,
-            lastMessageSender: undefined
+            lastMessageSenderId: undefined,
+            tickStatus: getTickStatus(),
+            username: item.username,
+            // Group specific fields
+            ...(item.type === 'group' && {
+              memberCount: item.memberCount,
+              admin: item.admin,
+            }),
           };
+          
+          return result;
         })
       );
 
-      console.log("formated search results", formattedResults);
+      console.log(`📤 Setting searchResults state with ${formattedResults.length} items`);
+      
+      // Update search results state
+      setSearchResults(formattedResults);
+
+      console.log("results",searchResults);
       
       return formattedResults;
+    } else {
+      console.log(`⚠️ No results or API error`);
+      setSearchResults([]);
+      return [];
     }
     
-    return [];
   } catch (error: unknown) {
     console.error('🔍 Search failed:', error);
+    setSearchResults([]);
     return [];
   }
-}, [userId]); // Keep userId for decryption
+}, [userId]); 
+
+// ==================== SIMPLIFIED TYPING LOGIC ====================
+const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({}); // userId -> isTyping
+const [isUserTyping, setIsUserTyping] = useState(false); // Current user's typing state
+
+// Refs
+const typingUsersRef = useRef<Record<string, boolean>>({});
+const isUserTypingRef = useRef(false);
+
+
+// Sync refs with state
+useEffect(() => {
+  typingUsersRef.current = typingUsers;
+}, [typingUsers]);
+
+useEffect(() => {
+  isUserTypingRef.current = isUserTyping;
+}, [isUserTyping]);
+
+useEffect(() => {
+  selectedUserRef.current = selectedUser;
+}, [selectedUser]);
+
+// Simple stop typing function
+const stopTyping = useCallback(() => {
+  const currentSelectedUser = selectedUserRef.current;
+  
+  if (!currentSelectedUser || !socketService.isConnected()) {
+    setIsUserTyping(false);
+    isUserTypingRef.current = false;
+    return;
+  }
+
+  // Only send stop typing if we were actually typing
+  if (isUserTypingRef.current) {
+    console.log(`⌨️ [stopTyping] Sending stop typing to ${currentSelectedUser._id}`);
+    
+    socketService.stopTyping({
+      senderId: userId,
+      receiverId: currentSelectedUser._id,
+      isTyping: false,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Reset local state
+  setIsUserTyping(false);
+  isUserTypingRef.current = false;
+}, [userId]);
+
+// Simple start typing function
+const startTyping = useCallback(() => {
+  const currentSelectedUser = selectedUserRef.current;
+  
+  if (!currentSelectedUser || !socketService.isConnected()) {
+    return;
+  }
+
+  // Update local state
+  setIsUserTyping(true);
+  isUserTypingRef.current = true;
+  
+  console.log(`⌨️ [startTyping] Sending typing to ${currentSelectedUser._id}`);
+  
+  // Send typing event
+  socketService.startTyping({
+    senderId: userId,
+    receiverId: currentSelectedUser._id,
+    isTyping: true,
+    timestamp: new Date().toISOString()
+  });
+}, [userId]);
+
+// SIMPLIFIED triggerTyping - just calls startTyping immediately
+const triggerTyping = useCallback(() => {
+  if (isMountedRef.current) {
+    startTyping();
+  }
+}, [startTyping]);
+
+// Simplified typing event handler
+const handleUserTyping = useCallback((data: {
+  senderId: string;
+  receiverId: string;
+  isTyping: boolean;
+  timestamp: string;
+}) => {
+  if (!isMountedRef.current || data.receiverId !== userId) {
+    return;
+  }
+
+  const senderId = data.senderId;
+  
+  if (data.isTyping) {
+    // Update typingUsers state
+    setTypingUsers(prev => ({
+      ...prev,
+      [senderId]: true
+    }));
+    
+    // Update users list with typing status
+    setUsers(prev => prev.map(user => 
+      user._id === senderId ? { ...user, isTyping: true } : user
+    ));
+    
+    // Update search results with typing status
+    setSearchResults(prev => prev.map(item =>
+      item._id === senderId ? { ...item, isTyping: true } : item
+    ));
+  } else {
+    // Update typingUsers state
+    setTypingUsers(prev => ({
+      ...prev,
+      [senderId]: false
+    }));
+    
+    // Update users list
+    setUsers(prev => prev.map(user =>
+      user._id === senderId ? { ...user, isTyping: false } : user
+    ));
+    
+    // Update search results
+    setSearchResults(prev => prev.map(item =>
+      item._id === senderId ? { ...item, isTyping: false } : item
+    ));
+  }
+}, [userId]);
+
+// Cleanup on unmount
+useEffect(() => {
+  return () => {
+    if (isUserTypingRef.current && selectedUserRef.current) {
+      console.log('⌨️ [cleanup] Sending final stop typing');
+      socketService.stopTyping({
+        senderId: userId,
+        receiverId: selectedUserRef.current._id,
+        isTyping: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    isUserTypingRef.current = false;
+  };
+}, [userId]);
+
+// Auto-stop typing when user changes
+useEffect(() => {
+  if (isUserTypingRef.current) {
+    stopTyping();
+  }
+}, [selectedUser?._id, stopTyping]);
+// ==================== TYPING UTILITIES ====================
+const isCurrentChatUserTyping = useCallback(() => {
+  if (!selectedUserRef.current) {
+    return false;
+  }
+  
+  const currentUser = users.find(user => user._id === selectedUserRef.current?._id);
+  return currentUser?.isTyping || false;
+}, [users]);
+
+const getTypingUsers = useCallback(() => {
+  return users.filter(user => user.isTyping).map(user => user._id);
+}, [users]);
+
+
+
 
   // UPDATED: Socket Connection with new event handlers
   useEffect(() => {
@@ -1394,12 +1702,12 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
 
         if (!connected) {
           setConnectionState('error');
-          onError?.('Failed to connect to socket server');
+          onErrorRef.current?.('Failed to connect to socket server');
         }
       } catch (error) {
         if (isMountedRef.current) {
           setConnectionState('error');
-          onError?.('Failed to connect to socket server');
+          onErrorRef.current?.('Failed to connect to socket server');
         }
       }
     };
@@ -1414,8 +1722,8 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     socketService.onNewMessage(handleNewMessage);
     socketService.onMessageDelivered(handleMessageDelivered);
     socketService.onMessageRead(handleMessageRead);
-    socketService.onConversationRead(handleConversationRead);
     socketService.onUserTyping(handleUserTyping);
+  
     socketService.onUserStatusChanged(handleUserStatusChanged);
     socketService.onOnlineFriendsResponse(handleOnlineFriendsResponse);
     socketService.onDisconnect(handleSocketDisconnect);
@@ -1429,8 +1737,9 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
       socketService.removeListener('new-message', handleNewMessage);
       socketService.removeListener('message-delivered', handleMessageDelivered);
       socketService.removeListener('message-read', handleMessageRead);
-      socketService.removeListener('conversation-read', handleConversationRead);
       socketService.removeListener('user-typing', handleUserTyping);
+     
+
       socketService.removeListener('user-status-changed', handleUserStatusChanged);
       socketService.removeListener('online-friends-response', handleOnlineFriendsResponse);
       socketService.removeListener('disconnected', handleSocketDisconnect);
@@ -1438,19 +1747,18 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     };
   }, [
     userId,
-    onError,
+    // onError is REMOVED from dependency array, handled via onErrorRef inside callbacks
     handleAuthenticated,
     handleAuthenticationError,
     handleMessageSent,
     handleNewMessage,
     handleMessageDelivered,
     handleMessageRead,
-    handleConversationRead,
     handleUserTyping,
     handleUserStatusChanged,
     handleOnlineFriendsResponse,
     handleSocketDisconnect,
-    handleSocketError
+    handleSocketError, handleUserStatusChanged,
   ]);
 
   // ADD THIS: Effect to request online friends when socket connects
@@ -1472,34 +1780,227 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     }
   }, [connectionState]);
 
-  const sendMessage = useCallback(
-    async (messageData: {
-      ciphertext: string;
-      type: "text" | "image" | "audio" | "video" | "document";
-      media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
-    }) => {
-      // Access selectedUser from ref to maintain stable callback
-      const currentSelectedUser = selectedUserRef.current;
+  // const sendMessage = useCallback(
+  //   async (messageData: {
+  //     ciphertext: string;
+  //     type: "text" | "image" | "audio" | "video" | "document";
+  //     media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
+  //   }) => {
+  //     // Access selectedUser from ref to maintain stable callback
+  //     const currentSelectedUser = selectedUserRef.current;
       
-      if (!userId || !currentSelectedUser || !isMountedRef.current) {
-        console.log(`📤 [sendMessage] ❌ Validation failed`);
-        return;
+  //     if (!userId || !currentSelectedUser || !isMountedRef.current) {
+  //       console.log(`📤 [sendMessage] ❌ Validation failed`);
+  //       return;
+  //     }
+
+  //     try {
+  //       setIsSending(true);
+
+  //       // ✅ 1. Get public keys
+  //       const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
+  //       const senderPublicKey = await getUserPublicKey(userId);
+        
+  //       if (!recipientPublicKey || !senderPublicKey) {
+  //         throw new Error("Public key missing");
+  //       }
+
+  //       // ✅ 2. Encrypt TEXT
+  //       const textAESKey = await generateAESKey();
+  //       const encryptedText = await encryptWithAES(textAESKey, messageData.ciphertext);
+
+  //       const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
+
+  //       const encKeyRecipient = await crypto.subtle.encrypt(
+  //         { name: "RSA-OAEP" },
+  //         recipientPublicKey,
+  //         rawAES
+  //       );
+
+  //       const encKeySender = await crypto.subtle.encrypt(
+  //         { name: "RSA-OAEP" },
+  //         senderPublicKey,
+  //         rawAES
+  //       );
+
+  //       const encryptedTextAESKeyForRecipient = Array.from(new Uint8Array(encKeyRecipient))
+  //         .map(b => b.toString(16).padStart(2, "0")).join("");
+
+  //       const encryptedTextAESKeyForSender = Array.from(new Uint8Array(encKeySender))
+  //         .map(b => b.toString(16).padStart(2, "0")).join("");
+
+  //       // ✅ 3. Prepare FormData for HTTP request
+  //       const formData = new FormData();
+
+  //       const messagePayload = {
+  //         sender: userId,
+  //         receiver: currentSelectedUser._id,
+  //         ciphertext: encryptedText,
+  //         type: "ratcheted",
+  //         contentType: messageData.type,
+  //         encryptedKey: encryptedTextAESKeyForRecipient,
+  //         senderEncryptedKey: encryptedTextAESKeyForSender,
+  //         isGroup: false
+  //       };
+
+  //       formData.append("data", JSON.stringify(messagePayload));
+
+  //       // ✅ 4. Temp UI Message
+  //       const tempMessage: Message = {
+  //         _id: `temp-${Date.now()}`,
+  //         sender: userId,
+  //         receiver: currentSelectedUser._id,
+  //         ciphertext: encryptedText,
+  //         text: messageData.ciphertext,
+  //         type: "ratcheted",
+  //         media: [],
+  //         sentAt: new Date().toISOString(),
+  //         isTemp: true,
+  //         delivered: false,
+  //         read: false
+  //       };
+
+  //       // ✅ 5. MEDIA ENCRYPTION (BINARY ONLY)
+  //       if (messageData.media?.length) {
+  //         for (let i = 0; i < messageData.media.length; i++) {
+  //           const item = messageData.media[i];
+            
+  //           const { encryptedBlob, encryptedAESKeyForRecipient, encryptedAESKeyForSender } = 
+  //             await encryptFileForRecipient(item.file, recipientPublicKey, senderPublicKey);
+
+  //           // Create File object with proper name
+  //           const encryptedFile = new File(
+  //             [encryptedBlob],
+  //             `encrypted_${item.file.name}`,
+  //             { type: 'application/octet-stream' }
+  //           );
+
+  //           formData.append("media", encryptedFile);
+            
+  //           // Send metadata
+  //           formData.append(`mediaType${i}`, item.type);
+  //           formData.append(`mediaEncryptedKey${i}`, encryptedAESKeyForRecipient);
+  //           formData.append(`mediaSenderEncryptedKey${i}`, encryptedAESKeyForSender);
+  //           formData.append(`originalName${i}`, item.file.name);
+  //           formData.append(`fileSize${i}`, item.file.size.toString());
+            
+  //           // For temp message preview
+  //           const previewUrl = URL.createObjectURL(item.file);
+  //           tempMessage.media!.push({
+  //             url: previewUrl,
+  //             type: item.type,
+  //             encryptedKey: encryptedAESKeyForRecipient,
+  //             senderEncryptedKey: encryptedAESKeyForSender,
+  //             fileName: item.file.name,
+  //             fileSize: item.file.size
+  //           });
+  //         }
+  //       }
+
+  //       // ✅ 6. Add temp message immediately
+  //       setMessages(prev => [...prev, tempMessage]);
+  //       setNewMessage("");
+
+      
+
+  //       // ✅ 8. SEND VIA HTTP API ONLY (NO SOCKET SENDING)
+  //       try {
+  //         const response = await api.post("/messages/send", formData, {
+  //           timeout: 30000,
+  //           headers: {
+  //             'Content-Type': 'multipart/form-data'
+  //           }
+  //         });
+          
+  //         const realMessage = response.data?.data || response.data;
+
+  //         // ✅ Replace temp with real message
+  //         if (realMessage?._id) {
+  //           setMessages(prev =>
+  //             prev.map(msg =>
+  //               msg._id === tempMessage._id
+  //                 ? { ...realMessage, text: messageData.ciphertext, isTemp: false }
+  //                 : msg
+  //             )
+  //           );
+  //         }
+  //       } catch (error) {
+  //         console.error("📤 [sendMessage] ❌ Failed to send message via HTTP:", error);
+  //         onErrorRef.current?.("Failed to send message. Please try again.");
+  //       }
+
+  //       // ✅ 9. Store plaintext locally for temp message
+  //       if (isMountedRef.current) {
+  //         setDecryptedMessages(prev => ({
+  //           ...prev,
+  //           [tempMessage._id]: messageData.ciphertext
+  //         }));
+  //       }
+
+  //     } catch (error) {
+  //       console.error("📤 [sendMessage] ❌ Failed to send message:", error);
+
+  //       setMessages(prev => prev.filter(msg => !msg.isTemp));
+  //       onErrorRef.current?.("Failed to send message. Please try again.");
+
+  //       // Clean up object URLs
+  //       document.querySelectorAll("audio, video, img").forEach((el) => {
+  //         if (el instanceof HTMLImageElement || el instanceof HTMLMediaElement) {
+  //           if (el.src) URL.revokeObjectURL(el.src);
+  //         }
+  //       });
+  //     } finally {
+  //       if (isMountedRef.current) {
+  //         setIsSending(false);
+  //       }
+  //     }
+  //   },
+  //   [userId, getUserPublicKey]
+  // );
+
+  const sendMessage = useCallback(
+  async (messageData: {
+    ciphertext: string;
+    type: "text" | "image" | "audio" | "video" | "document";
+    media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
+  }) => {
+    // Access selectedUser from ref to maintain stable callback
+    const currentSelectedUser = selectedUserRef.current;
+    
+    if (!userId || !currentSelectedUser || !isMountedRef.current) {
+      console.log(`📤 [sendMessage] ❌ Validation failed`);
+      return;
+    }
+
+    try {
+      setIsSending(true);
+
+      // ✅ 1. Get public keys
+      const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
+      const senderPublicKey = await getUserPublicKey(userId);
+      
+      if (!recipientPublicKey || !senderPublicKey) {
+        throw new Error("Public key missing");
       }
 
-      try {
-        setIsSending(true);
+      // For voice messages, we want the text to be empty unless user typed something
+      const isVoiceMessage = messageData.media?.some(m => m.type === "audio") && 
+                             (!messageData.ciphertext || messageData.ciphertext === "Voice message");
 
-        // ✅ 1. Get public keys
-        const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
-        const senderPublicKey = await getUserPublicKey(userId);
-        
-        if (!recipientPublicKey || !senderPublicKey) {
-          throw new Error("Public key missing");
-        }
+      // If it's a voice message with default text, update it
+      let finalText = messageData.ciphertext;
+      if (isVoiceMessage && (!finalText || finalText === "Voice message")) {
+        finalText = "🎤 Voice message";
+      }
 
-        // ✅ 2. Encrypt TEXT
+      // ✅ 2. Encrypt TEXT (skip if no text)
+      let encryptedText = "";
+      let encryptedTextAESKeyForRecipient = "";
+      let encryptedTextAESKeyForSender = "";
+      
+      if (finalText.trim()) {
         const textAESKey = await generateAESKey();
-        const encryptedText = await encryptWithAES(textAESKey, messageData.ciphertext);
+        encryptedText = await encryptWithAES(textAESKey, finalText);
 
         const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
 
@@ -1515,142 +2016,189 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
           rawAES
         );
 
-        const encryptedTextAESKeyForRecipient = Array.from(new Uint8Array(encKeyRecipient))
+        encryptedTextAESKeyForRecipient = Array.from(new Uint8Array(encKeyRecipient))
           .map(b => b.toString(16).padStart(2, "0")).join("");
 
-        const encryptedTextAESKeyForSender = Array.from(new Uint8Array(encKeySender))
+        encryptedTextAESKeyForSender = Array.from(new Uint8Array(encKeySender))
           .map(b => b.toString(16).padStart(2, "0")).join("");
+      }
 
-        // ✅ 3. Prepare FormData for HTTP request
-        const formData = new FormData();
+      // ✅ 3. Prepare FormData for HTTP request
+      const formData = new FormData();
 
-        const messagePayload = {
-          sender: userId,
-          receiver: currentSelectedUser._id,
-          ciphertext: encryptedText,
-          type: "ratcheted",
-          contentType: messageData.type,
-          encryptedKey: encryptedTextAESKeyForRecipient,
-          senderEncryptedKey: encryptedTextAESKeyForSender,
-          isGroup: false
-        };
+      const messagePayload = {
+        sender: userId,
+        receiver: currentSelectedUser._id,
+        ciphertext: encryptedText,
+        type: "ratcheted",
+        contentType: messageData.type,
+        encryptedKey: encryptedTextAESKeyForRecipient,
+        senderEncryptedKey: encryptedTextAESKeyForSender,
+        isGroup: false,
+        isVoiceMessage: isVoiceMessage, // Add flag for voice messages
+      };
 
-        formData.append("data", JSON.stringify(messagePayload));
+      formData.append("data", JSON.stringify(messagePayload));
 
-        // ✅ 4. Temp UI Message
-        const tempMessage: Message = {
-          _id: `temp-${Date.now()}`,
-          sender: userId,
-          receiver: currentSelectedUser._id,
-          ciphertext: encryptedText,
-          text: messageData.ciphertext,
-          type: "ratcheted",
-          media: [],
-          sentAt: new Date().toISOString(),
-          isTemp: true,
-          delivered: false,
-          read: false
-        };
+      // ✅ 4. Temp UI Message
+      const tempMessage: Message = {
+        _id: `temp-${Date.now()}`,
+        sender: userId,
+        receiver: currentSelectedUser._id,
+        ciphertext: encryptedText,
+        text: finalText,
+        type: "ratcheted",
+        media: [],
+        sentAt: new Date().toISOString(),
+        isTemp: true,
+        delivered: false,
+        read: false,
+        isVoiceMessage: isVoiceMessage, // Add flag for voice messages
+      };
 
-        // ✅ 5. MEDIA ENCRYPTION (BINARY ONLY)
-        if (messageData.media?.length) {
-          for (let i = 0; i < messageData.media.length; i++) {
-            const item = messageData.media[i];
-            
-            const { encryptedBlob, encryptedAESKeyForRecipient, encryptedAESKeyForSender } = 
-              await encryptFileForRecipient(item.file, recipientPublicKey, senderPublicKey);
-
-            // Create File object with proper name
-            const encryptedFile = new File(
-              [encryptedBlob],
-              `encrypted_${item.file.name}`,
-              { type: 'application/octet-stream' }
-            );
-
-            formData.append("media", encryptedFile);
-            
-            // Send metadata
-            formData.append(`mediaType${i}`, item.type);
-            formData.append(`mediaEncryptedKey${i}`, encryptedAESKeyForRecipient);
-            formData.append(`mediaSenderEncryptedKey${i}`, encryptedAESKeyForSender);
-            formData.append(`originalName${i}`, item.file.name);
-            formData.append(`fileSize${i}`, item.file.size.toString());
-            
-            // For temp message preview
-            const previewUrl = URL.createObjectURL(item.file);
-            tempMessage.media!.push({
-              url: previewUrl,
-              type: item.type,
-              encryptedKey: encryptedAESKeyForRecipient,
-              senderEncryptedKey: encryptedAESKeyForSender,
-              fileName: item.file.name,
-              fileSize: item.file.size
-            });
-          }
-        }
-
-        // ✅ 6. Add temp message immediately
-        setMessages(prev => [...prev, tempMessage]);
-        setNewMessage("");
-
-        // ✅ 7. Send typing stopped notification via socket
-        socketService.stopTyping(currentSelectedUser._id, userId);
-
-        // ✅ 8. SEND VIA HTTP API ONLY (NO SOCKET SENDING)
-        try {
-          const response = await api.post("/messages/send", formData, {
-            timeout: 30000,
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          });
+      // ✅ 5. MEDIA ENCRYPTION (BINARY ONLY)
+      if (messageData.media?.length) {
+        for (let i = 0; i < messageData.media.length; i++) {
+          const item = messageData.media[i];
+          const isAudioFile = item.type === "audio";
           
-          const realMessage = response.data?.data || response.data;
+          const { encryptedBlob, encryptedAESKeyForRecipient, encryptedAESKeyForSender } = 
+            await encryptFileForRecipient(item.file, recipientPublicKey, senderPublicKey);
 
-          // ✅ Replace temp with real message
-          if (realMessage?._id) {
-            setMessages(prev =>
-              prev.map(msg =>
-                msg._id === tempMessage._id
-                  ? { ...realMessage, text: messageData.ciphertext, isTemp: false }
-                  : msg
-              )
-            );
+          // Create File object with proper name
+          const encryptedFile = new File(
+            [encryptedBlob],
+            `encrypted_${item.file.name}`,
+            { type: isAudioFile ? 'audio/webm' : 'application/octet-stream' }
+          );
+
+          formData.append("media", encryptedFile);
+          
+          // Send metadata
+          formData.append(`mediaType${i}`, item.type);
+          formData.append(`mediaEncryptedKey${i}`, encryptedAESKeyForRecipient);
+          formData.append(`mediaSenderEncryptedKey${i}`, encryptedAESKeyForSender);
+          formData.append(`originalName${i}`, item.file.name);
+          formData.append(`fileSize${i}`, item.file.size.toString());
+          formData.append(`isVoiceMessage${i}`, isVoiceMessage ? "true" : "false");
+          
+          // For temp message preview - handle voice specially
+          let previewUrl = "";
+          if (isAudioFile) {
+            // For voice messages, we'll create an audio element preview
+            previewUrl = URL.createObjectURL(item.file);
+          } else if (item.type === "image") {
+            previewUrl = URL.createObjectURL(item.file);
+          } else if (item.type === "video") {
+            previewUrl = URL.createObjectURL(item.file);
           }
-        } catch (error) {
-          console.error("📤 [sendMessage] ❌ Failed to send message via HTTP:", error);
-          onError?.("Failed to send message. Please try again.");
-        }
-
-        // ✅ 9. Store plaintext locally for temp message
-        if (isMountedRef.current) {
-          setDecryptedMessages(prev => ({
-            ...prev,
-            [tempMessage._id]: messageData.ciphertext
-          }));
-        }
-
-      } catch (error) {
-        console.error("📤 [sendMessage] ❌ Failed to send message:", error);
-
-        setMessages(prev => prev.filter(msg => !msg.isTemp));
-        onError?.("Failed to send message. Please try again.");
-
-        // Clean up object URLs
-        document.querySelectorAll("audio, video, img").forEach((el) => {
-          if (el instanceof HTMLImageElement || el instanceof HTMLMediaElement) {
-            if (el.src) URL.revokeObjectURL(el.src);
-          }
-        });
-      } finally {
-        if (isMountedRef.current) {
-          setIsSending(false);
+          
+          tempMessage.media!.push({
+            url: previewUrl,
+            type: item.type,
+            encryptedKey: encryptedAESKeyForRecipient,
+            senderEncryptedKey: encryptedAESKeyForSender,
+            fileName: item.file.name,
+            fileSize: item.file.size,
+            isVoiceMessage: isVoiceMessage,
+            duration: isAudioFile ? await getAudioDuration(item.file) : undefined
+          });
         }
       }
-    },
-    [userId, isMountedRef, onError, getUserPublicKey]
-  );
 
+      // ✅ 6. Add temp message immediately
+      setMessages(prev => [...prev, tempMessage]);
+      setNewMessage("");
+
+      // ✅ 8. SEND VIA HTTP API ONLY (NO SOCKET SENDING)
+      try {
+        const response = await api.post("/messages/send", formData, {
+          timeout: 60000, // Longer timeout for voice messages
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        
+        const realMessage = response.data?.data || response.data;
+
+        // ✅ Replace temp with real message
+        if (realMessage?._id) {
+          setMessages(prev =>
+            prev.map(msg =>
+              msg._id === tempMessage._id
+                ? { 
+                    ...realMessage, 
+                    text: finalText, 
+                    isTemp: false,
+                    isVoiceMessage: isVoiceMessage,
+                    media: tempMessage.media // Keep preview URLs
+                  }
+                : msg
+            )
+          );
+        }
+      } catch (error) {
+        console.error("📤 [sendMessage] ❌ Failed to send message via HTTP:", error);
+        onErrorRef.current?.("Failed to send message. Please try again.");
+        
+        // Mark temp message as failed
+        setMessages(prev =>
+          prev.map(msg =>
+            msg._id === tempMessage._id
+              ? { ...msg, isFailed: true }
+              : msg
+          )
+        );
+      }
+
+      // ✅ 9. Store plaintext locally for temp message
+      if (isMountedRef.current && finalText.trim()) {
+        setDecryptedMessages(prev => ({
+          ...prev,
+          [tempMessage._id]: finalText
+        }));
+      }
+
+    } catch (error) {
+      console.error("📤 [sendMessage] ❌ Failed to send message:", error);
+
+      setMessages(prev => prev.filter(msg => !msg.isTemp));
+      onErrorRef.current?.("Failed to send message. Please try again.");
+
+      // Clean up object URLs
+      document.querySelectorAll("audio, video, img").forEach((el) => {
+        if (el instanceof HTMLImageElement || el instanceof HTMLMediaElement) {
+          if (el.src) URL.revokeObjectURL(el.src);
+        }
+      });
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
+    }
+  },
+  [userId, getUserPublicKey]
+);
+
+// Helper function to get audio duration
+async function getAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const audio = document.createElement('audio');
+    audio.preload = 'metadata';
+    
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(audio.src);
+      resolve(Math.round(audio.duration));
+    };
+    
+    audio.onerror = () => {
+      URL.revokeObjectURL(audio.src);
+      resolve(0);
+    };
+    
+    audio.src = URL.createObjectURL(file);
+  });
+}
   const resetUnreadCount = (userId: string) => {
     setUsers(prev =>
       prev.map(u => {
@@ -1664,41 +2212,17 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
 
   const markMessagesAsRead = async (userId: string) => {
     try {
-      await api.put(`/messages/chat/read/${userId}`);
+      console.log("marking Messages REad");
+      const res=await api.put(`/messages/chat/read/${userId}`);
+      console.log("res", res);
       resetUnreadCount(userId);
       
-      // Also mark conversation as read via socket
-      if (socketService.isConnected()) {
-        socketService.markConversationRead({
-          senderId: userId,
-          receiverId: userId // Current user
-        });
-      }
     } catch (error) {
       console.error(`👁️ [markMessagesAsRead] ❌ Failed to mark messages as read:`, error);
     }
   };
 
-  const markMessagesAsSeen = useCallback(async (messageId: string, from: string) => {
-    try {
-      // Use new socket service method
-      socketService.markMessageRead({
-        messageId,
-        senderId: from,
-        readerId: userId
-      });
-      
-      await api.patch(`/messages/ack/${messageId}`, { status: 'seen' });
-      
-      if (isMountedRef.current) {
-        setMessages(prev => prev.map(msg => 
-          msg._id === messageId ? { ...msg, read: true } : msg
-        ));
-      }
-    } catch (error) { 
-      console.error('👁️ [markMessagesAsSeen] ❌ Failed to mark message as seen:', error); 
-    }
-  }, [userId]);
+  
 
   const refreshChatList = useCallback(async () => { 
     if (userId) {
@@ -1710,18 +2234,7 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     await loadMessages();
   }, [loadMessages]);
 
-  // Typing indicator methods
-  const startTyping = useCallback(() => {
-    if (selectedUserRef.current && socketService.isConnected()) {
-      socketService.startTyping(selectedUserRef.current._id, userId);
-    }
-  }, [userId]);
-
-  const stopTyping = useCallback(() => {
-    if (selectedUserRef.current && socketService.isConnected()) {
-      socketService.stopTyping(selectedUserRef.current._id, userId);
-    }
-  }, [userId]);
+ 
 
   // ADD THIS: Function to manually request online friends
   const requestOnlineFriends = useCallback(() => {
@@ -1734,6 +2247,11 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
   const isUserOnline = useCallback((userId: string): boolean => {
     return onlineFriendsRef.current.has(userId);
   }, []);
+
+  // Add function to clear search results
+const clearSearchResults = useCallback(() => {
+  setSearchResults([]);
+}, []);
 
   // Initialize on mount
   useEffect(() => {
@@ -1758,9 +2276,11 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     // State
     messages,
     users,
-    selectedUser,
-    decryptedMessages,
     typingUsers,
+    isUserTyping,
+    selectedUser,
+    searchResults,
+    decryptedMessages,
     newMessage,
     isLoading,
     isSending,
@@ -1771,6 +2291,7 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     // Setters
     setNewMessage,
     setSelectedUser,
+    setSearchResults,
     setUsers,
     setMessages,
     setDecryptedMessages,
@@ -1778,7 +2299,6 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     
     // Actions
     sendMessage,
-    markMessagesAsSeen,
     loadChatUsers,
     handleNewMessage,
     handleMessageDelivered,
@@ -1799,6 +2319,10 @@ const searchUsers = useCallback(async (query: string): Promise<Array<{
     handleUserStatusChanged,
     requestOnlineFriends,
     isUserOnline,
+    clearSearchResults,
+    
+  triggerTyping,
+  isCurrentChatUserTyping,getTypingUsers,
     
     // Derived
     isConnected: socketService.isConnected(),

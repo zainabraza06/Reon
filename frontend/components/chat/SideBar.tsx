@@ -1,34 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChatItem, User } from '@/types';
-import { Search, Users, X } from 'lucide-react';
+import { Search, Users, X, Clock, Check, CheckCheck } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
 import UserProfile from '@/components/chat/UserProfile';
 import styles from './SideBar.module.css';
-
-type SearchResultItem = {
-  _id: string;
-  fullName: string;
-  profilePic?: string;
-  lastMessage?: string;
-  lastMessageTime?: string;
-  unreadCount: number;
-  isOnline?: boolean;
-  username?: string;
-  memberCount?: number;
-  admin?: string;
-  lastMessageSenderId?: string;
-  tickStatus?: 'none' | 'sent' | 'delivered' | 'read';
-  lastMessageMedia?: "image" | "video" | "audio" | "document";
-  type?: 'user' | 'group';
-};
 
 interface SidebarProps {
   users: ChatItem[];
   currentUserId: string;
   selectedId?: string;
-  onSelectUser: (user: ChatItem | SearchResultItem) => void;
-  onSearch: (query: string) => Promise<SearchResultItem[]>; 
+  onSelectUser: (user: ChatItem) => void;
+  onSearch: (query: string) => Promise<ChatItem[]>; 
   currentUser: User;
+  searchResults?: ChatItem[];
+  clearSearchResults?: () => void;
+  onMessageStatusUpdate?: (chatId: string, status: 'sent' | 'delivered' | 'read') => void;
+  onUserTyping?: (chatId: string, isTyping: boolean) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -37,140 +24,86 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedId,
   onSelectUser,
   onSearch,
-  currentUser
+  currentUser,
+  searchResults = [],
+  clearSearchResults,
+  onMessageStatusUpdate,
+  onUserTyping,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [optimizedUsers, setOptimizedUsers] = useState<ChatItem[]>(users);
   const userMenuRef = React.useRef<HTMLDivElement | null>(null);
 
-  // Log users prop changes to see duplicates
+  // Optimize user updates - only update when necessary
   useEffect(() => {
-    console.log('👥 [Sidebar] users prop received:', users);
-    console.log('👥 [Sidebar] users prop length:', users.length);
+    // Create a map for quick lookup
+    const currentMap = new Map(optimizedUsers.map(u => [u._id, u]));
+    const newMap = new Map(users.map(u => [u._id, u]));
     
-    // Check for duplicates
-    const seen = new Set();
-    const duplicates: string[] = [];
+    // Check if we need to update
+    let needsUpdate = false;
     
-    users.forEach(user => {
-      if (seen.has(user._id)) {
-        duplicates.push(user._id);
-        console.log(`🚨 [Sidebar] DUPLICATE FOUND: ${user._id} - ${user.fullName || user.username}`);
-      }
-      seen.add(user._id);
-    });
-    
-    if (duplicates.length > 0) {
-      console.log(`🚨 [Sidebar] Found ${duplicates.length} duplicate users in users prop`);
-      console.log(`🚨 [Sidebar] Duplicate IDs:`, duplicates);
-      
-      // Show the actual duplicate data
-      duplicates.forEach(duplicateId => {
-        const duplicateUsers = users.filter(u => u._id === duplicateId);
-        console.log(`🚨 [Sidebar] Duplicate instances for ${duplicateId}:`, duplicateUsers);
-      });
+    // Check for new users or removed users
+    if (optimizedUsers.length !== users.length) {
+      needsUpdate = true;
     } else {
-      console.log('✅ [Sidebar] No duplicates found in users prop');
+      // Check if any user data has changed
+      for (const user of users) {
+        const existingUser = currentMap.get(user._id);
+        if (!existingUser || 
+            existingUser.tickStatus !== user.tickStatus ||
+            existingUser.unreadCount !== user.unreadCount ||
+            existingUser.lastMessage !== user.lastMessage ||
+            existingUser.lastMessageTime !== user.lastMessageTime ||
+            existingUser.isOnline !== user.isOnline ||
+            existingUser.isTyping !== user.isTyping) { // Added isTyping check
+          needsUpdate = true;
+          break;
+        }
+      }
     }
-  }, [users]);
-
-  // Clear search when clicking outside or selecting an item
-  useEffect(() => {
-    console.log('🔄 [Sidebar] useEffect triggered, searchQuery:', searchQuery);
-    if (searchQuery.trim().length === 0) {
-      console.log('🧹 [Sidebar] Clearing search results because query is empty');
-      setSearchResults([]);
+    
+    if (needsUpdate) {
+      console.log('🔄 [Sidebar] Updating optimized users');
+      setOptimizedUsers(users);
     }
-  }, [searchQuery]);
+  }, [users, optimizedUsers]);
 
   // Determine display items based on search state
   const getDisplayItems = () => {
-    console.log('📋 [Sidebar] getDisplayItems called');
-    console.log('   searchQuery:', searchQuery);
-    console.log('   searchQuery.trim().length > 0:', searchQuery.trim().length > 0);
-    console.log('   searchResults.length:', searchResults.length);
-    console.log('   users prop length:', users.length);
-    
     if (searchQuery.trim().length > 0 && searchResults.length > 0) {
-      console.log('   🔍 [Sidebar] Returning searchResults');
       return searchResults;
     }
-    console.log('   👥 [Sidebar] Returning regular users');
-    return users;
+    return optimizedUsers;
   };
 
   const displayItems = getDisplayItems();
-  
-  console.log('📊 [Sidebar] displayItems:', displayItems);
-  console.log('📊 [Sidebar] displayItems length:', displayItems.length);
-  
-  // Check for duplicates in displayItems
-  useEffect(() => {
-    if (displayItems.length > 0) {
-      const seen = new Set();
-      const duplicates: string[] = [];
-      
-      displayItems.forEach(item => {
-        if (seen.has(item._id)) {
-          duplicates.push(item._id);
-        }
-        seen.add(item._id);
-      });
-      
-      if (duplicates.length > 0) {
-        console.log(`🚨 [Sidebar] Found ${duplicates.length} duplicates in displayItems:`, duplicates);
-      }
-    }
-  }, [displayItems]);
-
-  const isSearchActive = searchQuery.trim().length > 0 && searchResults.length > 0;
-  console.log('🎯 [Sidebar] isSearchActive:', isSearchActive);
-  console.log('   - searchQuery.trim().length > 0:', searchQuery.trim().length > 0);
-  console.log('   - searchResults.length > 0:', searchResults.length > 0);
+  const isSearchActive = searchQuery.trim().length > 0;
 
   const handleSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
-    console.log('🔤 [Sidebar] handleSearch called with value:', q);
-    console.log('   Previous searchQuery:', searchQuery);
     setSearchQuery(q);
 
     if (q.trim().length > 1) {
-      console.log('🔍 [Sidebar] Starting search for:', q);
       setIsSearching(true);
       try {
-        const results = await onSearch(q);
-        console.log('✅ [Sidebar] Search results received:', results);
-        console.log('   Number of results:', results.length);
-        
-        // Check for duplicates in search results
-        const seen = new Set();
-        const uniqueResults = results.filter(result => {
-          if (seen.has(result._id)) {
-            console.log(`🚨 [Sidebar] Duplicate in search results: ${result._id} - ${result.fullName}`);
-            return false;
-          }
-          seen.add(result._id);
-          return true;
-        });
-        
-        if (uniqueResults.length !== results.length) {
-          console.log(`🚨 [Sidebar] Filtered out ${results.length - uniqueResults.length} duplicates from search results`);
-        }
-        
-        setSearchResults(uniqueResults);
-        console.log('📤 [Sidebar] searchResults state set to:', uniqueResults);
+        await onSearch(q);
       } catch (error) {
         console.error('❌ [Sidebar] Search error:', error);
-        setSearchResults([]);
+        if (clearSearchResults) {
+          clearSearchResults();
+        }
       } finally {
         setIsSearching(false);
       }
     } else {
-      console.log('🚫 [Sidebar] Search query too short, clearing results');
+      console.log('🚫 [Sidebar] Search query too short');
       setIsSearching(false);
-      setSearchResults([]);
+      if (clearSearchResults) {
+        clearSearchResults();
+      }
     }
   };
 
@@ -180,7 +113,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
   };
 
-  const formatLastMessage = (item: SearchResultItem | ChatItem): string => {
+  const formatLastMessage = (item: ChatItem): string => {
+    if (item.isTyping) {
+      return 'Typing...';
+    }
+    
     if (item.lastMessage && item.lastMessage.trim() !== '') {
       return item.lastMessage;
     }
@@ -197,68 +134,72 @@ const Sidebar: React.FC<SidebarProps> = ({
     return 'No messages yet';
   };
 
-  const handleSelectItem = (item: SearchResultItem | ChatItem) => {
-    console.log('👆 [Sidebar] handleSelectItem called');
-    console.log('   Selected item:', item);
-    console.log('   Selected item ID:', item._id);
-    console.log('   Selected item name:', item.fullName || item.username);
-    console.log('   Current searchQuery:', searchQuery);
-    console.log('   Is search active:', isSearchActive);
-    
-    // If it's a SearchResultItem, we need to convert it to ChatItem format
-    if (isSearchResultItem(item)) {
-      console.log('   🔍 [Sidebar] Item is from search results');
-      const formattedLastMessage = formatLastMessage(item);
-      
-      const chatItem: ChatItem = {
-        _id: item._id,
-        username: item.username,
-        fullName: item.fullName ,
-        profilePic: item.profilePic,
-        lastMessage: formattedLastMessage,
-        lastMessageTime: item.lastMessageTime,
-        unreadCount: item.unreadCount || 0,
-        isOnline: item.isOnline,
-        lastMessageSenderId: item.lastMessageSenderId,
-        tickStatus: item.tickStatus || 'none',
-        lastMessageMedia: item.lastMessageMedia,
-      };
-      
-      console.log('👤 [Sidebar] Selected search result:', chatItem);
-      onSelectUser(chatItem);
-    } else {
-      console.log('   👥 [Sidebar] Item is from regular users');
-      // It's already a ChatItem
-      onSelectUser(item);
-    }
-  };
-
-  const isSearchResultItem = (item: SearchResultItem | ChatItem): item is SearchResultItem => {
-    return 'type' in item || 'memberCount' in item || 'admin' in item;
+  const handleSelectItem = (item: ChatItem) => {
+    console.log('👆 [Sidebar] Selecting item:', item._id, item.fullName);
+    onSelectUser(item);
   };
 
   const clearSearch = () => {
-    console.log('🗑️ [Sidebar] clearSearch called');
-    console.log('   Before clear - searchQuery:', searchQuery);
-    console.log('   Before clear - searchResults:', searchResults);
-    console.log('   Before clear - users prop:', users);
     setSearchQuery('');
-    setSearchResults([]);
+    if (clearSearchResults) {
+      clearSearchResults();
+    }
     setIsSearching(false);
-    console.log('   After clear - searchQuery should be empty');
   };
 
-  const renderItem = (item: SearchResultItem | ChatItem, index: number) => {
+  // Render tick status icons
+  const renderTickStatus = (status: 'none' | 'sent' | 'delivered' | 'read', isSelected: boolean) => {
+    switch (status) {
+      case 'sent':
+        return (
+          <Check 
+            size={12} 
+            className={`${styles.tickIcon} ${styles.tickSent} ${isSelected ? styles.tickSelected : ''}`} 
+          />
+        );
+      case 'delivered':
+        return (
+          <div className={styles.doubleTickContainer}>
+            <Check size={10} className={`${styles.tickIcon} ${styles.tickDelivered} ${isSelected ? styles.tickSelected : ''}`} />
+            <Check size={10} className={`${styles.tickIcon} ${styles.tickDelivered} ${isSelected ? styles.tickSelected : ''}`} />
+          </div>
+        );
+      case 'read':
+        return (
+          <div className={styles.doubleTickContainer}>
+            <CheckCheck size={10} className={`${styles.tickIcon} ${styles.tickRead} ${isSelected ? styles.tickSelected : ''}`} />
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Enhanced typing indicator component
+  const TypingIndicator = ({ show = true }: { show: boolean }) => {
+    if (!show) return null;
+    
+    return (
+      <div className={styles.typingIndicatorWrapper}>
+        <span className={styles.typingTextSmall}>typing</span>
+        <div className={styles.typingDots}>
+          <span className={styles.typingDot}></span>
+          <span className={styles.typingDot}></span>
+          <span className={styles.typingDot}></span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderItem = (item: ChatItem, index: number) => {
     const isSelected = selectedId === item._id;
     const isLastMessageFromCurrentUser = item.lastMessageSenderId === currentUserId;
     const formattedLastMessage = formatLastMessage(item);
-    const isSearchItem = isSearchResultItem(item);
-    
-    console.log(`🎨 [Sidebar] renderItem #${index}: ${item._id} - ${item.fullName || item.username} (selected: ${isSelected})`);
+    const showTicks = isLastMessageFromCurrentUser && item.tickStatus && item.tickStatus !== 'none';
     
     return (
       <div
-        key={`${item._id}-${index}`} // Added index to ensure unique keys
+        key={`${item._id}-${index}`}
         onClick={() => handleSelectItem(item)}
         className={`${styles.chatItem} ${isSelected ? styles.chatItemSelected : styles.chatItemHover}`}
       >
@@ -267,79 +208,70 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className={styles.avatarWrapper}>
           <img
             src={item.profilePic || `https://ui-avatars.com/api/?name=${item.username}&background=random`}
-            alt={item.username  || 'User'}
+            alt={item.username || 'User'}
             className={styles.avatar}
             onError={handleImageError}
           />
-          {item.isOnline && (
-            <div className={styles.onlineBadge} title="Online" />
-          )}
+          
+          {/* Double status indicator: Online + Typing */}
+          <div className={styles.statusIndicators}>
+            {item.isOnline && (
+              <div className={styles.onlineBadge} title="Online" />
+            )}
+            {item.isTyping && (
+              <div className={styles.typingBadge} title="Typing">
+                <div className={styles.typingDotSmall}></div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={styles.itemContent}>
           <div className={styles.itemHeader}>
-            <h4 className={`${styles.itemName} ${isSelected && styles.itemNameSelected}`}>
-              {item.fullName || item.username}
-              {isSearchItem && item.type === 'group' && (
-                <span className={styles.groupBadge}>Group</span>
+            <div className={styles.itemNameContainer}>
+              <h4 className={`${styles.itemName} ${isSelected && styles.itemNameSelected}`}>
+                {item.fullName || item.username}
+              </h4>
+              
+            
+            </div>
+            
+            <div className={styles.headerRight}>
+              {item.lastMessageTime && (
+                <span className={`${styles.itemTime} ${isSelected && styles.itemTimeSelected}`}>
+                  {formatRelativeTime(item.lastMessageTime)}
+                </span>
               )}
-            </h4>
-            {item.lastMessageTime && (
-              <span className={`${styles.itemTime} ${isSelected && styles.itemTimeSelected}`}>
-                {formatRelativeTime(item.lastMessageTime)}
-              </span>
-            )}
+              
+            
+            </div>
           </div>
 
           <div className={styles.itemFooter}>
             <div className={styles.lastMessageContainer}>
-              <p className={`${styles.lastMessage} ${isSelected && styles.lastMessageSelected}`}>
+              <p className={`${styles.lastMessage} ${isSelected && styles.lastMessageSelected} ${item.isTyping ? styles.typingText : ''}`}>
                 {formattedLastMessage}
               </p>
               
-              {isLastMessageFromCurrentUser && item.tickStatus && item.tickStatus !== 'none' && (
-                <span className={`${styles.tickContainer} ${isSelected && styles.tickContainerSelected}`}>
-                  {item.tickStatus === 'sent' && (
-                    <span className={`${styles.tick} ${styles.tickSent}`}>✓</span>
-                  )}
-                  
-                  {item.tickStatus === 'delivered' && (
-                    <>
-                      <span className={`${styles.tick} ${styles.tickDelivered}`}>✓</span>
-                      <span className={`${styles.tick} ${styles.tickDelivered}`}>✓</span>
-                    </>
-                  )}
-                  
-                  {item.tickStatus === 'read' && (
-                    <>
-                      <span className={`${styles.tick} ${styles.tickRead}`}>✓</span>
-                      <span className={`${styles.tick} ${styles.tickRead}`}>✓</span>
-                    </>
-                  )}
-                </span>
+              
+              
+              {showTicks && !item.isTyping && (
+                <div className={`${styles.tickContainer} ${isSelected && styles.tickContainerSelected}`}>
+                  {renderTickStatus(item.tickStatus!, isSelected)}
+                </div>
               )}
             </div>
             
-            <div className={styles.footerRight}>
-              {item.unreadCount > 0 && (
-                <span className={styles.unreadBadge}>
-                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
-                </span>
-              )}
-            </div>
+            
           </div>
         </div>
       </div>
     );
   };
 
-  console.log('🔄 [Sidebar] Component render');
-  console.log('🔍 [Sidebar] Current state:');
-  console.log('   searchQuery:', searchQuery);
-  console.log('   searchResults:', searchResults);
-  console.log('   users prop (first 3):', users.slice(0, 3));
-  console.log('   displayItems (first 3):', displayItems.slice(0, 3));
-
+  // Global typing indicator for sidebar
+  const typingUsersCount = displayItems.filter(item => item.isTyping).length;
+  
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -352,6 +284,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           pendingFriendRequests={currentUser?.pendingFriendRequests || 0}
           currentPage="messages"
         />
+        
+       
       </div>
 
       {/* Search */}
@@ -360,7 +294,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <Search className={styles.searchIcon} size={16} />
           <input
             type="text"
-            placeholder="Search users or groups"
+            placeholder="Search users"
             value={searchQuery}
             onChange={handleSearch}
             className={styles.searchInput}
