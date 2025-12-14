@@ -2,7 +2,6 @@ import { Server } from "socket.io";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
 import FriendRequest from "../models/FriendRequest.js";
-import Call from "../models/Call.js"; // Add Call model import
 import * as messageController from "../controllers/message.controller.js";
 import * as friendController from "../controllers/friend.controller.js";
 
@@ -26,51 +25,8 @@ const processedMessageDeliveries = new Map(); // userId → Set(messageIds)
 const typingStatus = new Map(); // userId → typing data
 const typingTimeouts = new Map(); // userId → timeout for auto-clear
 
-// -------------------- CALL HANDLING FUNCTIONS --------------------
-// Initialize a call room
-const initCallRoom = (roomName, callerId, receiverId, callType) => {
-  activeCalls.set(roomName, {
-    participants: [callerId, receiverId],
-    callerId,
-    receiverId,
-    callType,
-    startTime: new Date(),
-    status: 'ringing'
-  });
-  
-  callRooms.set(callerId, roomName);
-  callRooms.set(receiverId, roomName);
-  
-  console.log(`📞 Call room initialized: ${roomName}, Type: ${callType}`);
-  return roomName;
-};
 
-// End a call room
-const endCallRoom = (roomName) => {
-  const call = activeCalls.get(roomName);
-  if (call) {
-    // Remove from callRooms
-    callRooms.delete(call.callerId);
-    callRooms.delete(call.receiverId);
-    
-    activeCalls.delete(roomName);
-    console.log(`📞 Call room ended: ${roomName}`);
-  }
-};
 
-// Check if user is in a call
-const isUserInCall = (userId) => {
-  return callRooms.has(userId);
-};
-
-// Get call info for user
-const getUserCallInfo = (userId) => {
-  const roomName = callRooms.get(userId);
-  if (roomName) {
-    return activeCalls.get(roomName);
-  }
-  return null;
-};
 
 // Clear typing status after timeout
 const clearTypingStatus = (userId) => {
@@ -96,13 +52,13 @@ const clearTypingStatus = (userId) => {
       });
     }
     
-    console.log(`⌨️ Auto-cleared typing status for user ${userId}`);
+
   }
 };
 
 // Handle typing start
 const handleTypingStart = (senderId, receiverId, socketId) => {
-  console.log(`⌨️ User ${senderId} started typing to ${receiverId}`);
+
   
   // Clear any existing timeout
   if (typingTimeouts.has(senderId)) {
@@ -134,7 +90,7 @@ const handleTypingStart = (senderId, receiverId, socketId) => {
 
 // Handle typing stop
 const handleTypingStop = (senderId, receiverId) => {
-  console.log(`⌨️ User ${senderId} stopped typing to ${receiverId}`);
+  
   
   // Clear typing status
   clearTypingStatus(senderId);
@@ -261,7 +217,7 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
       }
     );
     
-    console.log(`✅ Updated ${updateResult.modifiedCount} messages to delivered for user ${receiverId}`);
+   
     
     // Notify each sender about their delivered messages
     for (const [senderId, messages] of Object.entries(messagesBySender)) {
@@ -282,7 +238,7 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
         });
       });
       
-      console.log(`📬 Notified sender ${senderId} about ${messages.length} delivered messages`);
+
     }
     
     // Notify the receiver (if socket provided)
@@ -308,7 +264,7 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
 const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
   if (!userId) return;
   
-  console.log(`🔌 [markUserAsOffline] User ${userId}, Reason: ${reason}, Socket: ${socketId || 'none'}`);
+
   
   // Clean up heartbeat
   heartbeatMap.delete(userId);
@@ -330,7 +286,7 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
       // Track if disconnected due to heartbeat
       if (reason === 'heartbeat_timeout') {
         disconnectedDueToHeartbeat.add(userId);
-        console.log(`⚠️ User ${userId} marked as disconnected due to heartbeat timeout`);
+    
       }
       
       // Broadcast offline status
@@ -341,10 +297,8 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
         timestamp: new Date().toISOString()
       });
       
-      console.log(`✅ User ${userId} is offline (${reason})`);
-    } else {
-      console.log(`📱 User ${userId} still has ${userSockets.get(userId).size} active socket(s)`);
-    }
+
+    } 
   } else if (reason === 'heartbeat_timeout') {
     // User was in heartbeatMap but not in userSockets (edge case)
     onlineUsers.delete(userId);
@@ -357,7 +311,7 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
       timestamp: new Date().toISOString()
     });
     
-    console.log(`✅ User ${userId} marked offline (heartbeat timeout)`);
+ 
   }
   
   // Remove from typing tracking
@@ -366,7 +320,7 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
 
 // Function to mark user as online (when first socket connects OR reconnection)
 const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
-  console.log(`🔗 [markUserAsOnline] User ${userId}, Socket ${socketId}, Reconnection: ${isReconnection}`);
+
   
   // Check if this is a reconnection after heartbeat timeout
   const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
@@ -374,7 +328,7 @@ const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
   // Remove from disconnected due to heartbeat set if present
   if (wasDisconnectedDueToTimeout) {
     disconnectedDueToHeartbeat.delete(userId);
-    console.log(`🔄 User ${userId} reconnecting after heartbeat timeout`);
+   
   }
   
   // Clean up any previous heartbeat
@@ -395,10 +349,7 @@ const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
       timestamp: new Date().toISOString()
     });
     
-    console.log(`✅ User ${userId} is online (${isReconnection ? 'reconnected' : 'first socket connection'})`);
-  } else {
-    // User already has other sockets, just add this one
-    console.log(`📱 User ${userId} connected ${isReconnection ? 'reconnected device' : 'additional device'}, total sockets: ${userSockets.get(userId).size + 1}`);
+
   }
   
   // Add socket to user's socket set
@@ -417,7 +368,7 @@ const startHeartbeatWatcher = () => {
     
     for (const [userId, lastBeat] of heartbeatMap.entries()) {
       if (now - lastBeat > HEARTBEAT_TIMEOUT) {
-        console.log(`⚠️ HEARTBEAT TIMEOUT for user: ${userId}, last beat: ${new Date(lastBeat).toISOString()}`);
+       
         
         // Find the primary socket ID for this user
         const socketId = onlineUsers.get(userId);
@@ -435,7 +386,7 @@ const startHeartbeatWatcher = () => {
 // Function to handle user reconnection after heartbeat timeout
 const handleUserReconnection = async (userId, socket) => {
   try {
-    console.log(`🔄 Handling reconnection for user ${userId}`);
+
     
     // Mark user as online again
     const wasDisconnectedDueToTimeout = await markUserAsOnline(userId, socket.id, true);
@@ -466,8 +417,7 @@ const handleUserReconnection = async (userId, socket) => {
         timestamp: new Date().toISOString()
       });
     });
-    
-    console.log(`✅ User ${userId} reconnected and notified ${onlineFriends.length} friends`);
+   
   } catch (error) {
     console.error(`❌ Error handling reconnection for user ${userId}:`, error);
   }
@@ -487,7 +437,7 @@ export const initSocket = (server) => {
   startHeartbeatWatcher();
 
   io.on("connection", (socket) => {
-    console.log("Socket connected:", socket.id);
+
 
     // Clear processed messages when user disconnects completely
     socket.on("disconnect", () => {
@@ -496,7 +446,7 @@ export const initSocket = (server) => {
         // Only clear if user is completely offline
         if (!userSockets.has(userId) || userSockets.get(userId).size === 0) {
           processedMessageDeliveries.delete(userId);
-          console.log(`🧹 Cleared processed messages tracking for user ${userId}`);
+        
         }
       }
     });
@@ -523,8 +473,7 @@ export const initSocket = (server) => {
       // Deliver pending messages if this is the first socket connection
       if (isReconnection || userSockets.get(userId).size === 1) {
         const deliveryResult = await deliverPendingMessages(userId, socket);
-        
-        console.log(`📦 Delivered ${deliveryResult.deliveredCount} pending messages for user ${userId}`);
+    
       }
       
       // Notify user of successful authentication with online friends
@@ -535,8 +484,7 @@ export const initSocket = (server) => {
         wasDisconnectedDueToTimeout,
         timestamp: new Date().toISOString()
       });
-      
-      console.log(`✅ User ${userId} authenticated on socket ${socket.id}, Online friends: ${onlineFriends.length}, Was disconnected due to timeout: ${wasDisconnectedDueToTimeout}`);
+    
     });
 
     // ---- HEARTBEAT ----
@@ -553,360 +501,9 @@ export const initSocket = (server) => {
       
       // If user was marked offline due to timeout, handle reconnection
       if (wasOfflineDueToTimeout) {
-        console.log(`💓 Heartbeat from user ${userId} after timeout - handling reconnection`);
+      
         await handleUserReconnection(userId, socket);
-      } else {
-        console.log(`💓 Heartbeat from user ${userId} on socket ${socket.id}`);
-      }
-    });
-
-    // ---- CALL HANDLING EVENTS ----
-    // Initiate a call
-    socket.on("call:initiate", async (data) => {
-      try {
-        const { callId, roomName, receiverId, callType } = data;
-        const callerId = socket.userId;
-        
-        if (!callerId || !receiverId || !roomName) {
-          socket.emit("call:error", { 
-            message: "Missing required call data" 
-          });
-          return;
-        }
-
-        // Check if receiver is online
-        if (!isUserOnline(receiverId)) {
-          socket.emit("call:error", {
-            message: "User is offline",
-            receiverId
-          });
-          return;
-        }
-
-        // Check if either user is already in a call
-        if (isUserInCall(callerId) || isUserInCall(receiverId)) {
-          socket.emit("call:error", {
-            message: "User is already in a call"
-          });
-          return;
-        }
-
-        // Initialize call room
-        initCallRoom(roomName, callerId, receiverId, callType);
-
-        // Notify receiver
-        emitToUser(receiverId, "call:incoming", {
-          callId,
-          roomName,
-          callerId,
-          callType,
-          timestamp: new Date().toISOString()
-        });
-
-        // Confirm to caller
-        socket.emit("call:initiated", {
-          callId,
-          roomName,
-          receiverId,
-          callType,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`📞 Call initiated: ${callerId} -> ${receiverId}, Room: ${roomName}`);
-
-      } catch (error) {
-        console.error("Error initiating call:", error);
-        socket.emit("call:error", {
-          message: "Failed to initiate call",
-          error: error.message
-        });
-      }
-    });
-
-    // Accept a call
-    socket.on("call:accept", async (data) => {
-      try {
-        const { callId, roomName } = data;
-        const receiverId = socket.userId;
-        
-        if (!receiverId || !roomName) {
-          socket.emit("call:error", {
-            message: "Missing required data"
-          });
-          return;
-        }
-
-        const call = activeCalls.get(roomName);
-        if (!call) {
-          socket.emit("call:error", {
-            message: "Call not found or expired"
-          });
-          return;
-        }
-
-        // Update call status
-        call.status = 'ongoing';
-        activeCalls.set(roomName, call);
-
-        // Notify caller that call was accepted
-        emitToUser(call.callerId, "call:accepted", {
-          callId,
-          roomName,
-          receiverId,
-          timestamp: new Date().toISOString()
-        });
-
-        // Confirm to receiver
-        socket.emit("call:accepted", {
-          callId,
-          roomName,
-          callerId: call.callerId,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`📞 Call accepted: ${receiverId} accepted call from ${call.callerId}`);
-
-      } catch (error) {
-        console.error("Error accepting call:", error);
-        socket.emit("call:error", {
-          message: "Failed to accept call",
-          error: error.message
-        });
-      }
-    });
-
-    // Reject a call
-    socket.on("call:reject", async (data) => {
-      try {
-        const { callId, roomName } = data;
-        const receiverId = socket.userId;
-        
-        if (!receiverId || !roomName) {
-          socket.emit("call:error", {
-            message: "Missing required data"
-          });
-          return;
-        }
-
-        const call = activeCalls.get(roomName);
-        if (!call) {
-          socket.emit("call:error", {
-            message: "Call not found"
-          });
-          return;
-        }
-
-        // End the call room
-        endCallRoom(roomName);
-
-        // Notify caller
-        emitToUser(call.callerId, "call:rejected", {
-          callId,
-          roomName,
-          receiverId,
-          reason: "User rejected call",
-          timestamp: new Date().toISOString()
-        });
-
-        // Confirm to receiver
-        socket.emit("call:rejected", {
-          callId,
-          roomName,
-          callerId: call.callerId,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`📞 Call rejected: ${receiverId} rejected call from ${call.callerId}`);
-
-      } catch (error) {
-        console.error("Error rejecting call:", error);
-        socket.emit("call:error", {
-          message: "Failed to reject call",
-          error: error.message
-        });
-      }
-    });
-
-    // End a call
-    socket.on("call:end", async (data) => {
-      try {
-        const { callId, roomName } = data;
-        const userId = socket.userId;
-        
-        if (!userId || !roomName) {
-          socket.emit("call:error", {
-            message: "Missing required data"
-          });
-          return;
-        }
-
-        const call = activeCalls.get(roomName);
-        if (!call) {
-          socket.emit("call:error", {
-            message: "Call not found"
-          });
-          return;
-        }
-
-        // Determine other participant
-        const otherParticipant = call.participants.find(p => p !== userId);
-
-        // End the call room
-        endCallRoom(roomName);
-
-        // Notify other participant
-        if (otherParticipant) {
-          emitToUser(otherParticipant, "call:ended", {
-            callId,
-            roomName,
-            endedBy: userId,
-            reason: "Call ended by other participant",
-            timestamp: new Date().toISOString()
-          });
-        }
-
-        // Confirm to caller
-        socket.emit("call:ended", {
-          callId,
-          roomName,
-          endedBy: userId,
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`📞 Call ended: ${userId} ended call in room ${roomName}`);
-
-      } catch (error) {
-        console.error("Error ending call:", error);
-        socket.emit("call:error", {
-          message: "Failed to end call",
-          error: error.message
-        });
-      }
-    });
-
-    // Call missed (no answer)
-    socket.on("call:missed", async (data) => {
-      try {
-        const { callId, roomName } = data;
-        const receiverId = socket.userId;
-        
-        if (!receiverId || !roomName) {
-          return;
-        }
-
-        const call = activeCalls.get(roomName);
-        if (!call) return;
-
-        // End the call room
-        endCallRoom(roomName);
-
-        // Notify caller
-        emitToUser(call.callerId, "call:missed", {
-          callId,
-          roomName,
-          receiverId,
-          reason: "No answer",
-          timestamp: new Date().toISOString()
-        });
-
-        console.log(`📞 Call missed: ${receiverId} didn't answer call from ${call.callerId}`);
-
-      } catch (error) {
-        console.error("Error handling missed call:", error);
-      }
-    });
-
-    // Toggle audio (mute/unmute)
-    socket.on("call:toggle-audio", (data) => {
-      const { roomName, isMuted } = data;
-      const userId = socket.userId;
-      
-      if (!userId || !roomName) return;
-
-      const call = activeCalls.get(roomName);
-      if (!call) return;
-
-      // Notify other participant
-      const otherParticipant = call.participants.find(p => p !== userId);
-      if (otherParticipant) {
-        emitToUser(otherParticipant, "call:audio-toggled", {
-          userId,
-          isMuted,
-          roomName,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      console.log(`📞 Audio toggled: ${userId} ${isMuted ? 'muted' : 'unmuted'}`);
-    });
-
-    // Toggle video (camera on/off)
-    socket.on("call:toggle-video", (data) => {
-      const { roomName, isVideoOff } = data;
-      const userId = socket.userId;
-      
-      if (!userId || !roomName) return;
-
-      const call = activeCalls.get(roomName);
-      if (!call) return;
-
-      // Notify other participant
-      const otherParticipant = call.participants.find(p => p !== userId);
-      if (otherParticipant) {
-        emitToUser(otherParticipant, "call:video-toggled", {
-          userId,
-          isVideoOff,
-          roomName,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      console.log(`📞 Video toggled: ${userId} ${isVideoOff ? 'camera off' : 'camera on'}`);
-    });
-
-    // ICE Candidate exchange
-    socket.on("call:ice-candidate", (data) => {
-      const { roomName, candidate, targetUserId } = data;
-      const userId = socket.userId;
-      
-      if (!userId || !roomName || !targetUserId) return;
-
-      // Forward ICE candidate to target user
-      emitToUser(targetUserId, "call:ice-candidate", {
-        candidate,
-        roomName,
-        senderId: userId,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    // SDP Offer/Answer exchange
-    socket.on("call:sdp-offer", (data) => {
-      const { roomName, offer, targetUserId } = data;
-      const userId = socket.userId;
-      
-      if (!userId || !roomName || !targetUserId) return;
-
-      emitToUser(targetUserId, "call:sdp-offer", {
-        offer,
-        roomName,
-        senderId: userId,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    socket.on("call:sdp-answer", (data) => {
-      const { roomName, answer, targetUserId } = data;
-      const userId = socket.userId;
-      
-      if (!userId || !roomName || !targetUserId) return;
-
-      emitToUser(targetUserId, "call:sdp-answer", {
-        answer,
-        roomName,
-        senderId: userId,
-        timestamp: new Date().toISOString()
-      });
+      } 
     });
 
     // ---- TYPING INDICATORS ----
@@ -975,7 +572,7 @@ export const initSocket = (server) => {
           timestamp: new Date().toISOString()
         });
         
-        console.log(`📊 Sent ${onlineFriends.length} online friends to user ${userId}`);
+      
       } catch (error) {
         console.error("Error getting online friends:", error);
         socket.emit("online-friends-response", {
@@ -1021,7 +618,7 @@ export const initSocket = (server) => {
         timestamp: new Date().toISOString()
       });
       
-      console.log(`✍️ User ${senderId} typing to ${receiverId}`);
+    
     });
 
     socket.on("typing-stop", async (data) => {
@@ -1044,8 +641,7 @@ export const initSocket = (server) => {
         isTyping: false,
         timestamp: new Date().toISOString()
       });
-      
-      console.log(`✍️ User ${senderId} stopped typing to ${receiverId}`);
+
     });
 
     // ---- NEW MESSAGE HANDLER ----
@@ -1083,7 +679,7 @@ export const initSocket = (server) => {
                 deliveredAt: new Date().toISOString()
               });
               
-              console.log(`📨 Message ${message._id} sent and delivered immediately to online user ${receiverId}`);
+             
             } else {
               // If receiver is offline, mark as sent only (delivered: false)
               emitToUser(receiverId, "new-message", {
@@ -1091,7 +687,7 @@ export const initSocket = (server) => {
                 delivered: false // Still not delivered
               });
               
-              console.log(`📨 Message ${message._id} sent to offline user ${receiverId} (will be delivered when online)`);
+             
             }
           }
         });
@@ -1125,7 +721,7 @@ export const initSocket = (server) => {
         );
         
         if (updatedMessage) {
-          console.log(`📨 Message ${messageId} delivered to ${receiverId}`);
+      
         }
         
       } catch (error) {
@@ -1142,7 +738,7 @@ export const initSocket = (server) => {
           return;
         }
         
-        console.log(`🔄 Manual request to update undelivered messages for user ${userId}`);
+        
         
         const result = await deliverPendingMessages(userId, socket);
         
@@ -1184,7 +780,7 @@ export const initSocket = (server) => {
           timestamp: new Date().toISOString()
         });
         
-        console.log(`📊 User ${userId} has ${pendingCount} pending messages`);
+     
         
       } catch (error) {
         console.error("Error checking pending messages:", error);
@@ -1198,32 +794,14 @@ export const initSocket = (server) => {
 
     // ---- DISCONNECT HANDLER ----
     socket.on("disconnect", () => {
-      console.log("🔌 Socket disconnected:", socket.id);
+ 
       
       const userId = socket.userId;
       if (userId) {
         // Clean up typing status
         cleanupUserTyping(userId);
         
-        // End any active calls for this user
-        const userCallInfo = getUserCallInfo(userId);
-        if (userCallInfo) {
-          const { roomName } = userCallInfo;
-          endCallRoom(roomName);
-          
-          // Notify other participant
-          const otherParticipant = userCallInfo.participants.find(p => p !== userId);
-          if (otherParticipant) {
-            emitToUser(otherParticipant, "call:ended", {
-              roomName,
-              endedBy: userId,
-              reason: "User disconnected",
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          console.log(`📞 Call ended due to disconnect: ${userId} disconnected from room ${roomName}`);
-        }
+       
         
         markUserAsOffline(userId, socket.id, 'disconnect');
       }
@@ -1294,14 +872,7 @@ export const emitToUser = (userId, event, data) => {
   }
 };
 
-// Get call status for user
-export const getUserCallStatus = (userId) => {
-  const callInfo = getUserCallInfo(userId);
-  return {
-    isInCall: !!callInfo,
-    callInfo: callInfo || null
-  };
-};
+
 
 export const getOnlineUsers = () => Array.from(userSockets.keys());
 export const isUserOnline = (userId) => onlineUsers.has(userId);

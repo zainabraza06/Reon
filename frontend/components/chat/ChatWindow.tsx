@@ -13,11 +13,7 @@ interface ChatWindowProps {
   currentUserId: string;
   decryptedMessages: Record<string, string>;
   decryptedMedia?: Record<string, DecryptedMediaForUI[]>;
-  onDecryptMessage: (message: Message) => Promise<string | null>;
-  onDecryptMedia?: (
-    messageId: string,
-    mediaIndex: number
-  ) => Promise<DecryptedMediaForUI | undefined>;
+  // REMOVED: onDecryptMessage and onDecryptMedia - handled in parent
   isTyping: boolean;
   onClose: () => void;
   isLoading?: boolean;
@@ -29,8 +25,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   currentUserId,
   decryptedMessages,
   decryptedMedia = {},
-  onDecryptMessage,
-  onDecryptMedia,
   isTyping,
   onClose,
   isLoading = false,
@@ -42,7 +36,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const prevMessagesLengthRef = useRef<number>(0);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   
-  // FIX: Use ReturnType<typeof setTimeout> for cross-environment compatibility
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset on user change
@@ -52,12 +45,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     initialLoadRef.current = true;
     prevMessagesLengthRef.current = 0;
     
-    // Clear any existing timeout
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
     
-    // Use setTimeout to avoid synchronous state update in effect
     const timer = setTimeout(() => {
       setShowSkeleton(true);
     }, 0);
@@ -75,14 +66,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (!containerRef.current || messages.length === 0 || !initialLoadRef.current) return;
 
-    // Scroll to bottom immediately for initial load
     const scrollToBottom = () => {
       if (bottomRef.current) {
         bottomRef.current.scrollIntoView({ behavior: "auto" });
       }
     };
 
-    // Use requestAnimationFrame for smooth initial scroll
     const rafId = requestAnimationFrame(() => {
       scrollToBottom();
       
@@ -91,7 +80,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         initialLoadRef.current = false;
         prevMessagesLengthRef.current = messages.length;
         
-        // Set a small delay before allowing user scroll detection
         setTimeout(() => {
           setIsUserScrolling(false);
         }, 100);
@@ -103,24 +91,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [messages]);
 
-  // Track user scrolling with useCallback to avoid recreating on every render
   const handleScroll = useCallback(() => {
-    // Clear existing timeout
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
 
-    // User is actively scrolling
     setIsUserScrolling(true);
 
-    // Reset after 150ms of no scrolling
     scrollTimeoutRef.current = setTimeout(() => {
       setIsUserScrolling(false);
       scrollTimeoutRef.current = null;
     }, 150);
   }, []);
 
-  // Add scroll event listener
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -135,7 +118,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [handleScroll]);
 
-  // Scroll to bottom when new messages arrive (only if user is at bottom or sent the message)
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     const container = containerRef.current;
     if (!container || messages.length === 0 || isUserScrolling) return;
@@ -144,12 +127,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const lastMessage = messages[messages.length - 1];
     
     if (hasNewMessages && lastMessage) {
-      // Check if we're already near the bottom (within 100px)
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
       
-      // Only auto-scroll if:
-      // 1. User is near bottom OR
-      // 2. User sent the message
       if (isNearBottom || lastMessage.sender === currentUserId) {
         const scrollTimer = setTimeout(() => {
           bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -162,7 +141,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     prevMessagesLengthRef.current = messages.length;
   }, [messages, currentUserId, isUserScrolling]);
 
-  // Smooth scroll when typing indicator appears (only if user is near bottom)
+  // Smooth scroll when typing indicator appears
   useEffect(() => {
     if (!isTyping || isUserScrolling) return;
 
@@ -180,7 +159,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [isTyping, isUserScrolling]);
 
-  // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
       if (scrollTimeoutRef.current) {
@@ -189,11 +167,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     };
   }, []);
-
-  // DEBUG: Log isTyping changes
-  useEffect(() => {
-    console.log('ChatWindow - isTyping:', isTyping, 'selectedUser:', selectedUser?._id);
-  }, [isTyping, selectedUser?._id]);
 
   const chatName = selectedUser?.fullName || selectedUser?.username || "Unknown User";
   const chatImage = selectedUser?.profilePic;
@@ -228,20 +201,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     );
   }
 
-  const handleDecryptMediaWrapper = onDecryptMedia
-    ? async (messageId: string, mediaIndex: number) => {
-        try {
-          return await onDecryptMedia(messageId, mediaIndex);
-        } catch (error) {
-          console.error("Media decryption error:", error);
-          return undefined;
-        }
-      }
-    : undefined;
-
   const renderSkeletonMessages = () => (
     <>
-      {/* Skeleton messages should show from bottom */}
       {[...Array(3)].map((_, i) => (
         <div key={`skeleton-outgoing-${i}`} className={styles.skeletonMessageOutgoing}>
           <div className={styles.skeletonMessageContent}>
@@ -330,7 +291,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ref={containerRef} 
         className={cn(styles.messagesContainer, "custom-scrollbar")}
       >
-        {/* Encryption notice at top - FIXED POSITION */}
+        {/* Encryption notice at top */}
         <div className={styles.encryptionNotice}>
           <span className={styles.encryptionBadge}>
             <Lock size={12} className={styles.lockIcon} />
@@ -344,7 +305,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         ) : (
           <>
-            {/* Messages list - oldest first */}
+            {/* Messages list */}
             {messages.map((msg, index) => {
               const isMe = msg.sender === currentUserId;
               const messageId = msg._id;
@@ -356,15 +317,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   message={msg}
                   isMe={isMe}
                   currentUserId={currentUserId}
-                  onDecrypt={() => onDecryptMessage(msg)}
-                  onDecryptMedia={handleDecryptMediaWrapper}
+                  // ✅ UPDATED: Only pass decrypted data, not decrypt functions
                   decryptedText={decryptedMessages[messageId]}
                   decryptedMedia={mediaForThisMessage}
                 />
               );
             })}
 
-            {/* Typing indicator - always at bottom */}
+            {/* Typing indicator */}
             {isTyping && (
               <div className={styles.typingBubble}>
                 <div className={styles.typingIndicator}>

@@ -2,11 +2,8 @@
 import { io, Socket } from "socket.io-client";
 import {
   Message,
-  MessageSeenEvent,
-  TypingEvent,
-  OnlineStatusEvent,
-  Notification, MediaForBackend, FriendRequestAcceptedData, FriendRequestReceivedData,FriendRequestRejectedData,
-  FriendRequestSentData,FriendRequestWithdrawnData
+ MediaForBackend, FriendRequestAcceptedData, FriendRequestReceivedData,FriendRequestRejectedData,
+  FriendRequestSentData,FriendRequestWithdrawnData,PendingCountData,FriendRemovedData
 } from "@/types";
 
 type EventCallback<T = unknown> = (data: T) => void;
@@ -189,7 +186,7 @@ class SocketService {
       this.emitEvent('connect-error', error);
     });
 
-    this.socket.on("reconnect", (attemptNumber) => {
+    this.socket.on("reconnect", () => {
   
       this.connectionState = 'connected';
       this.reconnectAttempts = 0;
@@ -237,28 +234,6 @@ private debugSocketEvents() {
   }
 
 
-
-  // Listen to ALL incoming events
-  this.socket.onAny((eventName, ...args) => {
-    console.log(`🔍 [SOCKET DEBUG INCOMING] Event: "${eventName}"`, {
-      data: args[0],
-      timestamp: new Date().toISOString(),
-      socketId: this.socket?.id,
-      // Add event size for debugging
-      dataSize: JSON.stringify(args[0])?.length || 0
-    });
-  });
-
-  
-
-  // Listen to ALL outgoing events
-  this.socket.onAnyOutgoing((eventName, ...args) => {
-    console.log(`📤 [SOCKET DEBUG OUTGOING] Emitting: "${eventName}"`, {
-      data: args[0],
-      timestamp: new Date().toISOString(),
-      socketId: this.socket?.id
-    });
-  });
 
 
 }
@@ -355,9 +330,7 @@ private debugSocketEvents() {
     this.addEventListener('user-typing', callback);
   }
 
-
-  // ========== FRIEND REQUEST METHODS ==========
-  sendFriendRequest(data: { senderId: string; receiverId: string }) {
+ sendFriendRequest(data: { senderId: string; receiverId: string }) {
     this.emit("send-friend-request", data);
   }
 
@@ -368,6 +341,44 @@ private debugSocketEvents() {
   rejectFriendRequest(data: { requestId: string; rejectorId: string; senderId: string }) {
     this.emit("reject-friend-request", data);
   }
+
+  withdrawFriendRequest(data: { requestId: string; senderId: string; receiverId: string }) {
+    this.emit("withdraw-friend-request", data);
+  }
+
+  removeFriend(data: { userId: string; friendId: string }) {
+    this.emit("remove-friend", data);
+  }
+
+  // ========== LISTENER METHODS ==========
+  onFriendRequestReceived(callback: (data: FriendRequestReceivedData) => void) {
+    this.addEventListener('friend-request-received', callback);
+  }
+
+  onFriendRequestWithdrawn(callback: (data: FriendRequestWithdrawnData) => void) {
+    this.addEventListener('friend-request-withdrawn', callback);
+  }
+
+  onFriendRequestSent(callback: (data: FriendRequestSentData) => void) {
+    this.addEventListener('friend-request-sent-realtime', callback);
+  }
+
+  onFriendRequestAccepted(callback: (data: FriendRequestAcceptedData) => void) {
+    this.addEventListener('friend-request-accepted-realtime', callback);
+  }
+
+  onFriendRequestRejected(callback: (data: FriendRequestRejectedData) => void) {
+    this.addEventListener('friend-request-rejected', callback);
+  }
+
+  onPendingRequestsCountUpdated(callback: (data: PendingCountData) => void) {
+    this.addEventListener('pending-requests-count-updated', callback);
+  }
+
+  onFriendRemoved(callback: (data: FriendRemovedData) => void) {
+    this.addEventListener('friend-removed', callback);
+  }
+
 
   // ========== STATUS QUERY METHODS ==========
   checkOnlineStatus(userIds: string[]) {
@@ -439,28 +450,8 @@ onOnlineFriendsResponse(callback: (data: OnlineFriendsResponseData) => void) {
 
 
 
-  // Friend Request Listeners
-  onFriendRequestReceived(callback: (data: FriendRequestReceivedData) => void) {
-    this.addEventListener('new-friend-request', callback);
-  }
 
-
-   onFriendRequestWithdrawn(callback: (data: FriendRequestWithdrawnData) => void) {
-    this.addEventListener('new-friend-request', callback);
-  }
-
-  onFriendRequestSent(callback: (data: FriendRequestSentData) => void) {
-    this.addEventListener('friend-request-sent', callback);
-  }
-
-  onFriendRequestAccepted(callback: (data: FriendRequestAcceptedData) => void) {
-    this.addEventListener('friend-request-accepted', callback);
-  }
-
-  onFriendRequestRejected(callback: (data: FriendRequestRejectedData) => void) {
-    this.addEventListener('friend-request-rejected', callback);
-  }
-
+  
   // Connection Events
   onConnect(callback: () => void) {
     this.socket?.on("connect", callback);

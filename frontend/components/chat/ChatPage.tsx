@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import useChatLogic from "@/hooks/useChatLogic";
 import Sidebar from "./SideBar";
@@ -39,8 +39,6 @@ const ChatPage: React.FC = () => {
     loadMessages,
     setMessages,
     setDecryptedMessages,
-    decryptSingleMedia,
-    decryptMessage,
     resetUnreadCount,
     markMessagesAsRead,
     triggerTyping,
@@ -49,6 +47,15 @@ const ChatPage: React.FC = () => {
     userId: currentUser?._id || "",
     onError: (err) => console.error(err),
   });
+
+  // ✅ REMOVED: Local decrypted media state - useChatLogic handles it
+  // ✅ REMOVED: Auto-decryption useEffect hooks - useChatLogic handles it
+
+  // Filter out temp messages for display (optional)
+  const displayMessages = useMemo(() => 
+    messages.filter(msg => !msg.isFailed), // Show all except failed messages
+    [messages]
+  );
 
   // Keep a ref of the selected user for event handlers
   const selectedUserRef = useRef(selectedUser);
@@ -160,17 +167,6 @@ const ChatPage: React.FC = () => {
     });
   };
 
-  // Handle media decryption
-  const handleDecryptMedia = async (messageId: string, mediaIndex: number) => {
-    if (!decryptSingleMedia) return undefined;
-    try {
-      return await decryptSingleMedia(messageId, mediaIndex);
-    } catch (error) {
-      console.error("Failed to decrypt media:", error);
-      return undefined;
-    }
-  };
-
   // Initial load from URL
   useEffect(() => {
     if (initialLoad.current && currentUser?._id && userIdParam && users.length > 0) {
@@ -257,14 +253,13 @@ const ChatPage: React.FC = () => {
               <>
                 <ChatWindow
                   selectedUser={users.find(u => u._id === selectedUser?._id) || selectedUser}
-                  messages={messages}
+                  messages={messages} // Use all messages including temp
                   currentUserId={currentUser._id}
                   decryptedMessages={decryptedMessages}
-                  decryptedMedia={decryptedMedia}
-                  onDecryptMessage={decryptMessage}
-                  onDecryptMedia={handleDecryptMedia}
+                  decryptedMedia={decryptedMedia} // Use directly from useChatLogic
                   isTyping={isUserTypingInChat()}
                   onClose={handleCloseChat}
+                  isLoading={false}
                 />
                 <InputArea
                   onSendMessage={handleSendMessage}
@@ -279,10 +274,9 @@ const ChatPage: React.FC = () => {
                 currentUserId={currentUser._id}
                 decryptedMessages={{}}
                 decryptedMedia={{}}
-                onDecryptMessage={decryptMessage}
-                onDecryptMedia={handleDecryptMedia}
                 isTyping={false}
                 onClose={handleCloseChat}
+                isLoading={false}
               />
             )}
           </div>

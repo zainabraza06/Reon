@@ -1,3 +1,7 @@
+
+
+
+
 import mongoose from "mongoose";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
@@ -5,7 +9,7 @@ import { getOnlineUsers, emitToUser } from "../lib/socket.js";
 import { GridFSBucket } from 'mongodb';
 
 // Save encrypted file to GridFS
-const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileType = "document") => {
+const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileType = "document", encryptionIV = null) => {
   return new Promise((resolve, reject) => {
     try {
       const safeName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -20,25 +24,34 @@ const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileTy
         bucketName: 'encryptedFiles'
       });
       
-      const uploadStream = bucket.openUploadStream(fileName, {
-        metadata: {
-          originalName: originalName,
-          type: fileType,
-          extension: extension,
-          isEncrypted: true,
-          uploadedAt: new Date(),
-          isTemp: false
-        }
-      });
+      // Prepare metadata with encryption IV
+      const metadata = {
+        originalName: originalName,
+        type: fileType,
+        extension: extension,
+        isEncrypted: true,
+        uploadedAt: new Date(),
+        isTemp: false
+      };
+      
+      // Store IV in metadata if provided
+      if (encryptionIV) {
+        metadata.encryptionIV = encryptionIV;
+      }
+      
+      const uploadStream = bucket.openUploadStream(fileName, { metadata });
       
       uploadStream.end(fileBuffer);
       
       uploadStream.on('finish', () => {
         console.log(`✅ Encrypted file saved to GridFS: ${uploadStream.id}`);
+        console.log(`🔐 Encryption IV stored: ${encryptionIV ? 'Yes' : 'No'}`);
         resolve({ 
           url: `/api/messages/media/${uploadStream.id}`,
+          downloadUrl: `/api/messages/download/${uploadStream.id}`,
           fileId: uploadStream.id.toString(),
-          fileName: fileName
+          fileName: fileName,
+          metadata: metadata
         });
       });
       
@@ -49,7 +62,6 @@ const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileTy
     }
   });
 };
-
 // Helper function to get default extension
 function getDefaultExtension(fileType) {
   switch (fileType) {
@@ -62,6 +74,7 @@ function getDefaultExtension(fileType) {
 }
 
 // Serve media files for display (img/video tags)
+
 export const serveMediaFile = async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -84,26 +97,76 @@ export const serveMediaFile = async (req, res) => {
     // Set CORS headers for media display
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, X-Encryption-IV, X-File-Name');
     
     // Determine content type
     let contentType = 'application/octet-stream';
+    const originalName = file.metadata?.originalName || '';
+    
+    // Get extension from metadata or original filename
+    let extension = '';
+    if (file.metadata?.extension) {
+      extension = file.metadata.extension;
+    } else if (originalName.includes('.')) {
+      extension = originalName.substring(originalName.lastIndexOf('.'));
+    }
+    
+    // Set content type based on file type and extension
     switch (file.metadata?.type) {
       case 'image':
-        contentType = 'image/jpeg';
+        if (extension.toLowerCase() === '.png') {
+          contentType = 'image/png';
+        } else if (extension.toLowerCase() === '.gif') {
+          contentType = 'image/gif';
+        } else if (extension.toLowerCase() === '.webp') {
+          contentType = 'image/webp';
+        } else if (extension.toLowerCase() === '.svg') {
+          contentType = 'image/svg+xml';
+        } else if (extension.toLowerCase() === '.bmp') {
+          contentType = 'image/bmp';
+        } else {
+          contentType = 'image/jpeg';
+        }
         break;
       case 'video':
-        contentType = 'video/mp4';
+        if (extension.toLowerCase() === '.webm') {
+          contentType = 'video/webm';
+        } else if (extension.toLowerCase() === '.avi') {
+          contentType = 'video/x-msvideo';
+        } else if (extension.toLowerCase() === '.mov') {
+          contentType = 'video/quicktime';
+        } else {
+          contentType = 'video/mp4';
+        }
         break;
       case 'audio':
-        contentType = 'audio/mpeg';
+        if (extension.toLowerCase() === '.wav') {
+          contentType = 'audio/wav';
+        } else if (extension.toLowerCase() === '.ogg') {
+          contentType = 'audio/ogg';
+        } else if (extension.toLowerCase() === '.m4a') {
+          contentType = 'audio/mp4';
+        } else {
+          contentType = 'audio/mpeg';
+        }
         break;
       default:
         contentType = 'application/octet-stream';
     }
     
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(originalName)}"`);
+    
+    // Add encryption IV header if available
+    if (file.metadata?.encryptionIV) {
+      res.setHeader('X-Encryption-IV', file.metadata.encryptionIV);
+      console.log(`🔐 Serving file with IV header: ${fileId}`);
+    }
+    
+    // Add original filename header
+    if (originalName) {
+      res.setHeader('X-File-Name', encodeURIComponent(originalName));
+    }
     
     const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(fileId));
     downloadStream.pipe(res);
@@ -120,6 +183,7 @@ export const serveMediaFile = async (req, res) => {
 };
 
 // Download encrypted files (for documents)
+
 export const downloadEncryptedFile = async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -142,7 +206,7 @@ export const downloadEncryptedFile = async (req, res) => {
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Encrypted');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Encrypted, X-Encryption-IV, X-File-Name');
     
     // Determine content type and extension
     let contentType = 'application/octet-stream';
@@ -227,8 +291,18 @@ export const downloadEncryptedFile = async (req, res) => {
     fileName = fileName.replace(/[<>:"/\\|?*]/g, '_');
     
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
     res.setHeader('X-Encrypted', 'true');
+    
+    // Add encryption IV header if available
+    if (file.metadata?.encryptionIV) {
+      res.setHeader('X-Encryption-IV', file.metadata.encryptionIV);
+    }
+    
+    // Add original filename header
+    if (originalName) {
+      res.setHeader('X-File-Name', encodeURIComponent(originalName));
+    }
     
     const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(fileId));
     downloadStream.pipe(res);
@@ -244,15 +318,30 @@ export const downloadEncryptedFile = async (req, res) => {
   }
 };
 
+
 export const sendMessage = async (req, res) => {
   try {
     console.log("📨 Received message request");
     console.log("📁 Files received:", req.files?.length || 0);
 
+    // Get current user ID from auth middleware
+    const currentUserId = req.user?._id?.toString();
+    if (!currentUserId) {
+      return res.status(401).json({ message: "Unauthorized: User not authenticated" });
+    }
+
     // Parse message data
     let messageData = {};
     try {
       messageData = JSON.parse(req.body.data || '{}');
+      console.log("📊 Parsed message data:", {
+        sender: messageData.sender,
+        receiver: messageData.receiver,
+        contentType: messageData.contentType,
+        ciphertextLength: messageData.ciphertext?.length || 0,
+        hasEncryptedKey: !!messageData.encryptedKey,
+        hasSenderEncryptedKey: !!messageData.senderEncryptedKey
+      });
     } catch (parseError) {
       console.error("❌ Failed to parse message data:", parseError);
       return res.status(400).json({ message: "Invalid message data format" });
@@ -272,9 +361,6 @@ export const sendMessage = async (req, res) => {
     const missingFields = [];
     if (!sender) missingFields.push("sender");
     if (!receiver) missingFields.push("receiver");
-    if (!ciphertext) missingFields.push("ciphertext");
-    if (!encryptedKey) missingFields.push("encryptedKey");
-    if (!senderEncryptedKey) missingFields.push("senderEncryptedKey");
     
     if (missingFields.length > 0) {
       console.error("❌ Missing required fields:", missingFields);
@@ -283,54 +369,110 @@ export const sendMessage = async (req, res) => {
       });
     }
 
+    // Ensure the current user is either the sender or receiver
+    const isSender = currentUserId === sender;
+    const isReceiver = currentUserId === receiver;
+    
+    if (!isSender && !isReceiver) {
+      console.error("❌ User not authorized for this message:", {
+        currentUser: currentUserId,
+        sender,
+        receiver
+      });
+      return res.status(403).json({ 
+        message: "You are not authorized to send this message" 
+      });
+    }
+
+    // Check message type
+    const hasText = ciphertext && ciphertext.trim() !== '';
+    const hasMedia = req.files && req.files.length > 0;
+    
+    console.log(`🔍 Message type: ${hasText ? 'TEXT' : ''}${hasMedia ? 'MEDIA' : ''}`);
+
+    // Validate text messages
+    if (hasText) {
+      if (!encryptedKey || !senderEncryptedKey) {
+        console.error("❌ Text message missing encryption keys");
+        return res.status(400).json({ 
+          message: "Text messages require both encryptedKey and senderEncryptedKey" 
+        });
+      }
+    }
+
+    // Validate media messages
+    if (hasMedia) {
+      if (!req.body.mediaEncryptedKey || !req.body.mediaSenderEncryptedKey) {
+        console.error("❌ Media message missing encryption keys");
+        return res.status(400).json({ 
+          message: "Media messages require both mediaEncryptedKey and mediaSenderEncryptedKey" 
+        });
+      }
+      
+      // Ensure only one file is sent
+      if (req.files.length > 1) {
+        console.error("❌ Multiple files received in single request");
+        return res.status(400).json({ 
+          message: "Only one media file allowed per message" 
+        });
+      }
+    }
+
     // Validate ObjectIds
     if (!mongoose.Types.ObjectId.isValid(sender) || !mongoose.Types.ObjectId.isValid(receiver)) {
       console.error("❌ Invalid ObjectId:", { sender, receiver });
       return res.status(400).json({ message: "Invalid user ID format" });
     }
 
-    // ---- HANDLE ENCRYPTED MEDIA FILES ----
+    // ---- HANDLE SINGLE MEDIA FILE ----
     const mediaArray = [];
-    if (req.files && req.files.length > 0) {
-      console.log(`📦 Processing ${req.files.length} encrypted files...`);
+    if (hasMedia) {
+      const file = req.files[0]; // Only one file
+      console.log(`📦 Processing media file: ${file.originalname || 'unnamed'}, size: ${file.size} bytes`);
       
-      for (let i = 0; i < req.files.length; i++) {
-        const file = req.files[i];
+      try {
+        // Get metadata from form data
+        const fileType = req.body.mediaType || contentType || "document";
+        const mediaEncryptedKey = req.body.mediaEncryptedKey;
+        const mediaSenderEncryptedKey = req.body.mediaSenderEncryptedKey;
+        const originalName = req.body.originalName || file.originalname || `file_${Date.now()}`;
+        const encryptionIV = req.body.encryptionIV || null;
+
+        console.log(`📁 File details: ${originalName}, type: ${fileType}`);
         
-        try {
-          // Get metadata from form data
-          const fileType = req.body[`mediaType${i}`] || "document";
-          const mediaEncryptedKey = req.body[`mediaEncryptedKey${i}`] || "";
-          const mediaSenderEncryptedKey = req.body[`mediaSenderEncryptedKey${i}`] || "";
-          const originalName = req.body[`originalName${i}`] || `file_${i}`;
-
-          console.log(`📁 File ${i + 1}: ${originalName}, type: ${fileType}, size: ${file.buffer.length} bytes`);
-
-          // Save encrypted blob to GridFS
-          const savedFile = await saveEncryptedFileToGridFS(
-            file.buffer, 
-            originalName, 
-            i, 
-            fileType
-          );
-
-          mediaArray.push({
-            url: savedFile.url,
-            type: fileType,
-            encryptedKey: mediaEncryptedKey,
-            senderEncryptedKey: mediaSenderEncryptedKey,
-            originalName: originalName,
-            fileSize: file.buffer.length,
-            isEncrypted: true,
-            fileId: savedFile.fileId
-          });
-
-          console.log(`✅ Encrypted file ${i + 1} saved to GridFS`);
-
-        } catch (fileError) {
-          console.error(`❌ Error processing encrypted file ${i}:`, fileError);
-          continue;
+        if (encryptionIV) {
+          console.log(`🔐 Has encryption IV: ${encryptionIV.substring(0, 20)}...`);
         }
+
+        // Save encrypted blob to GridFS
+        const savedFile = await saveEncryptedFileToGridFS(
+          file.buffer, 
+          originalName, 
+          0, // Single file, index 0
+          fileType,
+          encryptionIV
+        );
+
+        mediaArray.push({
+          url: `/api/messages/media/${savedFile.fileId}`,
+          downloadUrl: `/api/messages/download/${savedFile.fileId}`,
+          type: fileType,
+          fileName: originalName,
+          encryptedKey: mediaEncryptedKey,      // For receiver
+          senderEncryptedKey: mediaSenderEncryptedKey, // For sender
+          encryptionIV: encryptionIV,
+          fileSize: file.size,
+          isEncrypted: true,
+          fileId: savedFile.fileId
+        });
+
+        console.log(`✅ Media file saved to GridFS: ${savedFile.fileId}`);
+
+      } catch (fileError) {
+        console.error("❌ Error processing media file:", fileError);
+        return res.status(500).json({ 
+          message: `Failed to process media file: ${fileError.message}` 
+        });
       }
     }
 
@@ -341,53 +483,86 @@ export const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Receiver not found" });
     }
 
+    // Determine final contentType
+    let finalContentType = contentType;
+    let finalCiphertext = ciphertext || "";
+    let finalEncryptedKey = encryptedKey || "";
+    let finalSenderEncryptedKey = senderEncryptedKey || "";
+
+    // For media-only messages
+    if (hasMedia && !hasText) {
+      finalContentType = mediaArray[0]?.type || "document";
+      finalCiphertext = "";
+      finalEncryptedKey = "";
+      finalSenderEncryptedKey = "";
+    }
+
     // Create message
     const msg = await Message.create({
       sender,
       receiver,
-      ciphertext,
+      ciphertext: finalCiphertext,
       type,
-      contentType,
-      encryptedKey: encryptedKey,
-      senderEncryptedKey: senderEncryptedKey,
+      contentType: finalContentType,
+      encryptedKey: finalEncryptedKey,          // Receiver's encrypted key
+      senderEncryptedKey: finalSenderEncryptedKey, // Sender's encrypted key
       media: mediaArray
     });
 
-    console.log("✅ Private message created:", msg._id);
+    console.log(`✅ Message created: ${msg._id}`);
+    console.log(`   Type: ${msg.contentType}`);
+    console.log(`   Has Text: ${msg.ciphertext ? 'Yes' : 'No'}`);
+    console.log(`   Media: ${msg.media.length > 0 ? 'Yes' : 'No'}`);
 
-    // Convert IDs to strings for socket operations
-    const receiverStr = receiver.toString();
-    const senderStr = sender.toString();
-    const onlineUsers = getOnlineUsers();
-    
-    // Prepare response data
+    // Helper function to get appropriate encrypted key
+    const getEncryptedKeyForUser = (message, userId) => {
+      const isSender = message.sender.toString() === userId;
+      
+      // For text messages
+      if (message.ciphertext && message.ciphertext.trim() !== '') {
+        return isSender ? message.senderEncryptedKey : message.encryptedKey;
+      }
+      
+      // For media messages
+      if (message.media && message.media.length > 0) {
+        const media = message.media[0];
+        return isSender ? media.senderEncryptedKey : media.encryptedKey;
+      }
+      
+      return "";
+    };
+
+    // Helper function to format media for user
+    const formatMediaForUser = (mediaArray, userId) => {
+      return mediaArray.map(media => {
+        const isSender = msg.sender.toString() === userId;
+        return {
+          url: media.url,
+          downloadUrl: media.downloadUrl,
+          type: media.type,
+          fileName: media.fileName,
+          encryptedKey: isSender ? media.senderEncryptedKey : media.encryptedKey,
+          senderEncryptedKey: media.senderEncryptedKey,
+          encryptionIV: media.encryptionIV,
+          fileSize: media.fileSize,
+          isEncrypted: media.isEncrypted,
+          fileId: media.fileId
+        };
+      });
+    };
+
+    // Prepare response data for the current user
     const responseData = {
       _id: msg._id,
-      sender: senderStr,
-      receiver: receiverStr,
+      sender: msg.sender.toString(),
+      receiver: msg.receiver.toString(),
       ciphertext: msg.ciphertext,
       type: msg.type,
       contentType: msg.contentType,
-      encryptedKey: msg.encryptedKey,
-      senderEncryptedKey: msg.senderEncryptedKey,
-      media: msg.media,
-      sentAt: msg.sentAt,
-      delivered: false,
-      deliveredAt: null,
-      read: false,
-      status: 'sent' // Default status
-    };
-
-    // Payload for the RECEIVER — they should get THEIR encryptedKey
-    const receiverPayload = {
-      _id: msg._id,
-      sender: senderStr,
-      receiver: receiverStr,
-      ciphertext: msg.ciphertext,
-      type: msg.type,
-      contentType: msg.contentType,
-      encryptedKey: msg.encryptedKey,          // receiver's key
-      media: msg.media,
+      // 🔥 Return ONLY the encrypted key for the current user
+      encryptedKey: getEncryptedKeyForUser(msg, currentUserId),
+      // Still include media with appropriate keys
+      media: formatMediaForUser(msg.media, currentUserId),
       sentAt: msg.sentAt,
       delivered: false,
       deliveredAt: null,
@@ -395,33 +570,17 @@ export const sendMessage = async (req, res) => {
       status: 'sent'
     };
 
-    // Payload for the SENDER — they should get THEIR OWN senderEncryptedKey
-    const senderPayload = {
-      _id: msg._id,
-      sender: senderStr,
-      receiver: receiverStr,
-      ciphertext: msg.ciphertext,
-      type: msg.type,
-      contentType: msg.contentType,
-      encryptedKey: msg.senderEncryptedKey,     // sender's key
-      media: msg.media,
-      sentAt: msg.sentAt,
-      delivered: false,
-      deliveredAt: null,
-      read: false,
-      status: 'sent'
-    };
+    console.log(`🔑 Response key for user ${currentUserId} (isSender: ${isSender}):`, 
+      responseData.encryptedKey?.substring(0, 64) + '...');
 
-    // ---- REAL-TIME PRIVATE EMISSIONS ----
-    console.log("Online users:", onlineUsers);
-    
-    // Check if receiver is online
-    const isReceiverOnline = onlineUsers.includes(receiverStr);
+    // ---- REAL-TIME EMISSIONS ----
+    const onlineUsers = getOnlineUsers();
+    const isReceiverOnline = onlineUsers.includes(receiver.toString());
     
     if (isReceiverOnline) {
-        console.log(`✅ Receiver ${receiverStr} is online`);
+        console.log(`✅ Receiver ${receiver} is online - marking as delivered`);
         
-        // Mark as delivered immediately since receiver is online
+        // Mark as delivered
         await Message.findByIdAndUpdate(
             msg._id, 
             { 
@@ -432,41 +591,85 @@ export const sendMessage = async (req, res) => {
             { new: true }
         );
         
-        // Update payloads with delivered status
+        // Update response data
         responseData.delivered = true;
         responseData.deliveredAt = new Date();
         responseData.status = 'delivered';
         
-        receiverPayload.delivered = true;
-        receiverPayload.deliveredAt = new Date();
-        receiverPayload.status = 'delivered';
+        // Prepare payload for the RECEIVER
+        const receiverPayload = {
+          _id: msg._id,
+          sender: msg.sender.toString(),
+          receiver: msg.receiver.toString(),
+          ciphertext: msg.ciphertext,
+          type: msg.type,
+          contentType: msg.contentType,
+          encryptedKey: getEncryptedKeyForUser(msg, receiver), // Receiver's key
+          media: formatMediaForUser(msg.media, receiver),
+          sentAt: msg.sentAt,
+          delivered: true,
+          deliveredAt: new Date(),
+          read: false,
+          status: 'delivered'
+        };
         
-        senderPayload.delivered = true;
-        senderPayload.deliveredAt = new Date();
-        senderPayload.status = 'delivered';
+        // Prepare payload for the SENDER
+        const senderPayload = {
+          _id: msg._id,
+          sender: msg.sender.toString(),
+          receiver: msg.receiver.toString(),
+          ciphertext: msg.ciphertext,
+          type: msg.type,
+          contentType: msg.contentType,
+          encryptedKey: getEncryptedKeyForUser(msg, sender), // Sender's key
+          media: formatMediaForUser(msg.media, sender),
+          sentAt: msg.sentAt,
+          delivered: true,
+          deliveredAt: new Date(),
+          read: false,
+          status: 'delivered'
+        };
         
-        // Emit to receiver (they are online)
-        console.log(`📡 Emitting new-message to receiver: ${receiverStr}`);
-        emitToUser(receiverStr, "new-message", receiverPayload);
+        // Emit to receiver
+        emitToUser(receiver.toString(), "new-message", receiverPayload);
         
-        // Emit SINGLE status to sender - message is sent AND delivered
-        console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
-        emitToUser(senderStr, "message-sent", senderPayload);
+        // Emit to sender (only if sender is not the current user who just sent)
+        if (sender.toString() !== currentUserId) {
+          emitToUser(sender.toString(), "message-sent", senderPayload);
+        }
         
     } else {
-        console.log(`📴 Receiver ${receiverStr} is offline`);
+        console.log(`📴 Receiver ${receiver} is offline`);
         
-        // Message is sent but not delivered
-        responseData.status = 'sent';
-        senderPayload.status = 'sent';
-        receiverPayload.status = 'sent';
-        
-        // Emit SINGLE status to sender - message is sent but NOT delivered
-        console.log(`📡 Emitting message-sent to sender: ${senderStr}`);
-        emitToUser(senderStr, "message-sent", senderPayload);
+        // Only emit to sender if sender is not the current user
+        if (sender.toString() !== currentUserId) {
+          const senderPayload = {
+            _id: msg._id,
+            sender: msg.sender.toString(),
+            receiver: msg.receiver.toString(),
+            ciphertext: msg.ciphertext,
+            type: msg.type,
+            contentType: msg.contentType,
+            encryptedKey: getEncryptedKeyForUser(msg, sender),
+            media: formatMediaForUser(msg.media, sender),
+            sentAt: msg.sentAt,
+            delivered: false,
+            deliveredAt: null,
+            read: false,
+            status: 'sent'
+          };
+          
+          emitToUser(sender.toString(), "message-sent", senderPayload);
+        }
     }
-  
-    // Return response
+
+    console.log("📤 Response data:", {
+      messageId: responseData._id,
+      userType: isSender ? 'sender' : 'receiver',
+      keyLength: responseData.encryptedKey?.length || 0
+    });
+  console.log(responseData);
+    // Return response to the current user
     res.status(201).json({
       success: true,
       message: "Message sent successfully",
@@ -476,19 +679,20 @@ export const sendMessage = async (req, res) => {
   } catch (err) {
     console.error("❌ sendMessage error:", err);
     
-    // Emit error to sender
-    if (req.body.data) {
+    // Emit error to sender if the current user is the sender
+    if (req.body.data && req.user?._id) {
       try {
         const data = JSON.parse(req.body.data);
-        if (data.sender) {
+        const currentUserId = req.user._id.toString();
+        
+        if (data.sender && data.sender === currentUserId) {
           const errorPayload = { 
             error: "Failed to send message",
             timestamp: new Date(),
             messageId: data.messageId || null
           };
           
-          console.log(`📡 Emitting message-error to sender: ${data.sender}`);
-          emitToUser(data.sender.toString(), "message-error", errorPayload);
+          emitToUser(currentUserId, "message-error", errorPayload);
         }
       } catch (e) {
         console.error("Could not parse data for error emission:", e);
@@ -502,6 +706,110 @@ export const sendMessage = async (req, res) => {
     });
   }
 };
+export const getMessages = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    const { receiverId } = req.params;
+
+    // Validate receiverId
+    if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
+      return res.status(400).json({ message: "Invalid receiver ID" });
+    }
+
+    // Query for private messages
+    const messages = await Message.find({
+      $or: [
+        { sender: currentUserId, receiver: receiverId },
+        { sender: receiverId, receiver: currentUserId }
+      ]
+    })
+    .populate('sender', 'username fullName profilePic email')
+    .populate('receiver', 'username fullName profilePic email')
+    .sort({ sentAt: 1 });
+
+    console.log(`📥 Found ${messages.length} messages between users`);
+
+    // Normalize messages
+    const normalizedMessages = messages.map(msg => {
+      // Get correct encrypted key for TEXT
+      const textEncryptedKey = resolveEncryptedKey(msg, currentUserId);
+
+      // Build response with ONLY ONE encryptedKey field
+      const response = {
+        _id: msg._id,
+        sender: msg.sender._id,
+        receiver: msg.receiver._id,
+        ciphertext: msg.ciphertext,
+        type: msg.type,
+        contentType: msg.contentType,
+        encryptedKey: textEncryptedKey, // ← ONLY ONE FIELD, resolved by function
+        media: [], // Media will be processed below
+        sentAt: msg.sentAt,
+        delivered: msg.delivered || false,
+        read: msg.read || false,
+        status: msg.delivered ? 'delivered' : 'sent'
+      };
+
+      // Process media files
+      if (msg.media && msg.media.length > 0) {
+        response.media = msg.media.map(media => {
+          // Get correct encrypted key for MEDIA (same logic)
+          const isCurrentUserSender = String(msg.sender._id) === String(currentUserId);
+          const mediaEncryptedKey = isCurrentUserSender
+            ? media.senderEncryptedKey
+            : media.encryptedKey;
+
+          return {
+            // URLs
+            url: media.url,
+            downloadUrl: media.downloadUrl || media.url,
+            
+            // File info
+            type: media.type,
+            fileName: media.fileName || media.originalName,
+            fileSize: media.fileSize,
+            originalName: media.originalName,
+            
+            // Encryption - ONLY ONE encryptedKey field here too
+            encryptedKey: mediaEncryptedKey, // ← Media's encrypted key
+            encryptionIV: media.encryptionIV, // Required for decryption
+            
+            // Metadata
+            isEncrypted: media.isEncrypted !== false,
+            fileId: media.fileId
+          };
+        });
+        
+        console.log(`   📁 Message ${msg._id} has ${msg.media.length} media files`);
+      }
+     console.log("response", response);
+      return response;
+    });
+
+    console.log(`✅ Successfully normalized ${normalizedMessages.length} messages`);
+    
+    return res.json({
+      success: true,
+      data: normalizedMessages
+    });
+
+  } catch (err) {
+    console.error("❌ getMessages error:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error while fetching messages",
+      error: err.message 
+    });
+  }
+};
+
+const resolveEncryptedKey = (msg, currentUserId) => {
+  return String(msg.sender._id) === String(currentUserId)
+    ? msg.senderEncryptedKey
+    : msg.encryptedKey;
+};
+
+
 // Additional real-time endpoints
 export const markMessageAsRead = async (req, res) => {
   try {
@@ -550,87 +858,6 @@ export const markMessageAsRead = async (req, res) => {
   } catch (error) {
     console.error("Error marking message as read:", error);
     res.status(500).json({ message: "Server error" });
-  }
-};
-
-
-const resolveEncryptedKey = (msg, currentUserId) => {
-  return String(msg.sender._id) === String(currentUserId)
-    ? msg.senderEncryptedKey
-    : msg.encryptedKey;
-};
-
-export const getMessages = async (req, res) => {
-  try {
-    const currentUserId = req.user._id;
-    const { receiverId } = req.params;
-
-    // Validate receiverId
-    if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
-      return res.status(400).json({ message: "Invalid receiver ID" });
-    }
-
-    // Validate user IDs
-    if (!mongoose.Types.ObjectId.isValid(receiverId)) {
-      return res.status(400).json({ message: "Invalid user ID" });
-    }
-
-    // Query for private messages
-    const messages = await Message.find({
-      $or: [
-        { sender: currentUserId, receiver: receiverId },
-        { sender: receiverId, receiver: currentUserId }
-      ]
-    })
-    .populate('sender', 'username fullName profilePic email')
-    .populate('receiver', 'username fullName profilePic email')
-    .sort({ sentAt: 1 });
-
-    // Normalize to string IDs with GridFS URLs
-    const normalizedMessages = messages.map(msg => {
-      const encryptedKeyForUser = resolveEncryptedKey(msg, currentUserId);
-
-      return {
-        _id: msg._id,
-        sender: msg.sender._id,
-        receiver: msg.receiver._id,
-        ciphertext: msg.ciphertext,
-        type: msg.type,
-        contentType: msg.contentType,
-        encryptedKey: encryptedKeyForUser,
-        senderEncryptedKey: msg.senderEncryptedKey,
-        media: msg.media ? msg.media.map(media => {
-          // Determine correct encrypted key for this user
-          const mediaEncryptedKey = String(msg.sender._id) === String(currentUserId)
-            ? media.senderEncryptedKey
-            : media.encryptedKey;
-
-          return {
-            url: media.url,
-            type: media.type,
-            encryptedKey: mediaEncryptedKey,
-            senderEncryptedKey: media.senderEncryptedKey,
-            originalName: media.originalName,
-            fileSize: media.fileSize,
-            isEncrypted: media.isEncrypted !== false,
-            fileId: media.fileId
-          };
-        }) : [],
-        sentAt: msg.sentAt,
-        delivered: msg.delivered,
-        read: msg.read
-      };
-    });
-
-    return res.json(normalizedMessages);
-
-  } catch (err) {
-    console.error("getMessages error:", err);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error while fetching messages",
-      error: err.message 
-    });
   }
 };
 

@@ -1,6 +1,4 @@
-// ----------------------------
-// Chat UI Message (local only)
-// ----------------------------
+
 export interface ChatMessage {
   text: string;
   type: "user" | "other";
@@ -11,73 +9,11 @@ export interface ChatMessage {
   currentText?: string;
 }
 
-// types/index.ts
 
-// Base interface for search results
 export interface SearchedUserBase {
   _id: string;
   type: 'user' ;
   profilePic?: string;
-}
-
-// Update your types file
-
-// Base encrypted content structure
-export interface EncryptedContent {
-  ciphertext?: string;
-  encryptedKey?: string;
-  senderEncryptedKey?: string;
-  media?: Array<{
-    url: string;
-    type: string;
-    encryptedKey?: string;
-    senderEncryptedKey?: string;
-    fileName?: string;
-    fileSize?: number;
-  }>;
-  type?: string;
-}
-
-export interface MessageDeliveredEvent {
-  messageId: string;
-  receiverId: string; // The receiver of the message
-}
-
-// When a message is seen/read
-export interface MessageSeenEvent {
-  messageId: string;
-  readerId: string; // The person who read the message
-  senderId: string; // The sender of the original message
-}
-
-// For conversation read (batch)
-export interface ConversationReadEvent {
-  senderId: string;
-  readerId: string;
-  readAt: string;
-  messageCount: number;
-}
-
-// New message event
-export interface NewMessageEvent {
-  messageId: string;
-  sender: string;
-  receiver: string;
-  content: EncryptedContent | string;
-  messageType: string;
-  sentAt: string;
-  status: string;
-}
-
-// Message sent confirmation
-export interface MessageSentEvent {
-  messageId: string;
-  sender: string;
-  receiver: string;
-  content: EncryptedContent | string;
-  messageType: string;
-  sentAt: string;
-
 }
 
 
@@ -128,27 +64,19 @@ export interface TypingEvent {
   from: string;
 }
 
-
-
-// ----------------------------
-// Dashboard counters
-// ----------------------------
 export interface CounterState {
   users: number;
   messages: number;
 }
 
-// ----------------------------
-// Flash messages (alerts)
-// ----------------------------
+
 export interface FlashMessage {
   message: string;
   type: "success" | "error" | "info";
 }
 
-// ----------------------------
-// User model used everywhere
-// ----------------------------
+
+
 export interface User {
   _id: string;
   username?: string;
@@ -178,39 +106,15 @@ export interface User {
 }
 
 export type ChatItem =User;
- 
-export interface NotificationCountEvent {
-  unreadCount: number;
-}
-
-// ----------------------------
-// Searched user (public view)
-// ----------------------------
 
 
 
-// ----------------------------
-// Friend (minimal)
-// ----------------------------
 export interface Friend {
   _id: string;
   fullName: string;
   email?: string;
 }
 
-// ----------------------------
-// Chat summary
-// ----------------------------
-export interface Chat {
-  _id: string;
-  participants: string[];
-  lastMessage?: string;
-  updatedAt?: string;
-}
-
-// ----------------------------
-// Socket events
-// ----------------------------
 
 
 export interface OnlineStatusEvent {
@@ -219,9 +123,6 @@ export interface OnlineStatusEvent {
   lastSeen?: string;
 }
 
-// ----------------------------
-// Auth context
-// ----------------------------
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -297,59 +198,118 @@ export interface PendingRequestsCountData {
 }
 
 
-
+// Media interfaces
 export interface MediaForUI {
   url: string | File | Blob;
-  type: "image" | "video" | "audio" | "document" | "blob"; // Add "blob" here
-  encryptedKey?: string;
-  senderEncryptedKey?: string;
+  type: "image" | "video" | "audio" | "document" | "blob";
   fileName?: string;
   fileSize?: number;
-    isVoiceMessage?:boolean;
-    duration?:number;
+  isVoiceMessage?: boolean;
+  duration?: number;
+  isEncrypted?: boolean;
+  
+  // Encryption fields
+  encryptedKey?: string;
+  senderEncryptedKey?: string;
+  encryptionIV?: string; // Required for decryption
+  
+  // Backend fields
+  downloadUrl?: string; // For download endpoint: /api/messages/download/{id}
+  originalName?: string; // Original filename
+  fileId?: string; // GridFS file ID
+  
+  // For UI display/URL generation
+  _previewUrl?: string; // Temporary blob URL for preview
 }
 
-
-export interface DecryptedMediaForUI extends MediaForUI {
+export interface DecryptedMediaForUI {
+  // Core media data
+  url: Blob; // Always Blob after decryption
+  type: "image" | "video" | "audio" | "document" | "blob";
+  fileName: string;
+  fileSize: number;
+  encryptionIV?: string;
+  
   // Internal decryption state
   _isDecrypted: boolean;
   _canPreview: boolean;
   _requiresPlayer?: boolean;
-  _mimeType?: string;
-  _previewUrl?: string; // Object URL for preview
+  _mimeType: string;
+  _previewUrl: string; // Object URL for preview
   _error?: string;
+  _encryptedUrl?: string; // Original encrypted URL for reference
 }
 
 export interface MediaForBackend {
-  url: string;
-  type: "image" | "video" | "audio" | "document" | "blob"; // Same type
-  encryptedKey?: string;
-  senderEncryptedKey?: string;
+  // What backend stores and returns
+  url: string; // Always string URL: /api/messages/media/{id}
+  downloadUrl: string; // Download URL: /api/messages/download/{id}
+  type: "image" | "video" | "audio" | "document";
+  fileName: string;
+  fileSize: number;
+  originalName: string;
+  fileId: string;
+  isEncrypted: boolean;
+  
+  // Encryption data
+  encryptedKey: string; // For recipient
+  senderEncryptedKey: string; // For sender
+  encryptionIV: string; // Base64 encoded IV
 }
 
+// Message interfaces
 export interface BaseMessage {
   _id: string;
   sender: string;
-  type: "preKey" | "ratcheted";
-  ciphertext?: string;
-  text?: string;
-  media?: MediaForUI[]; // Use MediaForUI for BaseMessage
+  receiver?: string; // Make optional in BaseMessage
+  ciphertext: string; // Encrypted text (base64)
+  type: "ratcheted"; // Your backend only uses "ratcheted"
+  contentType: "text" | "image" | "audio" | "video" | "document"; // From backend
+  
+  // Encrypted keys (from backend)
+  encryptedKey: string; // Text encryption key for current user
+  senderEncryptedKey?: string; // Sender's copy of text key
+  
+  // Media
+  media?: MediaForUI[]; // For UI display
+  mediaBackend?: MediaForBackend[]; // What backend actually returns
+  
+  // Timestamps
   sentAt: string;
-  delivered?: boolean;
-  read?: boolean;
-  isTemp?: boolean;
-  sent?: boolean;
-  status?:string;
-  isVoiceMessage?:boolean;
-
+  deliveredAt?: string;
+  readAt?: string;
+  
+  // Status flags
+  delivered: boolean;
+  read: boolean;
+  status: "sent" | "delivered" | "read"|"none";
+  
+  // UI-only fields
+  text?: string; // Decrypted text for display
+  isTemp?: boolean; // Temporary message before backend confirmation
+  isFailed?: boolean; // Failed to send
+  isVoiceMessage?: boolean; // Special handling for voice messages
 }
 
 export interface Message extends BaseMessage {
-  receiver: string;
-  // media is already inherited from BaseMessage as MediaForUI[]
+  receiver: string; // Required in full Message
 }
 
-
+// What backend actually returns in getMessages
+export interface BackendMessage {
+  _id: string;
+  sender: string;
+  receiver: string;
+  ciphertext: string;
+  type: "ratcheted";
+  contentType: "text" | "image" | "audio" | "video" | "document";
+  encryptedKey: string; // Already resolved for current user
+  media: MediaForBackend[]; // Backend media format
+  sentAt: string;
+  delivered: boolean;
+  read: boolean;
+  status: "sent" | "delivered" | "read";
+}
 
 
 export interface ChatItemBase {

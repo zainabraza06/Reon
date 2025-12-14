@@ -66,7 +66,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
     
     if (needsUpdate) {
-      console.log('🔄 [Sidebar] Updating optimized users');
       setOptimizedUsers(users);
     }
   }, [users, optimizedUsers]);
@@ -99,7 +98,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         setIsSearching(false);
       }
     } else {
-      console.log('🚫 [Sidebar] Search query too short');
       setIsSearching(false);
       if (clearSearchResults) {
         clearSearchResults();
@@ -135,7 +133,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleSelectItem = (item: ChatItem) => {
-    console.log('👆 [Sidebar] Selecting item:', item._id, item.fullName);
     onSelectUser(item);
   };
 

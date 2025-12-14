@@ -6,7 +6,9 @@ import {
   Notification,
   User, 
   ChatItem, 
-  DecryptedMediaForUI
+  DecryptedMediaForUI,
+  BackendMessage,
+  MediaForUI,
 } from '@/types';
 import {
   ensureRSAKeys,
@@ -14,14 +16,14 @@ import {
   generateAESKey,
   encryptWithAES,
   decryptWithAES,
+  bufferToHex,
   decryptFile,
-  decryptAESKey,
+  decryptAESKey,getMimeTypeFromFilename,
 } from '@/lib/crypto';
 
 // Import new socket types
 import type {
   MessageDeliveredData,
-  TypingStatusData,
   UserStatusChangedData,
   AuthenticatedData,
   OnlineFriendsResponseData
@@ -41,9 +43,7 @@ interface PendingDecryption {
   [messageId: string]: boolean;
 }
 
-interface ExtendedMessage extends Message {
-  encryptedKey?: string;
-}
+
 
 export const useChatLogic = (options: UseChatLogicOptions) => {
   const { userId, onError, onNewNotification } = options;
@@ -119,443 +119,45 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
     return null;
   }, []);
 
-  const decryptMessageContent = useCallback(async (
-    message: Message
-  ): Promise<string> => {
-    if (!isMountedRef.current) return '';
 
-    const messageId = message._id;
+  
+const decryptSingleMedia = useCallback(async (
+  messageId: string,
+  mediaIndex: number
+): Promise<DecryptedMediaForUI | undefined> => {
+  try {
+    const message = messages.find(m => m._id === messageId);
+    if (!message || !message.media || !message.media[mediaIndex]) {
+      return undefined;
+    }
+
+    // ✅ SKIP TEMP MESSAGES
+    if (message.isTemp) {
+      console.log(`⏭️ Skipping single media decryption for temp message ${messageId}`);
+      return undefined;
+    }
+
+    const media = message.media[mediaIndex];
     
-    // Skip if already decrypted (use ref to avoid dependency)
-    if (decryptedMessagesRef.current[messageId]) {
-      return decryptedMessagesRef.current[messageId];
-    }
+    // Determine which encrypted key to use
+    const isSender = message.sender === userId;
+    const encryptedKey = isSender ? media.senderEncryptedKey : media.encryptedKey;
     
-    if (pendingDecryptionRef.current[messageId]) {
-      return '';
-    }
-
-    try {
-      pendingDecryptionRef.current[messageId] = true;
-      
-      let decryptedText = '';
-      let hasMedia = false;
-      const processedMedia: DecryptedMediaForUI[] = [];
-      
-      // 1. Try to decrypt TEXT message
-      if (message.ciphertext && (message as ExtendedMessage).encryptedKey) {
-        try {
-          const aesKey = await decryptAESKey(userId, (message as ExtendedMessage).encryptedKey!);
-          decryptedText = await decryptWithAES(aesKey, message.ciphertext);
-        } catch (error) {
-          console.error(`🔓 [decryptMessageContent] Failed to decrypt text for ${messageId}:`, error);
-        }
-      }
-      
-      // 2. Check if message has media
-      hasMedia = (message.media ?? []).length > 0;
-      
-      // 3. Process and decrypt media files (E2E encryption)
-      if (hasMedia && message.media) {
-        await Promise.all(
-          message.media.map(async (media, index) => {
-            try {
-              // Determine which encrypted key to use
-              const isSender = message.sender === userId;
-              const encryptedKey = isSender ? media.senderEncryptedKey : media.encryptedKey;
-              
-              if (!encryptedKey) {
-                processedMedia.push({
-                  url: media.url,
-                  type: media.type as "image" | "video" | "audio" | "document" | "blob",
-                  fileName: media.fileName,
-                  fileSize: media.fileSize,
-                  encryptedKey: media.encryptedKey,
-                  senderEncryptedKey: media.senderEncryptedKey,
-                  _error: 'No encryption key available',
-                  _isDecrypted: false,
-                  _canPreview: false
-                });
-                return;
-              }
-              
-              try {
-                let decryptedBlob: Blob;
-                let mimeType: string;
-                let fileName: string;
-                
-                // Check the type of media.url and handle accordingly
-                if (typeof media.url === 'string') {
-                  const result = await decryptFile(
-                    media.url,
-                    encryptedKey,
-                    userId
-                  );
-                  decryptedBlob = result.decryptedBlob;
-                  mimeType = result.mimeType;
-                  fileName = result.fileName || media.fileName!;
-                } else if (media.url instanceof File) {
-                  decryptedBlob = media.url;
-                  mimeType = media.url.type || getMimeTypeFromFilename(media.fileName!);
-                  fileName = media.fileName!;
-                } else if (media.url instanceof Blob) {
-                  decryptedBlob = media.url;
-                  mimeType = media.url.type || getMimeTypeFromFilename(media.fileName!);
-                  fileName = media.fileName!;
-                } else {
-                  throw new Error(`Unknown media URL type: ${typeof media.url}`);
-                }
-                
-                // Create MediaForUI object with decrypted blob
-                const mediaForUI: DecryptedMediaForUI = {
-                  url: decryptedBlob,
-                  type: media.type as "image" | "video" | "audio" | "document" | "blob",
-                  fileName: fileName,
-                  fileSize: media.fileSize || decryptedBlob.size,
-                  encryptedKey: media.encryptedKey,
-                  senderEncryptedKey: media.senderEncryptedKey,
-                  _mimeType: mimeType,
-                  _isDecrypted: true,
-                  _canPreview: true,
-                  _previewUrl: URL.createObjectURL(decryptedBlob)
-                };
-                
-                // Set media-specific properties based on type
-                switch (media.type) {
-                  case 'image':
-                    mediaForUI._canPreview = true;
-                    mediaForUI._requiresPlayer = false;
-                    break;
-                  case 'video':
-                    mediaForUI._canPreview = true;
-                    mediaForUI._requiresPlayer = true;
-                    break;
-                  case 'audio':
-                    mediaForUI._canPreview = true;
-                    mediaForUI._requiresPlayer = true;
-                    break;
-                  case 'document':
-                    mediaForUI._canPreview = false;
-                    mediaForUI._requiresPlayer = false;
-                    break;
-                  case 'blob':
-                  default:
-                    mediaForUI._canPreview = false;
-                    mediaForUI._requiresPlayer = false;
-                }
-                
-                processedMedia.push(mediaForUI);
-                
-              } catch (decryptError) {
-                console.error(`🔓 [decryptMessageContent] Failed to process media ${index}:`, decryptError);
-                processedMedia.push({
-                  url: media.url,
-                  type: media.type as "image" | "video" | "audio" | "document" | "blob",
-                  fileName: media.fileName,
-                  fileSize: media.fileSize,
-                  encryptedKey: media.encryptedKey,
-                  senderEncryptedKey: media.senderEncryptedKey,
-                  _error: decryptError instanceof Error ? decryptError.message : 'Processing failed',
-                  _isDecrypted: false,
-                  _canPreview: false
-                });
-              }
-              
-            } catch (error) {
-              console.error(`🔓 [decryptMessageContent] Error processing media ${index}:`, error);
-              processedMedia.push({
-                url: media.url,
-                type: media.type as "image" | "video" | "audio" | "document" | "blob",
-                fileName: media.fileName,
-                fileSize: media.fileSize,
-                encryptedKey: media.encryptedKey,
-                senderEncryptedKey: media.senderEncryptedKey,
-                _error: error instanceof Error ? error.message : 'Processing failed',
-                _isDecrypted: false,
-                _canPreview: false
-              });
-            }
-          })
-        );
-        
-        // Store processed media in state
-        setDecryptedMedia(prev => ({
-          ...prev,
-          [messageId]: processedMedia
-        }));
-      }
-      
-      // 4. Format display text for the chat list
-      if (decryptedText && hasMedia) {
-        const mediaCount = message.media!.length;
-        const mediaType = message.media![0].type;
-        const mediaIndicator = mediaType === 'image' ? ' 📷' :
-                             mediaType === 'video' ? ' 🎬' :
-                             mediaType === 'audio' ? ' 🎵' :
-                             mediaType === 'document' ? ' 📎' :
-                             ' 📦';
-        decryptedText = decryptedText + (mediaCount > 1 ? ` [+${mediaCount - 1} more]` : '') + mediaIndicator;
-      }
-      else if (!decryptedText && hasMedia) {
-        const mediaCount = message.media!.length;
-        const mediaType = message.media![0].type;
-        
-        if (mediaCount > 1) {
-          decryptedText = `${mediaCount} attachments`;
-        } else {
-          decryptedText = getMediaPlaceholderText(mediaType);
-        }
-      }
-      else if (!decryptedText && !hasMedia && message.ciphertext) {
-        decryptedText = '🔒 Encrypted message';
-      }
-
-      // 5. Cache decrypted text
-      if (isMountedRef.current && decryptedText) {
-        setDecryptedMessages(prev => ({ 
-          ...prev, 
-          [messageId]: decryptedText 
-        }));
-      }
-
-      return decryptedText;
-    } catch (error) {
-      console.error(`🔓 [decryptMessageContent] ❌ Decryption failed for ${messageId}:`, error);
-      return '';
-    } finally {
-      delete pendingDecryptionRef.current[messageId];
-    }
-  }, [userId]);
-
-  const decryptMessage = async (message: Message) => {
-    try {
-      const decrypted = await decryptMessageContent(message);
-      setDecryptedMessages(prev => ({ ...prev, [message._id]: decrypted }));
-      return decrypted;
-    } catch (err) {
-      return null;
-    }
-  };
-
-  // Helper function
-  const getMediaPlaceholderText = (mediaType: string): string => {
-    switch (mediaType) {
-      case 'image': return '📷 Photo';
-      case 'video': return '🎬 Video';
-      case 'audio': return '🎵 Audio';
-      case 'document': return '📎 Document';
-      case 'blob': return '📦 File';
-      default: return '📎 Attachment';
-    }
-  };
-
-  // Get MIME type from filename
-  const getMimeTypeFromFilename = (filename: string): string => {
-    const extension = filename.toLowerCase().split('.').pop() || '';
-    
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-      'svg': 'image/svg+xml',
-      'bmp': 'image/bmp',
-      'mp4': 'video/mp4',
-      'webm': 'video/webm',
-      'avi': 'video/x-msvideo',
-      'mov': 'video/quicktime',
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'ogg': 'audio/ogg',
-      'm4a': 'audio/mp4',
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'txt': 'text/plain',
-    };
-    
-    return mimeTypes[extension] || 'application/octet-stream';
-  };
-
-  // Load Messages with Decryption
-  const loadMessages = useCallback(async () => {
-    console.log("selectedUser", selectedUser);
-    if (!userId || (!selectedUser)) {
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      let response;
-
-      if (selectedUser) {
-        response = await api.get(`/messages/${selectedUser._id}`);
-      } 
-
-      if (isMountedRef.current && response?.data) {
-        const messagesData: Message[] = response.data;
-        
-        // Ensure RSA keys exist before processing messages
-        await ensureRSAKeys(userId);
-        
-        // Set messages first
-        setMessages(messagesData);
-        
-        // Decrypt messages in batches
-        const batchSize = 5;
-        for (let i = 0; i < messagesData.length; i += batchSize) {
-          const batch = messagesData.slice(i, i + batchSize);
-          await Promise.all(
-            batch.map(message => decryptMessageContent(message))
-          );
-        }
-      }
-    } catch (error) {
-      console.error('📥 [loadMessages] ❌ Failed to load messages:', error);
-      onErrorRef.current?.('Failed to load messages');
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [userId, selectedUser?._id, decryptMessageContent]);
-
-  const decryptSingleMedia = useCallback(async (
-    messageId: string,
-    mediaIndex: number
-  ): Promise<DecryptedMediaForUI | undefined> => {
-    try {
-      // Find the message
-      const message = messages.find(m => m._id === messageId);
-      if (!message || !message.media || !message.media[mediaIndex]) {
-        return undefined;
-      }
-
-      const media = message.media[mediaIndex];
-      
-      // Determine which encrypted key to use
-      const isSender = message.sender === userId;
-      const encryptedKey = isSender ? media.senderEncryptedKey : media.encryptedKey;
-      
-      if (!encryptedKey) {
-        const errorMedia: DecryptedMediaForUI = {
-          url: media.url, // Keep original URL
-          type: media.type as "image" | "video" | "audio" | "document" | "blob",
-          fileName: media.fileName || `file_${mediaIndex}`,
-          fileSize: media.fileSize || 0,
-          encryptedKey: media.encryptedKey || '',
-          senderEncryptedKey: media.senderEncryptedKey || '',
-          _error: 'No encryption key available',
-          _isDecrypted: false,
-          _canPreview: false
-        };
-        
-        // Update state
-        setDecryptedMedia(prev => {
-          const existingMedia = prev[messageId] || [];
-          const updatedMedia = [...existingMedia];
-          updatedMedia[mediaIndex] = errorMedia;
-          return {
-            ...prev,
-            [messageId]: updatedMedia
-          };
-        });
-        
-        return errorMedia;
-      }
-
-      // Now we know encryptedKey exists, proceed with decryption
-      let decryptedBlob: Blob;
-      let mimeType: string;
-      let fileName: string;
-      
-      // Check the type of media.url and handle accordingly
-      if (typeof media.url === 'string') {
-        const result = await decryptFile(
-          media.url,
-          encryptedKey,
-          userId
-        );
-        decryptedBlob = result.decryptedBlob;
-        mimeType = result.mimeType;
-        fileName = result.fileName || media.fileName || `file_${mediaIndex}`;
-      } else if (media.url instanceof File) {
-        decryptedBlob = media.url;
-        mimeType = media.url.type || getMimeTypeFromFilename(media.fileName || `file_${mediaIndex}`);
-        fileName = media.fileName || media.url.name || `file_${mediaIndex}`;
-      } else if (media.url instanceof Blob) {
-        decryptedBlob = media.url;
-        mimeType = media.url.type || getMimeTypeFromFilename(media.fileName || `file_${mediaIndex}`);
-        fileName = media.fileName || `file_${mediaIndex}`;
-      } else {
-        throw new Error(`Unknown media URL type: ${typeof media.url}`);
-      }
-      
-      // Create MediaForUI object with decrypted blob
-      const decryptedMediaItem: DecryptedMediaForUI = {
-        url: decryptedBlob,
-        type: media.type as "image" | "video" | "audio" | "document" | "blob",
-        fileName: fileName,
-        fileSize: media.fileSize || decryptedBlob.size,
-        encryptedKey: media.encryptedKey || '',
-        senderEncryptedKey: media.senderEncryptedKey || '',
-        _mimeType: mimeType,
-        _isDecrypted: true,
-        _canPreview: true,
-        _previewUrl: URL.createObjectURL(decryptedBlob)
-      };
-      
-      // Set media-specific properties based on type
-      switch (media.type) {
-        case 'image':
-          decryptedMediaItem._canPreview = true;
-          decryptedMediaItem._requiresPlayer = false;
-          break;
-        case 'video':
-          decryptedMediaItem._canPreview = true;
-          decryptedMediaItem._requiresPlayer = true;
-          break;
-        case 'audio':
-          decryptedMediaItem._canPreview = true;
-          decryptedMediaItem._requiresPlayer = true;
-          break;
-        case 'document':
-        case 'blob':
-          decryptedMediaItem._canPreview = false;
-          decryptedMediaItem._requiresPlayer = false;
-          break;
-      }
-      
-      // Update decryptedMedia state
-      setDecryptedMedia(prev => {
-        const existingMedia = prev[messageId] || [];
-        const updatedMedia = [...existingMedia];
-        updatedMedia[mediaIndex] = decryptedMediaItem;
-        return {
-          ...prev,
-          [messageId]: updatedMedia
-        };
-      });
-      
-      return decryptedMediaItem;
-      
-    } catch (error) {
-      console.error(`🔓 [decryptSingleMedia] ❌ Failed to decrypt media ${mediaIndex} in message ${messageId}:`, error);
-      
+    if (!encryptedKey) {
+      console.warn(`⚠️ No encryptedKey for media ${mediaIndex} in message ${messageId}`);
       const errorMedia: DecryptedMediaForUI = {
-        url: '', // Empty string instead of null
-        type: 'document',
-        fileName: 'Error',
-        fileSize: 0,
-        encryptedKey: '',
-        senderEncryptedKey: '',
-        _error: error instanceof Error ? error.message : 'Decryption failed',
+        url: new Blob([]),
+        type: media.type,
+        fileName: media.fileName || `file_${mediaIndex}`,
+        fileSize: media.fileSize || 0,
+        encryptionIV: media.encryptionIV,
         _isDecrypted: false,
-        _canPreview: false
+        _canPreview: false,
+        _mimeType: 'application/octet-stream',
+        _previewUrl: '',
+        _error: 'No encryption key available'
       };
       
-      // Update state
       setDecryptedMedia(prev => {
         const existingMedia = prev[messageId] || [];
         const updatedMedia = [...existingMedia];
@@ -568,7 +170,1100 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
       
       return errorMedia;
     }
-  }, [messages, userId]);
+
+    // If already a File/Blob (from temp message preview)
+    if (media.url instanceof File || media.url instanceof Blob) {
+      const decryptedMediaItem: DecryptedMediaForUI = {
+        url: media.url,
+        type: media.type,
+        fileName: media.fileName || `file_${mediaIndex}`,
+        fileSize: media.fileSize || media.url.size,
+        encryptionIV: media.encryptionIV,
+        _isDecrypted: true,
+        _canPreview: true,
+        _mimeType: media.url.type || getMimeTypeFromFilename(media.fileName || ''),
+        _previewUrl: URL.createObjectURL(media.url)
+      };
+      
+      setDecryptedMedia(prev => {
+        const existingMedia = prev[messageId] || [];
+        const updatedMedia = [...existingMedia];
+        updatedMedia[mediaIndex] = decryptedMediaItem;
+        return {
+          ...prev,
+          [messageId]: updatedMedia
+        };
+      });
+      
+      return decryptedMediaItem;
+    }
+
+    // If it's a string URL, decrypt it
+    if (typeof media.url === 'string') {
+      // ✅ CHECK IF WE HAVE IV
+      if (!media.encryptionIV) {
+        console.error(`❌ Missing encryptionIV for media ${mediaIndex} in message ${messageId}`);
+        const errorMedia: DecryptedMediaForUI = {
+          url: new Blob([]),
+          type: media.type,
+          fileName: media.fileName || `file_${mediaIndex}`,
+          fileSize: media.fileSize || 0,
+          encryptionIV: media.encryptionIV,
+          _isDecrypted: false,
+          _canPreview: false,
+          _mimeType: 'application/octet-stream',
+          _previewUrl: '',
+          _error: 'Missing encryption IV'
+        };
+        
+        setDecryptedMedia(prev => {
+          const existingMedia = prev[messageId] || [];
+          const updatedMedia = [...existingMedia];
+          updatedMedia[mediaIndex] = errorMedia;
+          return {
+            ...prev,
+            [messageId]: updatedMedia
+          };
+        });
+        
+        return errorMedia;
+      }
+      
+      try {
+        const result = await decryptFile(
+          media.url,
+          encryptedKey,
+          userId
+        );
+        
+        const decryptedMediaItem: DecryptedMediaForUI = {
+          url: result.decryptedBlob,
+          type: media.type,
+          fileName: result.fileName || media.fileName || `file_${mediaIndex}`,
+          fileSize: result.decryptedBlob.size,
+          encryptionIV: media.encryptionIV,
+          _isDecrypted: true,
+          _canPreview: true,
+          _mimeType: result.mimeType,
+          _previewUrl: URL.createObjectURL(result.decryptedBlob),
+          _encryptedUrl: media.url
+        };
+        
+        setDecryptedMedia(prev => {
+          const existingMedia = prev[messageId] || [];
+          const updatedMedia = [...existingMedia];
+          updatedMedia[mediaIndex] = decryptedMediaItem;
+          return {
+            ...prev,
+            [messageId]: updatedMedia
+          };
+        });
+        
+        return decryptedMediaItem;
+      } catch (error) {
+        console.error(`🔓 Failed to decrypt media ${mediaIndex}:`, error);
+        
+        const errorMedia: DecryptedMediaForUI = {
+          url: new Blob([]),
+          type: media.type,
+          fileName: media.fileName || `file_${mediaIndex}`,
+          fileSize: media.fileSize || 0,
+          encryptionIV: media.encryptionIV,
+          _isDecrypted: false,
+          _canPreview: false,
+          _mimeType: 'application/octet-stream',
+          _previewUrl: '',
+          _error: error instanceof Error ? error.message : 'Decryption failed'
+        };
+        
+        setDecryptedMedia(prev => {
+          const existingMedia = prev[messageId] || [];
+          const updatedMedia = [...existingMedia];
+          updatedMedia[mediaIndex] = errorMedia;
+          return {
+            ...prev,
+            [messageId]: updatedMedia
+          };
+        });
+        
+        return errorMedia;
+      }
+    }
+    
+    console.warn(`⚠️ Unknown media type for ${messageId}, index ${mediaIndex}: ${typeof media.url}`);
+    return undefined;
+    
+  } catch (error) {
+    console.error(`🔓 Failed to decrypt media:`, error);
+    
+    const errorMedia: DecryptedMediaForUI = {
+      url: new Blob([]),
+      type: 'document',
+      fileName: 'Error',
+      fileSize: 0,
+      encryptionIV: '',
+      _isDecrypted: false,
+      _canPreview: false,
+      _mimeType: 'application/octet-stream',
+      _previewUrl: '',
+      _error: error instanceof Error ? error.message : 'Decryption failed'
+    };
+    
+    setDecryptedMedia(prev => {
+      const existingMedia = prev[messageId] || [];
+      const updatedMedia = [...existingMedia];
+      updatedMedia[mediaIndex] = errorMedia;
+      return {
+        ...prev,
+        [messageId]: updatedMedia
+      };
+    });
+    
+    return errorMedia;
+  }
+}, [messages, userId]);
+const decryptMessage = useCallback(async (message: Message) => {
+  try {
+    if (!isMountedRef.current) return null;
+    
+    const messageId = message._id;
+    
+    // ✅ SKIP TEMP MESSAGES
+    if (message.isTemp) {
+      console.log(`⏭️ Skipping decryption for temp message ${messageId}`);
+      return message.text || null;
+    }
+    
+    // Skip if already decrypted
+    if (decryptedMessagesRef.current[messageId]) {
+      return decryptedMessagesRef.current[messageId];
+    }
+    
+    if (pendingDecryptionRef.current[messageId]) {
+      return null;
+    }
+    
+    pendingDecryptionRef.current[messageId] = true;
+    
+    let decryptedText = '';
+    let hasMedia = false;
+    
+    // 1. Decrypt TEXT message if it exists
+    if (message.ciphertext && message.encryptedKey) {
+      try {
+        console.log(`🔐 Attempting to decrypt text for ${messageId}`);
+        console.log(`🔐 encryptedKey length: ${message.encryptedKey.length}`);
+        
+        // Check if encryptedKey is a valid hex string
+        if (!message.encryptedKey || message.encryptedKey.length < 10) {
+          throw new Error("Invalid encrypted key");
+        }
+        
+        const aesKey = await decryptAESKey(userId, message.encryptedKey);
+        decryptedText = await decryptWithAES(aesKey, message.ciphertext);
+        console.log(`✅ Decrypted text for ${messageId}: "${decryptedText}"`);
+      } catch (error) {
+        console.error(`❌ Failed to decrypt text for ${messageId}:`, error);
+        decryptedText = '🔒 Could not decrypt message';
+      }
+    }
+    
+    // 2. Check if message has media
+    hasMedia = (message.media ?? []).length > 0;
+    
+    // 3. AUTO-DECRYPT MEDIA FILES
+    if (hasMedia && message.media) {
+      console.log(`🔐 Auto-decrypting ${message.media.length} media files for ${messageId}`);
+      
+      const processedMedia: DecryptedMediaForUI[] = [];
+      
+      for (let i = 0; i < message.media.length; i++) {
+        try {
+          const decryptedMedia = await decryptSingleMedia(messageId, i);
+          if (decryptedMedia) {
+            processedMedia.push(decryptedMedia);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to auto-decrypt media ${i} for ${messageId}:`, error);
+          processedMedia.push({
+            url: new Blob([]),
+            type: message.media![i].type,
+            fileName: message.media![i].fileName || `file_${i}`,
+            fileSize: message.media![i].fileSize || 0,
+            encryptionIV: message.media![i].encryptionIV,
+            _isDecrypted: false,
+            _canPreview: false,
+            _mimeType: 'application/octet-stream',
+            _previewUrl: '',
+            _error: error instanceof Error ? error.message : 'Auto-decryption failed'
+          });
+        }
+      }
+      
+      // Update decrypted media state
+      if (processedMedia.length > 0) {
+        setDecryptedMedia(prev => ({
+          ...prev,
+          [messageId]: processedMedia
+        }));
+      }
+    }
+    
+    // 4. Format display text for UI
+    let displayText = decryptedText;
+    
+    if (decryptedText && hasMedia) {
+      const mediaCount = message.media!.length;
+      const mediaType = message.media![0].type;
+      const mediaIndicator = mediaType === 'image' ? ' 📷' :
+                           mediaType === 'video' ? ' 🎬' :
+                           mediaType === 'audio' ? ' 🎵' :
+                           mediaType === 'document' ? ' 📎' :
+                           ' 📦';
+      displayText = decryptedText + (mediaCount > 1 ? ` [+${mediaCount - 1} more]` : '') + mediaIndicator;
+    }
+    else if (!decryptedText && hasMedia) {
+      const mediaCount = message.media!.length;
+      const mediaType = message.media![0].type;
+      
+      if (mediaCount > 1) {
+        displayText = `${mediaCount} attachments`;
+      } else {
+        displayText = getMediaPlaceholderText(mediaType);
+      }
+    }
+    else if (!decryptedText && !hasMedia && message.ciphertext) {
+      displayText = '🔒 Encrypted message';
+    }
+    
+    // 5. Cache decrypted text
+    if (isMountedRef.current && displayText) {
+      setDecryptedMessages(prev => ({ 
+        ...prev, 
+        [messageId]: displayText 
+      }));
+    }
+    
+    return displayText;
+    
+  } catch (error) {
+    console.error(`❌ decryptMessage failed for ${message._id}:`, error);
+    return null;
+  } finally {
+    delete pendingDecryptionRef.current[message._id];
+  }
+}, [userId, decryptSingleMedia]);
+
+
+const decryptMessageContent = useCallback(async (
+  message: Message
+): Promise<string> => {
+  if (!isMountedRef.current) return '';
+
+  const messageId = message._id;
+  
+  // ✅ CRITICAL: SKIP TEMP MESSAGES!
+  if (message.isTemp) {
+    console.log(`⏭️ Skipping decryption for temp message ${messageId}`);
+    return message.text || ''; // Return the text we already have from temp message
+  }
+  
+  // Skip if already decrypted
+  if (decryptedMessagesRef.current[messageId]) {
+    return decryptedMessagesRef.current[messageId];
+  }
+  
+  if (pendingDecryptionRef.current[messageId]) {
+    return '';
+  }
+
+  try {
+    pendingDecryptionRef.current[messageId] = true;
+    
+    let decryptedText = '';
+    let hasMedia = false;
+    const processedMedia: DecryptedMediaForUI[] = [];
+    
+    // 1. Decrypt TEXT message
+    if (message.ciphertext && message.encryptedKey) {
+      try {
+        const aesKey = await decryptAESKey(userId, message.encryptedKey);
+        decryptedText = await decryptWithAES(aesKey, message.ciphertext);
+        console.log(`✅ Decrypted text for ${messageId}`);
+      } catch (error) {
+        console.error(`🔓 Failed to decrypt text for ${messageId}:`, error);
+      }
+    }
+    
+    // 2. Check if message has media
+    hasMedia = (message.media ?? []).length > 0;
+
+    console.log("message Media", message.media);
+    
+    // 3. Process and decrypt media files
+    if (hasMedia && message.media) {
+      await Promise.all(
+        message.media.map(async (media, index) => {
+          try {
+           
+            const encryptedKey = media.encryptedKey;
+            console.log("enck",encryptedKey);
+            console.log("media", media.encryptionIV);
+            
+            // ✅ Check if we have required encryption data
+            if (!encryptedKey || !media.encryptionIV) {
+              console.warn(`⚠️ Skipping media ${index} for ${messageId} - missing encryption data`);
+              processedMedia.push({
+                url: new Blob([]),
+                type: media.type,
+                fileName: media.fileName || 'Unknown file',
+                fileSize: media.fileSize || 0,
+                encryptionIV: media.encryptionIV,
+                _isDecrypted: false,
+                _canPreview: false,
+                _mimeType: 'application/octet-stream',
+                _previewUrl: '',
+                _error: 'Missing encryption key or IV'
+              });
+              return;
+            }
+            
+            // If media.url is already a File/Blob (from temp message)
+            if (media.url instanceof File || media.url instanceof Blob) {
+              console.log(`📝 Media ${index} is already a File/Blob, using as decrypted`);
+              
+              const mediaForUI: DecryptedMediaForUI = {
+                url: media.url,
+                type: media.type,
+                fileName: media.fileName || `file_${index}`,
+                fileSize: media.fileSize || media.url.size,
+                encryptionIV: media.encryptionIV,
+                _isDecrypted: true,
+                _canPreview: true,
+                _mimeType: media.url.type || getMimeTypeFromFilename(media.fileName || ''),
+                _previewUrl: URL.createObjectURL(media.url),
+              };
+              
+              processedMedia.push(mediaForUI);
+              return;
+            }
+            
+            // If media.url is a string URL (from backend)
+            if (typeof media.url === 'string') {
+              try {
+                console.log("Decrypting....")
+                const decryptionResult = await decryptFile(
+                  media.url,
+                  encryptedKey,
+                  userId
+                );
+
+                console.log("decryptionResulsts", decryptionResult);
+                
+                const mediaForUI: DecryptedMediaForUI = {
+                  url: decryptionResult.decryptedBlob,
+                  type: media.type,
+                  fileName: decryptionResult.fileName || media.fileName || `file_${index}`,
+                  fileSize: decryptionResult.decryptedBlob.size,
+                  encryptionIV: media.encryptionIV,
+                  _isDecrypted: true,
+                  _canPreview: true,
+                  _mimeType: decryptionResult.mimeType,
+                  _previewUrl: URL.createObjectURL(decryptionResult.decryptedBlob),
+                  _encryptedUrl: media.url
+                };
+                
+                // Set media-specific properties
+                switch (media.type) {
+                  case 'image':
+                  case 'video':
+                  case 'audio':
+                    mediaForUI._requiresPlayer = media.type !== 'image';
+                    break;
+                  case 'document':
+                  case 'blob':
+                    mediaForUI._canPreview = false;
+                    mediaForUI._requiresPlayer = false;
+                    break;
+                }
+                
+                processedMedia.push(mediaForUI);
+                console.log(`✅ Decrypted media ${index} for ${messageId}`);
+                
+              } catch (decryptError) {
+                console.error(`🔓 Failed to decrypt media ${index}:`, decryptError);
+                processedMedia.push({
+                  url: new Blob([]),
+                  type: media.type,
+                  fileName: media.fileName || `file_${index}`,
+                  fileSize: media.fileSize || 0,
+                  encryptionIV: media.encryptionIV,
+                  _isDecrypted: false,
+                  _canPreview: false,
+                  _mimeType: 'application/octet-stream',
+                  _previewUrl: '',
+                  _error: `Decryption failed: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`
+                });
+              }
+            } else {
+              processedMedia.push({
+                url: new Blob([]),
+                type: media.type,
+                fileName: media.fileName || `file_${index}`,
+                fileSize: media.fileSize || 0,
+                encryptionIV: media.encryptionIV,
+                _isDecrypted: false,
+                _canPreview: false,
+                _mimeType: 'application/octet-stream',
+                _previewUrl: '',
+                _error: `Unknown media URL type: ${typeof media.url}`
+              });
+            }
+            
+          } catch (error) {
+            console.error(`🔓 Error processing media ${index}:`, error);
+            processedMedia.push({
+              url: new Blob([]),
+              type: media.type,
+              fileName: media.fileName || `file_${index}`,
+              fileSize: media.fileSize || 0,
+              encryptionIV: media.encryptionIV,
+              _isDecrypted: false,
+              _canPreview: false,
+              _mimeType: 'application/octet-stream',
+              _previewUrl: '',
+              _error: error instanceof Error ? error.message : 'Processing failed'
+            });
+          }
+        })
+      );
+      
+      // Store processed media in state
+      setDecryptedMedia(prev => ({
+        ...prev,
+        [messageId]: processedMedia
+      }));
+    }
+    
+    // 4. Format display text for the chat list
+    if (decryptedText && hasMedia) {
+      const mediaCount = message.media!.length;
+      const mediaType = message.media![0].type;
+      const mediaIndicator = mediaType === 'image' ? ' 📷' :
+                           mediaType === 'video' ? ' 🎬' :
+                           mediaType === 'audio' ? ' 🎵' :
+                           mediaType === 'document' ? ' 📎' :
+                           ' 📦';
+      decryptedText = decryptedText + (mediaCount > 1 ? ` [+${mediaCount - 1} more]` : '') + mediaIndicator;
+    }
+    else if (!decryptedText && hasMedia) {
+      const mediaCount = message.media!.length;
+      const mediaType = message.media![0].type;
+      
+      if (mediaCount > 1) {
+        decryptedText = `${mediaCount} attachments`;
+      } else {
+        decryptedText = getMediaPlaceholderText(mediaType);
+      }
+    }
+    else if (!decryptedText && !hasMedia && message.ciphertext) {
+      decryptedText = '🔒 Encrypted message';
+    }
+
+    // 5. Cache decrypted text
+    if (isMountedRef.current && decryptedText) {
+      setDecryptedMessages(prev => ({ 
+        ...prev, 
+        [messageId]: decryptedText 
+      }));
+    }
+
+    return decryptedText;
+  } catch (error) {
+    console.error(`🔓 Decryption failed for ${messageId}:`, error);
+    return '';
+  } finally {
+    delete pendingDecryptionRef.current[messageId];
+  }
+}, [userId]);
+
+const sendMessage = useCallback(
+  async (messageData: {
+    ciphertext: string;
+    type: "text" | "image" | "audio" | "video" | "document";
+    media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
+  }) => {
+    const currentSelectedUser = selectedUserRef.current;
+    
+    if (!userId || !currentSelectedUser || !isMountedRef.current) {
+      console.log(`📤 [sendMessage] ❌ Validation failed`);
+      return;
+    }
+
+    try {
+      setIsSending(true);
+
+      // ✅ 1. Get public keys
+      const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
+      const senderPublicKey = await getUserPublicKey(userId);
+      
+      if (!recipientPublicKey || !senderPublicKey) {
+        throw new Error("Public key missing");
+      }
+
+      // For voice messages
+      const isVoiceMessage = messageData.media?.some(m => m.type === "audio") && 
+                             (!messageData.ciphertext || messageData.ciphertext === "Voice message");
+
+      let finalText = messageData.ciphertext;
+      if (isVoiceMessage && (!finalText || finalText === "Voice message")) {
+        finalText = "🎤 Voice message";
+      }
+
+      // ✅ 2. Determine if we're sending text separately
+      const hasText = finalText.trim() && finalText !== "🎤 Voice message";
+      const isVoiceOnly = isVoiceMessage && !hasText; // Voice message without additional text
+      
+      // ✅ 3. SEND TEXT MESSAGE (if text exists AND it's not a voice-only message)
+      if (hasText) {
+        await sendTextMessage({
+          text: finalText,
+          userId,
+          recipientId: currentSelectedUser._id,
+          recipientPublicKey,
+          senderPublicKey,
+          contentType: "text",
+          isVoiceMessage: false // Only true for pure voice messages
+        });
+      }
+
+      // ✅ 4. SEND EACH MEDIA FILE AS SEPARATE MESSAGE
+      if (messageData.media?.length) {
+        console.log(`📤 Starting to send ${messageData.media.length} media file(s) as separate messages...`);
+        
+        for (const mediaItem of messageData.media) {
+          // ✅ FIXED: Determine includeText as boolean
+          let shouldIncludeText = false;
+          
+          if (mediaItem.type === "audio") {
+            // Audio files should always include text (voice message caption)
+            shouldIncludeText = true;
+          } else if (!hasText || isVoiceOnly) {
+            shouldIncludeText = true;
+          }
+          
+          await sendMediaMessage({
+            file: mediaItem.file,
+            fileType: mediaItem.type,
+            userId,
+            recipientId: currentSelectedUser._id,
+            recipientPublicKey,
+            senderPublicKey,
+            isVoiceMessage: mediaItem.type === "audio" && isVoiceMessage,
+            includeText: shouldIncludeText // ✅ Now a proper boolean
+          });
+        }
+      }
+
+      // Clear input after successful send
+      setNewMessage("");
+
+    } catch (error) {
+      console.error("📤 [sendMessage] ❌ Failed to send message:", error);
+      onErrorRef.current?.("Failed to send message. Please try again.");
+    } finally {
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
+    }
+  },
+  [userId, getUserPublicKey, decryptMessageContent] // ✅ Added decryptMessageContent to dependencies
+);
+
+// Helper function to send text message
+const sendTextMessage = async ({
+  text,
+  userId,
+  recipientId,
+  recipientPublicKey,
+  senderPublicKey,
+  contentType,
+  isVoiceMessage = false
+}: {
+  text: string;
+  userId: string;
+  recipientId: string;
+  recipientPublicKey: CryptoKey;
+  senderPublicKey: CryptoKey;
+  contentType: string;
+  isVoiceMessage?: boolean;
+}) => {
+  let tempMessage: Message | null = null;
+  
+  try {
+    // ✅ Encrypt TEXT
+    const textAESKey = await generateAESKey();
+    const encryptedText = await encryptWithAES(textAESKey, text);
+    const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
+
+    const encKeyRecipient = await crypto.subtle.encrypt(
+      { name: "RSA-OAEP" },
+      recipientPublicKey,
+      rawAES
+    );
+
+    const encKeySender = await crypto.subtle.encrypt(
+      { name: "RSA-OAEP" },
+      senderPublicKey,
+      rawAES
+    );
+
+    const encryptedTextAESKeyForRecipient = bufferToHex(encKeyRecipient);
+    const encryptedTextAESKeyForSender = bufferToHex(encKeySender);
+
+    // ✅ Create FormData for text message
+    const formData = new FormData();
+    const messagePayload = {
+      sender: userId,
+      receiver: recipientId,
+      ciphertext: encryptedText,
+      type: "ratcheted" as const,
+      contentType: "text", // Always "text" for text-only messages
+      encryptedKey: encryptedTextAESKeyForRecipient,
+      senderEncryptedKey: encryptedTextAESKeyForSender,
+    };
+
+    formData.append("data", JSON.stringify(messagePayload));
+
+    // ✅ Create temp UI message for text
+    tempMessage = {
+      _id: `temp-text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      sender: userId,
+      receiver: recipientId,
+      ciphertext: encryptedText,
+      text: text,
+      type: "ratcheted" as const,
+      contentType: "text", // ✅ Fixed: Always "text" for text messages
+      encryptedKey: encryptedTextAESKeyForSender,
+      senderEncryptedKey: encryptedTextAESKeyForSender,
+      media: [],
+      sentAt: new Date().toISOString(),
+      delivered: false,
+      read: false,
+      status: "sent" as const,
+      isTemp: true,
+      isVoiceMessage,
+    };
+
+    // ✅ Add temp message to UI immediately
+    setMessages(prev => tempMessage ? [...prev, tempMessage] : prev);
+
+    // ✅ Send text message via HTTP API
+    console.log("📤 Sending text message...");
+    const response = await api.post("/messages/send", formData, {
+      timeout: 60000,
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    
+    const responseData = response.data?.data || response.data;
+    
+    if (responseData?._id) {
+      console.log("✅ Text message sent successfully, ID:", responseData._id);
+      
+      // Replace temp with real message
+      const backendMessage = responseData as BackendMessage;
+      const uiMessage: Message = {
+        ...backendMessage,
+        text: text,
+        isTemp: false,
+        isVoiceMessage,
+        media: []
+      };
+
+      setMessages(prev =>
+        prev.map(msg =>
+          msg._id === tempMessage!._id ? uiMessage : msg
+        )
+      );
+
+      // ✅ CRITICAL: DECRYPT THE REAL MESSAGE
+      console.log(`🔐 Calling decryptMessageContent for text message ${uiMessage._id}...`);
+      try {
+        const decryptedText = await decryptMessageContent(uiMessage);
+        console.log(`✅ Text message decrypted: ${decryptedText}`);
+        
+        // Store decrypted text
+        if (decryptedText) {
+          setDecryptedMessages(prev => ({
+            ...prev,
+            [uiMessage._id]: decryptedText
+          }));
+        }
+      } catch (decryptError) {
+        console.error(`❌ Failed to decrypt text message ${uiMessage._id}:`, decryptError);
+      }
+    }
+
+  } catch (error) {
+    console.error("❌ Failed to send text message:", error);
+    
+    // Mark temp message as failed
+    if (tempMessage) {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg._id === tempMessage!._id
+            ? { ...msg, isFailed: true }
+            : msg
+        )
+      );
+    }
+    throw error;
+  }
+};
+
+// Helper function to send media message
+const sendMediaMessage = async ({
+  file,
+  fileType,
+  userId,
+  recipientId,
+  recipientPublicKey,
+  senderPublicKey,
+  isVoiceMessage = false,
+  includeText = false
+}: {
+  file: File;
+  fileType: "image" | "audio" | "video" | "document";
+  userId: string;
+  recipientId: string;
+  recipientPublicKey: CryptoKey;
+  senderPublicKey: CryptoKey;
+  isVoiceMessage?: boolean;
+  includeText?: boolean;
+}) => {
+  let tempMessage: Message | null = null;
+  
+  try {
+    console.log(`🔐 Encrypting ${fileType} file: ${file.name}...`);
+    
+    // ✅ Encrypt the file
+    const { 
+      encryptedBlob, 
+      encryptedAESKeyForRecipient, 
+      encryptedAESKeyForSender,
+      ivBase64
+    } = await encryptFileForRecipient(
+      file, 
+      recipientPublicKey, 
+      senderPublicKey
+    );
+
+    // ✅ Create FormData for media message
+    const formData = new FormData();
+
+    // Determine what text to include
+    let messageText = "";
+    let encryptedText = "";
+    let encryptedTextAESKeyForRecipient = "";
+    let encryptedTextAESKeyForSender = "";
+    
+    if (includeText && isVoiceMessage) {
+      messageText = "🎤 Voice message";
+    } else if (includeText) {
+      messageText = `Sent a ${fileType}`;
+    }
+    
+    // Encrypt the text if we have any
+    if (messageText) {
+      const textAESKey = await generateAESKey();
+      encryptedText = await encryptWithAES(textAESKey, messageText);
+      const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
+      
+      const encKeyRecipient = await crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        recipientPublicKey,
+        rawAES
+      );
+      const encKeySender = await crypto.subtle.encrypt(
+        { name: "RSA-OAEP" },
+        senderPublicKey,
+        rawAES
+      );
+      
+      encryptedTextAESKeyForRecipient = bufferToHex(encKeyRecipient);
+      encryptedTextAESKeyForSender = bufferToHex(encKeySender);
+    }
+
+    // ✅ Prepare message payload
+    const messagePayload = {
+      sender: userId,
+      receiver: recipientId,
+      ciphertext: encryptedText,
+      type: "ratcheted" as const,
+      contentType: fileType, // ✅ Fixed: Use the actual file type
+      encryptedKey: encryptedTextAESKeyForRecipient,
+      senderEncryptedKey: encryptedTextAESKeyForSender,
+    };
+
+    formData.append("data", JSON.stringify(messagePayload));
+
+    // ✅ Add the encrypted file (single file per request)
+    const encryptedFile = new File(
+      [encryptedBlob],
+      `encrypted_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`,
+      { type: 'application/octet-stream' }
+    );
+
+    formData.append("files", encryptedFile);
+    
+    // ✅ Add metadata (with index 0 since it's single file per request)
+    formData.append("mediaType", fileType);
+    formData.append("mediaEncryptedKey", encryptedAESKeyForRecipient);
+    formData.append("mediaSenderEncryptedKey", encryptedAESKeyForSender);
+    formData.append("originalName", file.name);
+    formData.append("fileSize", file.size.toString());
+    
+    if (ivBase64) {
+      formData.append("encryptionIV", ivBase64);
+    }
+
+    // ✅ Create temp UI message for media
+    const previewUrl = fileType === "image" || fileType === "video" || fileType === "audio" 
+      ? URL.createObjectURL(file) 
+      : "";
+    
+    tempMessage = {
+      _id: `temp-media-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      sender: userId,
+      receiver: recipientId,
+      ciphertext: encryptedText,
+      text: messageText,
+      type: "ratcheted" as const,
+      contentType: fileType, // ✅ Fixed: Use the actual file type
+      encryptedKey: encryptedTextAESKeyForSender,
+      senderEncryptedKey: encryptedTextAESKeyForSender,
+      media: [{
+        url: previewUrl,
+        type: fileType,
+        fileName: file.name,
+        fileSize: file.size,
+        encryptedKey: encryptedAESKeyForRecipient,
+        senderEncryptedKey: encryptedAESKeyForSender,
+        encryptionIV: ivBase64,
+        isEncrypted: true,
+        _previewUrl: previewUrl,
+      }],
+      sentAt: new Date().toISOString(),
+      delivered: false,
+      read: false,
+      status: "sent" as const,
+      isTemp: true,
+      isVoiceMessage,
+    };
+
+    // ✅ Add temp message to UI immediately
+    setMessages(prev => tempMessage ? [...prev, tempMessage] : prev);
+
+    // ✅ Send media message via HTTP API
+    console.log(`📤 Sending ${fileType} file: ${file.name}...`);
+    
+    for (const [key, value] of formData.entries()) {
+      console.log(key, typeof value === 'string' ? value.substring(0, 100) + (value.length > 100 ? '...' : '') : value);
+    }
+
+    const response = await api.post("/messages/send", formData, {
+      timeout: 60000,
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    
+    const responseData = response.data?.data || response.data;
+    
+    if (responseData?._id) {
+      console.log(`✅ ${fileType} file sent successfully, ID:`, responseData._id);
+      
+      // Replace temp with real message
+      const backendMessage = responseData as BackendMessage;
+      console.log("Backend response:", backendMessage);
+      
+      const uiMessage: Message = {
+        ...backendMessage,
+        text: messageText,
+        isTemp: false,
+        isVoiceMessage,
+        media: backendMessage.media?.map((backendMedia, index) => {
+          return {
+            url: backendMedia.url,
+            type: backendMedia.type,
+            fileName: backendMedia.fileName,
+            fileSize: backendMedia.fileSize,
+            encryptedKey: backendMedia.senderEncryptedKey,
+            encryptionIV: backendMedia.encryptionIV,
+            isEncrypted: true,
+            downloadUrl: backendMedia.downloadUrl,
+            originalName: backendMedia.originalName,
+            fileId: backendMedia.fileId,
+            _previewUrl: previewUrl
+          } as MediaForUI;
+        }) || []
+      };
+
+      setMessages(prev =>
+        prev.map(msg =>
+          msg._id === tempMessage!._id ? uiMessage : msg
+        )
+      );
+
+      // ✅ CRITICAL: DECRYPT THE REAL MEDIA MESSAGE
+      console.log(`🔐 Calling decryptMessageContent for media message ${uiMessage._id}...`);
+      try {
+        const decryptedText = await decryptMessageContent(uiMessage);
+        console.log(`✅ Media message decrypted: ${decryptedText}`);
+        
+        // Store decrypted text
+        if (decryptedText) {
+          setDecryptedMessages(prev => ({
+            ...prev,
+            [uiMessage._id]: decryptedText
+          }));
+        }
+      } catch (decryptError) {
+        console.error(`❌ Failed to decrypt media message ${uiMessage._id}:`, decryptError);
+      }
+    }
+
+  } catch (error) {
+    console.error(`❌ Failed to send ${fileType} file:`, error);
+    
+    // Mark temp message as failed
+    if (tempMessage) {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg._id === tempMessage!._id
+            ? { ...msg, isFailed: true }
+            : msg
+        )
+      );
+    }
+    
+    // Clean up blob URL on error
+    if (tempMessage?.media?.[0]?._previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(tempMessage.media[0]._previewUrl);
+    }
+    throw error;
+  } finally {
+    // Note: We keep the preview URL in the message for display
+    // Cleanup will happen when the message is replaced with real data
+  }
+};
+
+
+
+const loadMessages = useCallback(async () => {
+  console.log("Loading messages for selectedUser:", selectedUser);
+  
+  if (!userId || !selectedUser) {
+    console.log("❌ Cannot load: missing userId or selectedUser");
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+    
+    // Get messages from backend
+    const response = await api.get(`/messages/${selectedUser._id}`);
+    
+    if (isMountedRef.current && response?.data?.success && response.data.data) {
+      // Convert BackendMessage[] to Message[]
+      const backendMessages: BackendMessage[] = response.data.data;
+      const uiMessages: Message[] = backendMessages.map(backendMsg => ({
+        ...backendMsg,
+        text: '', // Will be decrypted
+        media: backendMsg.media?.map(backendMedia => ({
+          url: backendMedia.url,
+          type: backendMedia.type,
+          fileName: backendMedia.fileName,
+          fileSize: backendMedia.fileSize,
+          encryptedKey: backendMedia.encryptedKey,
+          senderEncryptedKey: backendMedia.senderEncryptedKey,
+          encryptionIV: backendMedia.encryptionIV,
+          isEncrypted: true,
+          downloadUrl: backendMedia.downloadUrl,
+          originalName: backendMedia.originalName,
+          fileId: backendMedia.fileId,
+        } as MediaForUI)) || []
+      }));
+      
+      console.log(`📥 Loaded ${uiMessages.length} messages from backend`);
+      
+      // Set messages first
+      setMessages(uiMessages);
+      
+      // ✅ USE decryptMessageContent INSTEAD OF decryptMessage
+      // Decrypt messages in batches
+      const batchSize = 3;
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (let i = 0; i < uiMessages.length; i += batchSize) {
+        const batch = uiMessages.slice(i, i + batchSize);
+        
+        const results = await Promise.allSettled(
+          batch.map(async (message) => {
+            try {
+              const result = await decryptMessageContent(message); // ✅ Changed this
+              return { id: message._id, success: true, result };
+            } catch (error) {
+              return { id: message._id, success: false, error };
+            }
+          })
+        );
+        
+        results.forEach((result, idx) => {
+          if (result.status === 'fulfilled' && result.value.success) {
+            successCount++;
+          } else {
+            errorCount++;
+          }
+        });
+        
+        // Small delay between batches
+        if (i + batchSize < uiMessages.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log(`📊 Decryption summary: ${successCount} successful, ${errorCount} failed`);
+    } else {
+      console.error('❌ Invalid response format:', response?.data);
+      onErrorRef.current?.('Invalid response from server');
+    }
+  } catch (error) {
+    console.error('❌ Failed to load messages:', error);
+    onErrorRef.current?.('Failed to load messages');
+  } finally {
+    if (isMountedRef.current) {
+      setIsLoading(false);
+    }
+  }
+}, [userId, selectedUser?._id, decryptMessageContent]); // ✅ Changed dependency
+
+
+
+// Helper functions
+const getMediaPlaceholderText = (mediaType: string): string => {
+  switch (mediaType) {
+    case 'image': return '📷 Photo';
+    case 'video': return '🎬 Video';
+    case 'audio': return '🎵 Audio';
+    case 'document': return '📎 Document';
+    case 'blob': return '📦 File';
+    default: return '📎 Attachment';
+  }
+};
 
  const loadChatUsers = useCallback(async () => {
     if (!userId || !isMountedRef.current || isLoadingRef.current) {
@@ -579,7 +1274,6 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
       setIsLoading(true);
       isLoadingRef.current = true;
       const response = await api.get('/messages/sidebar/list');
-      console.log("response", response.data);
 
       if (isMountedRef.current && response.data) {
         // Get current online friends
@@ -621,7 +1315,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
               } else {
                 tickStatus = 'none';
               }
-              console.log("tick", tickStatus);
+
             } else {
               // If message is from another user, no tick status
               tickStatus = 'none';
@@ -638,7 +1332,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
             };
           })
         );
-       console.log("processedChats",processedChats);
+      
         setUsers(processedChats);
       } else {
         setUsers([]);
@@ -658,11 +1352,7 @@ export const useChatLogic = (options: UseChatLogicOptions) => {
   }, [userId]);
 
 const handleNewMessage = useCallback(async (message: Message) => {
-  console.log(`📩 [SOCKET EVENT] handleNewMessage received:`, {
-    messageId: message._id,
-    sender: message.sender,
-    receiver: message.receiver
-  });
+ 
 
   if (!isMountedRef.current) return;
 
@@ -770,7 +1460,7 @@ const handleNewMessage = useCallback(async (message: Message) => {
 
     if (!userInSearchResults) return prev;
 
-    console.log(`🔍 [handleNewMessage] Updating search result for ${otherUserId}`);
+
 
     let unread = userInSearchResults.unreadCount || 0;
     if (!isCurrentUserSender && !isChatOpen) unread++;
@@ -799,7 +1489,7 @@ const handleNewMessage = useCallback(async (message: Message) => {
   // ----------------------------
   if (selectedUserRef.current && selectedUserRef.current._id === message.sender) {
     try {
-      console.log("calling api");
+   
       await api.put(`/messages/chat/read/${selectedUserRef.current._id}`);
 
       setUsers(prev =>
@@ -828,11 +1518,11 @@ const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) =>
   // Update sidebar
   setUsers(prev => {
     return prev.map(user => {
-      console.log("lastMessageSenderId", user.lastMessageSenderId);
+      
       const shouldUpdate = user._id === data.receiverId && 
                           user.lastMessageSenderId === userId &&
                           (user.tickStatus === 'sent' || user.tickStatus=='none');
-      console.log("shouldUpdate", shouldUpdate);
+      
       if (shouldUpdate) {
         return { 
           ...user, 
@@ -840,7 +1530,7 @@ const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) =>
           delivered: true
         };
       }
-      console.log(user);
+   
       return user;
     });
   });
@@ -853,7 +1543,7 @@ const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) =>
                           item.tickStatus === 'sent';
       
       if (shouldUpdate) {
-        console.log(`🔍 [handleMessageDelivered] Updating search result for ${data.receiverId}`);
+     
         return { 
           ...item, 
           tickStatus: 'delivered',
@@ -891,13 +1581,12 @@ const handleMessageRead = useCallback(async (data: {
   readerId: string;
 
 }) => {
-  console.log(`👁️ [SOCKET EVENT] Messages read:`, data.messageIds);
+
 
   if (!isMountedRef.current) return;
 
   const { messageIds, readerId } = data;
 
-    console.log(`👁️  Messages read:`, messageIds);
 
   // Update sidebar
   setUsers(prev =>
@@ -919,7 +1608,7 @@ const handleMessageRead = useCallback(async (data: {
           ...(user.tickStatus === 'delivered' || user.tickStatus === 'sent' ? { tickStatus: 'read' } : {})
         };
       }
-      console.log("User", user);
+     
       return user;
     })
   );
@@ -974,20 +1663,18 @@ const handleMessageSent = useCallback(async (message: Message) => {
 
   // Update messages list - ONLY update status for the real message ID
   setMessages(prev => {
-    console.log(`🔍 Looking for message ${message._id} in ${prev.length} messages`);
     
     const messageExists = prev.some(msg => msg._id === message._id);
     
     if (!messageExists) {
-      console.log(`❌ Message ${message._id} not found in current messages`);
-      console.log(`   Current message IDs:`, prev.map(msg => msg._id));
+
       return prev; // Don't add new messages, only update existing ones
     }
     
     const updated = prev.map(msg => {
       // Only update if it's the exact same message ID
       if (msg._id === message._id) {
-        console.log(`✅ Updating status for message ${msg._id}: ${message.status}`);
+
         return { 
           ...msg, // Keep existing message data (including text)
           status: message.status, // Update status from backend
@@ -1062,7 +1749,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
       // User doesn't exist, add async
       const addUserToSidebar = async () => {
         try {
-          console.log(`📡 Fetching user details for ${receiverId}...`);
+      
           const response = await api.get(`/auth/details/${receiverId}`);
           
           if (response.data?.success && response.data.data) {
@@ -1102,12 +1789,12 @@ const handleMessageSent = useCallback(async (message: Message) => {
               read: false
             };
             
-            console.log(`✅ Adding new user to sidebar:`, newUser.fullName, `Tick status: ${tickStatus}`);
+        
             
             setUsers(prevUsers => {
               const alreadyExists = prevUsers.some(u => u._id === receiverId);
               if (alreadyExists) {
-                console.log(`⚠️ User already added in async, skipping`);
+         
                 return prevUsers;
               }
               
@@ -1117,7 +1804,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
                 return timeB - timeA;
               });
               
-              console.log(`📊 New sidebar count:`, updated.length);
+         
               return updated;
             });
           }
@@ -1174,23 +1861,23 @@ const handleMessageSent = useCallback(async (message: Message) => {
       };
       
       addUserToSidebar();
-      console.log(`⏳ User addition in progress...`);
+
       return prev;
     }
   });
 
   // 🔥 Update search results
   setSearchResults(prev => {
-    console.log(`🔍 Updating search results for message sent with status: ${message.status}`);
+
     
     const userInSearchResults = prev.find(item => item._id === message.receiver);
     
     if (!userInSearchResults) {
-      console.log(`⚠️ User not in search results, skipping`);
+   
       return prev;
     }
 
-    console.log(`✅ Updating search result for ${message.receiver} with tickStatus: ${tickStatus}`);
+
     
     const updatedResults = prev.map(item => {
       if (item._id !== message.receiver) return item;
@@ -1227,14 +1914,13 @@ const handleMessageSent = useCallback(async (message: Message) => {
       return timeB - timeA;
     });
     
-    console.log(`✅ Search results updated with status: ${message.status}`);
+
     return updatedResults;
   });
   
   // Log final state
   setTimeout(() => {
-    console.log(`✅ Expected: tickStatus should be '${tickStatus}' for user ${message.receiver}`);
-    console.log(`✅ Expected: message status from backend: ${message.status}`);
+ 
   }, 100);
 }, [userId, decryptMessageContent]);
 
@@ -1268,7 +1954,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
 
       setSearchResults(prev => prev.map(item => {
     if (item._id === data.userId) {
-      console.log(`🔍 [handleUserStatusChanged] Updating search result for ${data.userId}`);
+     
       return { 
         ...item, 
         isOnline: data.isOnline
@@ -1281,7 +1967,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
   
 
   const handleAuthenticated = useCallback((data: AuthenticatedData) => {
-    console.log(`✅ [SOCKET EVENT] handleAuthenticated received from backend`);
+   
     
     setConnectionState('connected');
     
@@ -1302,11 +1988,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
   }, []);
 
   const handleOnlineFriendsResponse = useCallback((data: OnlineFriendsResponseData) => {
-    console.log(`👥 [SOCKET EVENT] Online friends response:`, {
-      success: data.success,
-      friendCount: data.onlineFriends?.length || 0,
-      timestamp: data.timestamp
-    });
+   
 
     if (!isMountedRef.current || !data.success || !Array.isArray(data.onlineFriends)) {
       return;
@@ -1331,7 +2013,6 @@ const handleMessageSent = useCallback(async (message: Message) => {
       });
     });
 
-    console.log(`✅ Updated ${data.onlineFriends.length} online friends`);
   }, []);
 
   const handleAuthenticationError = useCallback((error: { message: string }) => {
@@ -1353,7 +2034,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
 
   const searchUsers = useCallback(async (query: string): Promise<ChatItem[]> => {
   try {
-    console.log(`🔍 [searchUsers] Starting search for: "${query}"`);
+    
     
     interface BackendSearchResultItem {
       _id: unknown;
@@ -1380,7 +2061,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
     const response = await api.get<SearchResponse>(`/messages/search?q=${encodeURIComponent(query)}`);
     
     if (response.data.success && response.data.results) {
-      console.log(`🔍 Found ${response.data.results.length} results from backend`);
+   
       
       const formattedResults = await Promise.all(
         response.data.results.map(async (item): Promise<ChatItem> => {
@@ -1440,7 +2121,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
           
           // If user exists in our current chat list, merge with their real-time data
           if (existingUser) {
-            console.log(`🔍 ${item.name} (${id}): Found in users list, merging with real-time data`);
+       
             
             const result: ChatItem = {
               _id: id,
@@ -1463,9 +2144,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
             
             return result;
           }
-          
-          // New user (not in our current chat list) - return search data
-          console.log(`🔍 ${item.name} (${id}): New user from search`);
+     
           
           const result: ChatItem = {
             _id: id,
@@ -1490,16 +2169,16 @@ const handleMessageSent = useCallback(async (message: Message) => {
         })
       );
 
-      console.log(`📤 Setting searchResults state with ${formattedResults.length} items`);
+  
       
       // Update search results state
       setSearchResults(formattedResults);
 
-      console.log("results",searchResults);
+
       
       return formattedResults;
     } else {
-      console.log(`⚠️ No results or API error`);
+     
       setSearchResults([]);
       return [];
     }
@@ -1545,7 +2224,7 @@ const stopTyping = useCallback(() => {
 
   // Only send stop typing if we were actually typing
   if (isUserTypingRef.current) {
-    console.log(`⌨️ [stopTyping] Sending stop typing to ${currentSelectedUser._id}`);
+ 
     
     socketService.stopTyping({
       senderId: userId,
@@ -1571,8 +2250,7 @@ const startTyping = useCallback(() => {
   // Update local state
   setIsUserTyping(true);
   isUserTypingRef.current = true;
-  
-  console.log(`⌨️ [startTyping] Sending typing to ${currentSelectedUser._id}`);
+ 
   
   // Send typing event
   socketService.startTyping({
@@ -1642,7 +2320,7 @@ const handleUserTyping = useCallback((data: {
 useEffect(() => {
   return () => {
     if (isUserTypingRef.current && selectedUserRef.current) {
-      console.log('⌨️ [cleanup] Sending final stop typing');
+     
       socketService.stopTyping({
         senderId: userId,
         receiverId: selectedUserRef.current._id,
@@ -1714,7 +2392,7 @@ const getTypingUsers = useCallback(() => {
 
     connectSocket();
 
-    console.log(`🔌 [useEffect] Setting up socket listeners`);
+
     // Setup socket listeners with new event names
     socketService.onAuthenticated(handleAuthenticated);
     socketService.onAuthenticationError(handleAuthenticationError);
@@ -1779,406 +2457,17 @@ const getTypingUsers = useCallback(() => {
       };
     }
   }, [connectionState]);
+  
+// Helper function to format bytes
+function formatBytes(bytes: number, decimals = 2): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
 
-  // const sendMessage = useCallback(
-  //   async (messageData: {
-  //     ciphertext: string;
-  //     type: "text" | "image" | "audio" | "video" | "document";
-  //     media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
-  //   }) => {
-  //     // Access selectedUser from ref to maintain stable callback
-  //     const currentSelectedUser = selectedUserRef.current;
-      
-  //     if (!userId || !currentSelectedUser || !isMountedRef.current) {
-  //       console.log(`📤 [sendMessage] ❌ Validation failed`);
-  //       return;
-  //     }
-
-  //     try {
-  //       setIsSending(true);
-
-  //       // ✅ 1. Get public keys
-  //       const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
-  //       const senderPublicKey = await getUserPublicKey(userId);
-        
-  //       if (!recipientPublicKey || !senderPublicKey) {
-  //         throw new Error("Public key missing");
-  //       }
-
-  //       // ✅ 2. Encrypt TEXT
-  //       const textAESKey = await generateAESKey();
-  //       const encryptedText = await encryptWithAES(textAESKey, messageData.ciphertext);
-
-  //       const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
-
-  //       const encKeyRecipient = await crypto.subtle.encrypt(
-  //         { name: "RSA-OAEP" },
-  //         recipientPublicKey,
-  //         rawAES
-  //       );
-
-  //       const encKeySender = await crypto.subtle.encrypt(
-  //         { name: "RSA-OAEP" },
-  //         senderPublicKey,
-  //         rawAES
-  //       );
-
-  //       const encryptedTextAESKeyForRecipient = Array.from(new Uint8Array(encKeyRecipient))
-  //         .map(b => b.toString(16).padStart(2, "0")).join("");
-
-  //       const encryptedTextAESKeyForSender = Array.from(new Uint8Array(encKeySender))
-  //         .map(b => b.toString(16).padStart(2, "0")).join("");
-
-  //       // ✅ 3. Prepare FormData for HTTP request
-  //       const formData = new FormData();
-
-  //       const messagePayload = {
-  //         sender: userId,
-  //         receiver: currentSelectedUser._id,
-  //         ciphertext: encryptedText,
-  //         type: "ratcheted",
-  //         contentType: messageData.type,
-  //         encryptedKey: encryptedTextAESKeyForRecipient,
-  //         senderEncryptedKey: encryptedTextAESKeyForSender,
-  //         isGroup: false
-  //       };
-
-  //       formData.append("data", JSON.stringify(messagePayload));
-
-  //       // ✅ 4. Temp UI Message
-  //       const tempMessage: Message = {
-  //         _id: `temp-${Date.now()}`,
-  //         sender: userId,
-  //         receiver: currentSelectedUser._id,
-  //         ciphertext: encryptedText,
-  //         text: messageData.ciphertext,
-  //         type: "ratcheted",
-  //         media: [],
-  //         sentAt: new Date().toISOString(),
-  //         isTemp: true,
-  //         delivered: false,
-  //         read: false
-  //       };
-
-  //       // ✅ 5. MEDIA ENCRYPTION (BINARY ONLY)
-  //       if (messageData.media?.length) {
-  //         for (let i = 0; i < messageData.media.length; i++) {
-  //           const item = messageData.media[i];
-            
-  //           const { encryptedBlob, encryptedAESKeyForRecipient, encryptedAESKeyForSender } = 
-  //             await encryptFileForRecipient(item.file, recipientPublicKey, senderPublicKey);
-
-  //           // Create File object with proper name
-  //           const encryptedFile = new File(
-  //             [encryptedBlob],
-  //             `encrypted_${item.file.name}`,
-  //             { type: 'application/octet-stream' }
-  //           );
-
-  //           formData.append("media", encryptedFile);
-            
-  //           // Send metadata
-  //           formData.append(`mediaType${i}`, item.type);
-  //           formData.append(`mediaEncryptedKey${i}`, encryptedAESKeyForRecipient);
-  //           formData.append(`mediaSenderEncryptedKey${i}`, encryptedAESKeyForSender);
-  //           formData.append(`originalName${i}`, item.file.name);
-  //           formData.append(`fileSize${i}`, item.file.size.toString());
-            
-  //           // For temp message preview
-  //           const previewUrl = URL.createObjectURL(item.file);
-  //           tempMessage.media!.push({
-  //             url: previewUrl,
-  //             type: item.type,
-  //             encryptedKey: encryptedAESKeyForRecipient,
-  //             senderEncryptedKey: encryptedAESKeyForSender,
-  //             fileName: item.file.name,
-  //             fileSize: item.file.size
-  //           });
-  //         }
-  //       }
-
-  //       // ✅ 6. Add temp message immediately
-  //       setMessages(prev => [...prev, tempMessage]);
-  //       setNewMessage("");
-
-      
-
-  //       // ✅ 8. SEND VIA HTTP API ONLY (NO SOCKET SENDING)
-  //       try {
-  //         const response = await api.post("/messages/send", formData, {
-  //           timeout: 30000,
-  //           headers: {
-  //             'Content-Type': 'multipart/form-data'
-  //           }
-  //         });
-          
-  //         const realMessage = response.data?.data || response.data;
-
-  //         // ✅ Replace temp with real message
-  //         if (realMessage?._id) {
-  //           setMessages(prev =>
-  //             prev.map(msg =>
-  //               msg._id === tempMessage._id
-  //                 ? { ...realMessage, text: messageData.ciphertext, isTemp: false }
-  //                 : msg
-  //             )
-  //           );
-  //         }
-  //       } catch (error) {
-  //         console.error("📤 [sendMessage] ❌ Failed to send message via HTTP:", error);
-  //         onErrorRef.current?.("Failed to send message. Please try again.");
-  //       }
-
-  //       // ✅ 9. Store plaintext locally for temp message
-  //       if (isMountedRef.current) {
-  //         setDecryptedMessages(prev => ({
-  //           ...prev,
-  //           [tempMessage._id]: messageData.ciphertext
-  //         }));
-  //       }
-
-  //     } catch (error) {
-  //       console.error("📤 [sendMessage] ❌ Failed to send message:", error);
-
-  //       setMessages(prev => prev.filter(msg => !msg.isTemp));
-  //       onErrorRef.current?.("Failed to send message. Please try again.");
-
-  //       // Clean up object URLs
-  //       document.querySelectorAll("audio, video, img").forEach((el) => {
-  //         if (el instanceof HTMLImageElement || el instanceof HTMLMediaElement) {
-  //           if (el.src) URL.revokeObjectURL(el.src);
-  //         }
-  //       });
-  //     } finally {
-  //       if (isMountedRef.current) {
-  //         setIsSending(false);
-  //       }
-  //     }
-  //   },
-  //   [userId, getUserPublicKey]
-  // );
-
-  const sendMessage = useCallback(
-  async (messageData: {
-    ciphertext: string;
-    type: "text" | "image" | "audio" | "video" | "document";
-    media?: Array<{ file: File; type: "image" | "audio" | "video" | "document" }>;
-  }) => {
-    // Access selectedUser from ref to maintain stable callback
-    const currentSelectedUser = selectedUserRef.current;
-    
-    if (!userId || !currentSelectedUser || !isMountedRef.current) {
-      console.log(`📤 [sendMessage] ❌ Validation failed`);
-      return;
-    }
-
-    try {
-      setIsSending(true);
-
-      // ✅ 1. Get public keys
-      const recipientPublicKey = await getUserPublicKey(currentSelectedUser._id);
-      const senderPublicKey = await getUserPublicKey(userId);
-      
-      if (!recipientPublicKey || !senderPublicKey) {
-        throw new Error("Public key missing");
-      }
-
-      // For voice messages, we want the text to be empty unless user typed something
-      const isVoiceMessage = messageData.media?.some(m => m.type === "audio") && 
-                             (!messageData.ciphertext || messageData.ciphertext === "Voice message");
-
-      // If it's a voice message with default text, update it
-      let finalText = messageData.ciphertext;
-      if (isVoiceMessage && (!finalText || finalText === "Voice message")) {
-        finalText = "🎤 Voice message";
-      }
-
-      // ✅ 2. Encrypt TEXT (skip if no text)
-      let encryptedText = "";
-      let encryptedTextAESKeyForRecipient = "";
-      let encryptedTextAESKeyForSender = "";
-      
-      if (finalText.trim()) {
-        const textAESKey = await generateAESKey();
-        encryptedText = await encryptWithAES(textAESKey, finalText);
-
-        const rawAES = await crypto.subtle.exportKey("raw", textAESKey);
-
-        const encKeyRecipient = await crypto.subtle.encrypt(
-          { name: "RSA-OAEP" },
-          recipientPublicKey,
-          rawAES
-        );
-
-        const encKeySender = await crypto.subtle.encrypt(
-          { name: "RSA-OAEP" },
-          senderPublicKey,
-          rawAES
-        );
-
-        encryptedTextAESKeyForRecipient = Array.from(new Uint8Array(encKeyRecipient))
-          .map(b => b.toString(16).padStart(2, "0")).join("");
-
-        encryptedTextAESKeyForSender = Array.from(new Uint8Array(encKeySender))
-          .map(b => b.toString(16).padStart(2, "0")).join("");
-      }
-
-      // ✅ 3. Prepare FormData for HTTP request
-      const formData = new FormData();
-
-      const messagePayload = {
-        sender: userId,
-        receiver: currentSelectedUser._id,
-        ciphertext: encryptedText,
-        type: "ratcheted",
-        contentType: messageData.type,
-        encryptedKey: encryptedTextAESKeyForRecipient,
-        senderEncryptedKey: encryptedTextAESKeyForSender,
-        isGroup: false,
-        isVoiceMessage: isVoiceMessage, // Add flag for voice messages
-      };
-
-      formData.append("data", JSON.stringify(messagePayload));
-
-      // ✅ 4. Temp UI Message
-      const tempMessage: Message = {
-        _id: `temp-${Date.now()}`,
-        sender: userId,
-        receiver: currentSelectedUser._id,
-        ciphertext: encryptedText,
-        text: finalText,
-        type: "ratcheted",
-        media: [],
-        sentAt: new Date().toISOString(),
-        isTemp: true,
-        delivered: false,
-        read: false,
-        isVoiceMessage: isVoiceMessage, // Add flag for voice messages
-      };
-
-      // ✅ 5. MEDIA ENCRYPTION (BINARY ONLY)
-      if (messageData.media?.length) {
-        for (let i = 0; i < messageData.media.length; i++) {
-          const item = messageData.media[i];
-          const isAudioFile = item.type === "audio";
-          
-          const { encryptedBlob, encryptedAESKeyForRecipient, encryptedAESKeyForSender } = 
-            await encryptFileForRecipient(item.file, recipientPublicKey, senderPublicKey);
-
-          // Create File object with proper name
-          const encryptedFile = new File(
-            [encryptedBlob],
-            `encrypted_${item.file.name}`,
-            { type: isAudioFile ? 'audio/webm' : 'application/octet-stream' }
-          );
-
-          formData.append("media", encryptedFile);
-          
-          // Send metadata
-          formData.append(`mediaType${i}`, item.type);
-          formData.append(`mediaEncryptedKey${i}`, encryptedAESKeyForRecipient);
-          formData.append(`mediaSenderEncryptedKey${i}`, encryptedAESKeyForSender);
-          formData.append(`originalName${i}`, item.file.name);
-          formData.append(`fileSize${i}`, item.file.size.toString());
-          formData.append(`isVoiceMessage${i}`, isVoiceMessage ? "true" : "false");
-          
-          // For temp message preview - handle voice specially
-          let previewUrl = "";
-          if (isAudioFile) {
-            // For voice messages, we'll create an audio element preview
-            previewUrl = URL.createObjectURL(item.file);
-          } else if (item.type === "image") {
-            previewUrl = URL.createObjectURL(item.file);
-          } else if (item.type === "video") {
-            previewUrl = URL.createObjectURL(item.file);
-          }
-          
-          tempMessage.media!.push({
-            url: previewUrl,
-            type: item.type,
-            encryptedKey: encryptedAESKeyForRecipient,
-            senderEncryptedKey: encryptedAESKeyForSender,
-            fileName: item.file.name,
-            fileSize: item.file.size,
-            isVoiceMessage: isVoiceMessage,
-            duration: isAudioFile ? await getAudioDuration(item.file) : undefined
-          });
-        }
-      }
-
-      // ✅ 6. Add temp message immediately
-      setMessages(prev => [...prev, tempMessage]);
-      setNewMessage("");
-
-      // ✅ 8. SEND VIA HTTP API ONLY (NO SOCKET SENDING)
-      try {
-        const response = await api.post("/messages/send", formData, {
-          timeout: 60000, // Longer timeout for voice messages
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-        
-        const realMessage = response.data?.data || response.data;
-
-        // ✅ Replace temp with real message
-        if (realMessage?._id) {
-          setMessages(prev =>
-            prev.map(msg =>
-              msg._id === tempMessage._id
-                ? { 
-                    ...realMessage, 
-                    text: finalText, 
-                    isTemp: false,
-                    isVoiceMessage: isVoiceMessage,
-                    media: tempMessage.media // Keep preview URLs
-                  }
-                : msg
-            )
-          );
-        }
-      } catch (error) {
-        console.error("📤 [sendMessage] ❌ Failed to send message via HTTP:", error);
-        onErrorRef.current?.("Failed to send message. Please try again.");
-        
-        // Mark temp message as failed
-        setMessages(prev =>
-          prev.map(msg =>
-            msg._id === tempMessage._id
-              ? { ...msg, isFailed: true }
-              : msg
-          )
-        );
-      }
-
-      // ✅ 9. Store plaintext locally for temp message
-      if (isMountedRef.current && finalText.trim()) {
-        setDecryptedMessages(prev => ({
-          ...prev,
-          [tempMessage._id]: finalText
-        }));
-      }
-
-    } catch (error) {
-      console.error("📤 [sendMessage] ❌ Failed to send message:", error);
-
-      setMessages(prev => prev.filter(msg => !msg.isTemp));
-      onErrorRef.current?.("Failed to send message. Please try again.");
-
-      // Clean up object URLs
-      document.querySelectorAll("audio, video, img").forEach((el) => {
-        if (el instanceof HTMLImageElement || el instanceof HTMLMediaElement) {
-          if (el.src) URL.revokeObjectURL(el.src);
-        }
-      });
-    } finally {
-      if (isMountedRef.current) {
-        setIsSending(false);
-      }
-    }
-  },
-  [userId, getUserPublicKey]
-);
 
 // Helper function to get audio duration
 async function getAudioDuration(file: File): Promise<number> {
@@ -2212,9 +2501,9 @@ async function getAudioDuration(file: File): Promise<number> {
 
   const markMessagesAsRead = async (userId: string) => {
     try {
-      console.log("marking Messages REad");
+     
       const res=await api.put(`/messages/chat/read/${userId}`);
-      console.log("res", res);
+
       resetUnreadCount(userId);
       
     } catch (error) {

@@ -1,4 +1,4 @@
-/* MessageBubble.module.css - Enhanced Version */
+/* MessageBubble.module.css - Fixed Version */
 
 .container {
   display: flex;
@@ -92,10 +92,11 @@
 
 .mediaItem {
   border-radius: 0.875rem;
-  overflow: hidden;
+  overflow: visible; /* Changed from hidden to allow buttons to be clickable */
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: transform 0.3s ease;
+  position: relative;
 }
 
 .mediaItem:hover {
@@ -136,6 +137,7 @@
   opacity: 0;
   transform: translateY(10px);
   transition: all 0.3s ease;
+  z-index: 5;
 }
 
 .imageContainer:hover .imageOverlay {
@@ -169,12 +171,15 @@
   display: flex;
   gap: 0.75rem;
   align-items: center;
-  z-index: 2;
+  z-index: 10;
 }
 
+/* PLAY BUTTON - FIXED */
 .playButton {
   width: 44px;
   height: 44px;
+  min-width: 44px; /* Ensure minimum clickable area */
+  min-height: 44px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(10px);
@@ -187,11 +192,45 @@
   justify-content: center;
   transition: all 0.3s ease;
   font-size: 1.25rem;
+  position: relative;
+  z-index: 100; /* High z-index to be above everything */
+  -webkit-tap-highlight-color: transparent; /* Remove mobile tap highlight */
+  touch-action: manipulation; /* Improve touch responsiveness */
 }
 
-.playButton:hover {
+/* Audio-specific play button */
+.audioContainer .playButton {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.playButton:hover:not(.playButtonDisabled) {
   background: rgba(255, 255, 255, 0.3);
   transform: scale(1.1);
+}
+
+.playButton:active:not(.playButtonDisabled) {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+.playButtonDisabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Interactive button styles - REMOVED GLOBAL SELECTORS */
+.interactiveButton {
+  cursor: pointer;
+}
+
+.interactiveButtonDisabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .openButton {
@@ -205,6 +244,7 @@
   align-items: center;
   gap: 0.5rem;
   transition: all 0.3s ease;
+  z-index: 10;
 }
 
 .openButton:hover {
@@ -212,7 +252,7 @@
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-/* Audio Container */
+/* AUDIO CONTAINER - FIXED */
 .audioContainer {
   display: flex;
   align-items: center;
@@ -220,12 +260,16 @@
   background: rgba(255, 255, 255, 0.05);
   border-radius: 0.5rem;
   gap: 1rem;
+  position: relative;
+  isolation: isolate; /* Create new stacking context */
 }
 
 .audioIcon {
   padding: 0.75rem;
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(96, 165, 250, 0.3) 100%);
   border-radius: 0.5rem;
+  flex-shrink: 0;
+  z-index: 2;
 }
 
 .audioContent {
@@ -233,12 +277,17 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0; /* Allow flex shrinking */
+  position: relative;
+  z-index: 2;
 }
 
 .audioControls {
   display: flex;
   align-items: center;
   gap: 1rem;
+  position: relative;
+  z-index: 10; /* Higher than container */
 }
 
 .audioInfo {
@@ -246,11 +295,16 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0; /* Allow text truncation */
+  z-index: 2;
 }
 
 .audioText {
   font-weight: 500;
   font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .audioSize {
@@ -258,8 +312,16 @@
   opacity: 0.7;
 }
 
+/* AUDIO PLAYER - FIXED (Do not use display: none) */
 .audioPlayer {
-  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  visibility: hidden;
+  z-index: -1000; /* Send to back */
 }
 
 .audioActions {
@@ -278,6 +340,8 @@
   cursor: pointer;
   transition: all 0.3s ease;
   border: 1px solid transparent;
+  position: relative;
+  z-index: 2;
 }
 
 .documentContainer:hover {
@@ -293,6 +357,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .documentInfo {
@@ -300,6 +365,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  min-width: 0;
 }
 
 .documentName {
@@ -332,6 +398,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  z-index: 10;
 }
 
 .downloadIconButton:hover {
@@ -363,6 +431,8 @@
   justify-content: center;
   padding: 1rem 0;
   min-height: 3rem;
+  position: relative;
+  z-index: 1;
 }
 
 .decrypting {
@@ -410,6 +480,8 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0;
+  position: relative;
+  z-index: 1;
 }
 
 .encrypted svg {
@@ -510,6 +582,8 @@
   padding: 0.75rem 1rem;
   background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 10;
 }
 
 .downloadButton {
@@ -525,11 +599,44 @@
   cursor: pointer;
   transition: all 0.3s ease;
   font-weight: 500;
+  animation: fadeIn 0.3s ease-in-out;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .downloadButton:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+/* Media Loading States */
+.downloadPreparing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.downloadIconPreparing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  color: rgba(255, 255, 255, 0.5);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.spinnerSmall {
+  animation: spin 1s linear infinite;
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 /* Media Loading */
@@ -548,6 +655,7 @@
   color: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  z-index: 100;
 }
 
 /* Encrypted Media Placeholder */
@@ -560,6 +668,8 @@
   border: 2px dashed rgba(255, 255, 255, 0.2);
   border-radius: 0.75rem;
   transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
 }
 
 .encryptedMediaPlaceholder:hover {
@@ -570,6 +680,7 @@
 .encryptedIcon {
   margin-right: 1rem;
   color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
 }
 
 .encryptedMediaInfo {
@@ -577,6 +688,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  min-width: 0;
 }
 
 .encryptedMediaType {
@@ -592,7 +704,7 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
-.decryptMediaButton {
+.decryptButton {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: white;
   border: none;
@@ -603,16 +715,52 @@
   transition: all 0.3s ease;
   font-weight: 500;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.decryptMediaButton:hover:not(:disabled) {
+.decryptButton:hover:not(.decryptButtonDisabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-.decryptMediaButton:disabled {
+.decryptButtonDisabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Loading Media Placeholder */
+.loadingMediaPlaceholder {
+  display: flex;
+  align-items: center;
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.75rem;
+  gap: 1rem;
+  position: relative;
+  z-index: 2;
+}
+
+.loadingMediaInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.loadingMediaType {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.95);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.loadingMediaText {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* Decrypting Media */
@@ -624,11 +772,16 @@
   padding: 2rem;
   gap: 1rem;
   color: rgba(255, 255, 255, 0.9);
+  position: relative;
+  z-index: 2;
 }
 
 .spinner {
   animation: spin 1s linear infinite;
   color: #3b82f6;
+  width: 24px;
+  height: 24px;
+  display: block;
 }
 
 /* Error State */
@@ -641,11 +794,14 @@
   border-radius: 0.75rem;
   width: 100%;
   min-height: 80px;
+  position: relative;
+  z-index: 2;
 }
 
 .errorIcon {
   color: #ef4444;
   margin-right: 1rem;
+  flex-shrink: 0;
 }
 
 .errorMediaInfo {
@@ -653,6 +809,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  min-width: 0;
 }
 
 .errorText {
@@ -666,11 +823,52 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.errorMediaActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Video Loading Overlay */
+.videoLoadingOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  gap: 10px;
+  z-index: 5;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Disabled state */
+.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Animations */
 @keyframes fadeInUp {
   from {
     opacity: 0;
     transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -718,6 +916,26 @@
   .mediaActions {
     padding: 0.625rem 0.875rem;
   }
+  
+  .downloadPreparing {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  /* Larger touch targets on mobile */
+  .playButton {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .audioContainer .playButton {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -729,9 +947,34 @@
     max-height: 16rem;
   }
   
-  .decryptMediaButton {
+  .decryptButton {
     padding: 0.5rem 1rem;
     font-size: 0.75rem;
+  }
+  
+  .audioContainer {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  .documentContainer {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  /* Even larger touch targets on very small screens */
+  .playButton {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    min-height: 52px;
+  }
+  
+  .audioContainer .playButton {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
   }
 }
 
@@ -820,80 +1063,119 @@
   opacity: 1;
 }
 
-/* DEBUG STYLES */
-.debugPanel {
-  margin: 4px 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 11px;
+/* File size style */
+.fileSize {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
-.debugDetails {
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-  padding: 4px 8px;
-}
-
-.debugSummary {
-  cursor: pointer;
-  color: #666;
-  font-weight: 600;
-  user-select: none;
-  -webkit-user-select:none;
-}
-
-.debugSummary:hover {
-  color: #333;
-}
-
-.debugContent {
-  margin-top: 8px;
-  padding: 8px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  overflow: auto;
-  max-height: 200px;
-}
-
-.debugPre {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: #333;
-}
-
-.debugButtons {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.debugButton {
-  padding: 4px 8px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 3px;
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.debugButton:hover {
-  background: #2563eb;
-}
-
-.statusDebug {
-  margin-left: 4px;
-  font-size: 10px;
+.audioSize {
+  font-size: 0.75rem;
   opacity: 0.7;
 }
 
-/* Only show debug in development */
-@media (max-width: 768px) {
-  .debugPanel {
-    display: none; /* Hide on mobile for cleaner UI */
-  }
+.documentSize {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* Image loading state */
+.imageContainer.loading {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.imageContainer.loading::after {
+  content: "Loading image...";
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+}
+
+/* Video loading state */
+.videoPlayer.loading {
+  min-height: 200px;
+  background: rgba(30, 41, 59, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.videoPlayer.loading::after {
+  content: "Loading video...";
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+}
+
+/* Ensure proper spacing for media actions section */
+.mediaActions + .content {
+  margin-top: 0.5rem;
+}
+
+/* Smooth transitions for all interactive elements */
+.downloadButton,
+.decryptButton,
+.retryButton,
+.playButton,
+.openButton,
+.downloadIconButton {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Loading text animation */
+.downloadPreparing span:last-child {
+  animation: pulse 1.5s infinite;
+}
+
+/* Add subtle scale animation for loading spinners */
+.spinner, .spinnerSmall {
+  animation: spin 1s linear infinite, pulse 2s ease-in-out infinite;
+}
+
+/* Make sure video controls are properly layered */
+.videoContainer .videoControls {
+  z-index: 10;
+}
+
+/* Add hover effect for document container download icon */
+.documentContainer:hover .downloadIconButton {
+  color: white;
+  transform: scale(1.1);
+}
+
+/* Loading media item animation */
+.loadingMediaPlaceholder {
+  animation: pulse 2s infinite;
+}
+
+/* Encrypted media placeholder hover enhancement */
+.encryptedMediaPlaceholder:hover .encryptedIcon {
+  color: #93c5fd;
+  transform: scale(1.1);
+  transition: all 0.3s ease;
+}
+
+/* Error media placeholder animation */
+.errorMediaPlaceholder {
+  animation: pulse 3s infinite;
+}
+
+.errorMediaPlaceholder:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* Add visual indicator for clickable areas (remove in production) */
+.debugClickable {
+  outline: 2px solid rgba(0, 255, 0, 0.5);
+  outline-offset: 2px;
+}
+
+.debugNotClickable {
+  outline: 2px solid rgba(255, 0, 0, 0.5);
+  outline-offset: 2px;
 }

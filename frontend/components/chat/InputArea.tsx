@@ -95,36 +95,21 @@ const InputArea: React.FC<InputAreaProps> = ({
   const newText = e.target.value;
   setText(newText);
 
-  // Clear any existing debounce timer
-  if (typingDebounceRef.current) {
-    clearTimeout(typingDebounceRef.current);
-    typingDebounceRef.current = null;
+  const hasText = newText.trim().length > 0;
+  
+  // Simple logic: typing if there's text, not typing if empty
+  if (hasText && !isCurrentlyTypingRef.current) {
+    // Start typing
+    isCurrentlyTypingRef.current = true;
+    console.log('⌨️ [InputArea] Typing: ON (text entered)');
+    onTyping(true);
+  } else if (!hasText && isCurrentlyTypingRef.current) {
+    // Stop typing
+    isCurrentlyTypingRef.current = false;
+    console.log('⌨️ [InputArea] Typing: OFF (text cleared)');
+    onTyping(false);
   }
-
-  if (newText.trim()) {
-    // Send typing event immediately on every keystroke
-    if (!isCurrentlyTypingRef.current) {
-      isCurrentlyTypingRef.current = true;
-      console.log('⌨️ [InputArea] Starting typing (immediate)');
-      onTyping(true);
-    }
-    
-    // Also set a timer to stop typing if user pauses (500ms of inactivity)
-    typingDebounceRef.current = setTimeout(() => {
-      if (isCurrentlyTypingRef.current) {
-        isCurrentlyTypingRef.current = false;
-        console.log('⌨️ [InputArea] Stopping typing (inactivity)');
-        onTyping(false);
-      }
-    }, 500);
-  } else {
-    // If text is empty, stop typing immediately
-    if (isCurrentlyTypingRef.current) {
-      isCurrentlyTypingRef.current = false;
-      console.log('⌨️ [InputArea] Stopping typing (empty text)');
-      onTyping(false);
-    }
-  }
+  // If state hasn't changed (typing with text OR not typing without text), do nothing
 }, [onTyping]);
   // Handle input blur
   const handleBlur = useCallback(() => {
