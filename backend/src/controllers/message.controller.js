@@ -630,37 +630,36 @@ export const sendMessage = async (req, res) => {
           status: 'delivered'
         };
         
-        // Emit to receiver
+        console.log(`📤 Emitting to receiver ${receiver}: "new-message"`);
         emitToUser(receiver.toString(), "new-message", receiverPayload);
         
-        // Emit to sender (only if sender is not the current user who just sent)
-        if (sender.toString() !== currentUserId) {
-          emitToUser(sender.toString(), "message-sent", senderPayload);
-        }
+        console.log(`📤 Emitting to sender ${sender}: "message-sent" (receiver online)`);
+        // ALWAYS emit to sender, even if they're the current user
+        emitToUser(sender.toString(), "message-sent", senderPayload);
         
     } else {
         console.log(`📴 Receiver ${receiver} is offline`);
         
-        // Only emit to sender if sender is not the current user
-        if (sender.toString() !== currentUserId) {
-          const senderPayload = {
-            _id: msg._id,
-            sender: msg.sender.toString(),
-            receiver: msg.receiver.toString(),
-            ciphertext: msg.ciphertext,
-            type: msg.type,
-            contentType: msg.contentType,
-            encryptedKey: getEncryptedKeyForUser(msg, sender),
-            media: formatMediaForUser(msg.media, sender),
-            sentAt: msg.sentAt,
-            delivered: false,
-            deliveredAt: null,
-            read: false,
-            status: 'sent'
-          };
-          
-          emitToUser(sender.toString(), "message-sent", senderPayload);
-        }
+        // Prepare sender payload
+        const senderPayload = {
+          _id: msg._id,
+          sender: msg.sender.toString(),
+          receiver: msg.receiver.toString(),
+          ciphertext: msg.ciphertext,
+          type: msg.type,
+          contentType: msg.contentType,
+          encryptedKey: getEncryptedKeyForUser(msg, sender),
+          media: formatMediaForUser(msg.media, sender),
+          sentAt: msg.sentAt,
+          delivered: false,
+          deliveredAt: null,
+          read: false,
+          status: 'sent'
+        };
+        
+        console.log(`📤 Emitting to sender ${sender}: "message-sent" (receiver offline)`);
+        // ALWAYS emit to sender
+        emitToUser(sender.toString(), "message-sent", senderPayload);
     }
 
     console.log("📤 Response data:", {
@@ -668,7 +667,7 @@ export const sendMessage = async (req, res) => {
       userType: isSender ? 'sender' : 'receiver',
       keyLength: responseData.encryptedKey?.length || 0
     });
-  console.log(responseData);
+
     // Return response to the current user
     res.status(201).json({
       success: true,

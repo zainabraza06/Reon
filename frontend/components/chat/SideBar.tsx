@@ -172,22 +172,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Enhanced typing indicator component
-  const TypingIndicator = ({ show = true }: { show: boolean }) => {
-    if (!show) return null;
-    
-    return (
-      <div className={styles.typingIndicatorWrapper}>
-        <span className={styles.typingTextSmall}>typing</span>
-        <div className={styles.typingDots}>
-          <span className={styles.typingDot}></span>
-          <span className={styles.typingDot}></span>
-          <span className={styles.typingDot}></span>
-        </div>
-      </div>
-    );
-  };
-
   const renderItem = (item: ChatItem, index: number) => {
     const isSelected = selectedId === item._id;
     const isLastMessageFromCurrentUser = item.lastMessageSenderId === currentUserId;
@@ -230,7 +214,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {item.fullName || item.username}
               </h4>
               
-            
+              {/* Inline typing indicator */}
+              {item.isTyping && (
+                <div className={styles.typingInlineIndicator}>
+                  <span className={styles.typingInlineText}>typing</span>
+                  <div className={styles.typingInlineDots}>
+                    <span className={styles.typingInlineDot}></span>
+                    <span className={styles.typingInlineDot}></span>
+                    <span className={styles.typingInlineDot}></span>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className={styles.headerRight}>
@@ -240,7 +234,19 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               )}
               
-            
+              {/* Unread badge */}
+              {!item.isTyping && item.unreadCount > 0 && (
+                <div className={styles.unreadBadge}>
+                  {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                </div>
+              )}
+              
+              {/* Typing time indicator */}
+              {item.isTyping && (
+                <div className={styles.typingTimeIndicator}>
+                  <span className={styles.typingTimeText}>now</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -250,7 +256,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {formattedLastMessage}
               </p>
               
-              
+              {/* Message area typing indicator */}
+              {item.isTyping && (
+                <div className={styles.messageTypingIndicator}>
+                  <div className={styles.typingDots}>
+                    <span className={styles.typingDot}></span>
+                    <span className={styles.typingDot}></span>
+                    <span className={styles.typingDot}></span>
+                  </div>
+                </div>
+              )}
               
               {showTicks && !item.isTyping && (
                 <div className={`${styles.tickContainer} ${isSelected && styles.tickContainerSelected}`}>
@@ -258,8 +273,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               )}
             </div>
-            
-            
           </div>
         </div>
       </div>
@@ -281,8 +294,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           pendingFriendRequests={currentUser?.pendingFriendRequests || 0}
           currentPage="messages"
         />
-        
-       
       </div>
 
       {/* Search */}
@@ -307,6 +318,25 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Global typing indicator */}
+      {typingUsersCount > 0 && (
+        <div className={styles.globalTypingHeader}>
+          <div className={styles.globalTypingBadge}>
+            <div className={styles.globalTypingCount}>
+              {typingUsersCount}
+            </div>
+            <span className={styles.globalTypingText}>
+              {typingUsersCount === 1 ? 'User is typing' : `${typingUsersCount} users typing`}
+            </span>
+            <div className={styles.globalTypingDots}>
+              <span className={styles.globalTypingDot}></span>
+              <span className={styles.globalTypingDot}></span>
+              <span className={styles.globalTypingDot}></span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* List Container */}
       <div className={`${styles.listContainer} custom-scrollbar`}>

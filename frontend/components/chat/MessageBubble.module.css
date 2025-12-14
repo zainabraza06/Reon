@@ -558,7 +558,7 @@
 }
 
 .readIcon {
-  color: #93c5fd;
+  color: #0d1927;
   filter: drop-shadow(0 0 4px rgba(147, 197, 253, 0.3));
 }
 
@@ -586,6 +586,33 @@
   z-index: 10;
 }
 
+
+/* STATUS ICONS - Updated colors */
+.status svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* READ - Dark Blue */
+.doubleTickRead {
+  color: #0e9b9d !important; /* Dark blue color */
+  filter: drop-shadow(0 0 4px rgba(147, 197, 253, 0.3));
+}
+
+/* DELIVERED - White */
+.doubleTick {
+  color: white !important; /* White color for delivered */
+}
+
+/* SENT - White Single Tick */
+.singleTick {
+  color: white !important; /* White color for sent */
+}
+
+/* CLOCK (SENDING) - Light Gray */
+.clockIcon {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
 .downloadButton {
   display: flex;
   align-items: center;

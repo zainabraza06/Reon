@@ -23,21 +23,11 @@ const processedMessageDeliveries = new Map(); // userId → Set(messageIds)
 // -------------------- TYPING INDICATORS --------------------
 // Store typing status: userId → { typingTo: receiverId, timestamp: Date.now() }
 const typingStatus = new Map(); // userId → typing data
-const typingTimeouts = new Map(); // userId → timeout for auto-clear
 
-
-
-
-// Clear typing status after timeout
+// Clear typing status
 const clearTypingStatus = (userId) => {
   if (typingStatus.has(userId)) {
     const typingData = typingStatus.get(userId);
-    
-    // Clear timeout
-    if (typingTimeouts.has(userId)) {
-      clearTimeout(typingTimeouts.get(userId));
-      typingTimeouts.delete(userId);
-    }
     
     // Remove typing status
     typingStatus.delete(userId);
@@ -52,18 +42,12 @@ const clearTypingStatus = (userId) => {
       });
     }
     
-
+ 
   }
 };
 
 // Handle typing start
 const handleTypingStart = (senderId, receiverId, socketId) => {
-
-  
-  // Clear any existing timeout
-  if (typingTimeouts.has(senderId)) {
-    clearTimeout(typingTimeouts.get(senderId));
-  }
   
   // Set typing status
   typingStatus.set(senderId, {
@@ -71,13 +55,6 @@ const handleTypingStart = (senderId, receiverId, socketId) => {
     socketId,
     timestamp: Date.now()
   });
-  
-  // Set auto-clear timeout (3 seconds of inactivity)
-  const timeoutId = setTimeout(() => {
-    clearTypingStatus(senderId);
-  }, 3000);
-  
-  typingTimeouts.set(senderId, timeoutId);
   
   // Notify receiver
   emitToUser(receiverId, "user-typing", {
@@ -90,7 +67,6 @@ const handleTypingStart = (senderId, receiverId, socketId) => {
 
 // Handle typing stop
 const handleTypingStop = (senderId, receiverId) => {
-  
   
   // Clear typing status
   clearTypingStatus(senderId);
@@ -525,13 +501,8 @@ export const initSocket = (server) => {
       // Update heartbeat when typing (activity)
       heartbeatMap.set(senderId, Date.now());
       
-      if (isTyping) {
-        // User started typing
-        handleTypingStart(senderId, receiverId, socket.id);
-      } else {
-        // User stopped typing
-        handleTypingStop(senderId, receiverId);
-      }
+      // User started typing
+      handleTypingStart(senderId, receiverId, socket.id);
     });
     
     socket.on("stop-typing", (data) => {
