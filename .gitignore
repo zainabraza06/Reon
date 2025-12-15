@@ -4,9 +4,3 @@ backend/.env
 frontend/.next
 
 
-backend/models/Call.js
-backend/controllers/call.controller.js
-backend/lib/liveKitService.js
-
-
-backend/routes/call.route.js
