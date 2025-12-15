@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { CallProvider } from "@/context/CallContext";
 import { GlobalNotifications } from "@/components/GlobalNotification";
 import { UserInitializer } from "@/components/UserInitializer";
 
@@ -17,9 +18,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <NotificationProvider>
-            <UserInitializer />
-            <GlobalNotifications />
-            {children}
+            <CallProvider>
+              <UserInitializer />
+              <GlobalNotifications />
+              {children}
+            </CallProvider>
           </NotificationProvider>
         </AuthProvider>
       </body>

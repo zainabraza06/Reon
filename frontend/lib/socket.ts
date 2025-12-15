@@ -91,6 +91,7 @@ class SocketService {
   private listeners: Map<string, EventCallback<unknown>[]> = new Map();
   private connectionState: 'connecting' | 'connected' | 'disconnected' | 'error' = 'disconnected';
   private heartbeatInterval: NodeJS.Timeout | null = null;
+    private callSocket: Socket | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private connectionPromise: Promise<boolean> | null = null;
@@ -113,6 +114,9 @@ class SocketService {
     this.userId = userId;
     this.connectionState = 'connecting';
 
+      // Grab auth token if available
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
     this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001", {
       auth: { userId },
       transports: ['websocket', 'polling'],
@@ -122,6 +126,33 @@ class SocketService {
       timeout: 20000,
       query: { userId }
     });
+
+      try {
+      this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001") + "/calls", {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        withCredentials: true,
+        query: { userId }
+      });
+
+      // Forward incoming call namespace events into our event system
+      this.callSocket.onAny((eventName, ...args) => {
+        // Prefix with namespace to avoid collisions (events already have 'call:' prefix)
+        this.emitEvent(eventName, args[0]);
+      });
+
+      // Debug outgoing from call namespace
+      this.callSocket.onAnyOutgoing((eventName, ...args) => {
+        console.log(`📤 [CALL-NS OUTGOING] Emitting: "${eventName}"`, {
+          data: args[0],
+          timestamp: new Date().toISOString(),
+          socketId: this.callSocket?.id
+        });
+      });
+    } catch (err) {
+      console.warn('Could not connect to /calls namespace:', err);
+      this.callSocket = null;
+    }
 
     // ✅ Set up listeners BEFORE connect event fires
     this.setupDefaultListeners();
@@ -217,6 +248,7 @@ class SocketService {
         if (this.socket) {
           this.socket.removeAllListeners();
           this.socket.disconnect();
+             this.callSocket?.removeAllListeners();
           this.socket = null;
         }
       }
@@ -279,8 +311,18 @@ private debugSocketEvents() {
   }
 
   emit(event: string, data?: unknown) {
-    if (this.socket && this.socket.connected) {
+    // Route call-related events to the calls namespace socket when available
+    if (event.startsWith('call:')) {
+      if (this.callSocket && this.callSocket.connected) {
+        console.log(`📤 Emitting ${event} on /calls namespace:`, data);
+        this.callSocket.emit(event, data);
+        return;
+      }
+      // fallback to main socket if call namespace not available
+    }
 
+    if (this.socket && this.socket.connected) {
+      console.log(`📤 Emitting ${event}:`, data);
       this.socket.emit(event, data);
     } else {
       console.warn(`⚠️ Cannot emit ${event}: Socket not connected`);

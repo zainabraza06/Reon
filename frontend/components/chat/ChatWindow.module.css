@@ -1,9 +1,7 @@
-/* ChatWindow.module.css */
-
 .chatWindow {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   width: 100%;
   overflow: hidden;
   position: relative;
@@ -224,6 +222,16 @@
 
 .actionButton:hover::after {
   opacity: 1;
+}
+
+/* NEW: Messages Area wrapper */
+.messagesArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
 /* Messages Container - UPDATED FOR PROPER SCROLLING */
@@ -771,6 +779,7 @@
   right: 20px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);

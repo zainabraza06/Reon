@@ -1206,3 +1206,40 @@
   outline: 2px solid rgba(255, 0, 0, 0.5);
   outline-offset: 2px;
 }
+
+
+.callLogContainer {
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  align-items: center;
+}
+
+.callLogBubble {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.callLogContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.callLogText {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  margin: 0;
+  font-weight: 400;
+}
+
+.callLogTimestamp {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  margin: 0;
+}

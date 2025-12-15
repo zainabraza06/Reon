@@ -10,6 +10,11 @@ import { cn } from "@/lib/utils";
 import { ChatItem } from "@/types";
 import styles from "./ChatPage.module.css";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useWebRTC } from "@/hooks/useWEBRTC";
+import { useCall } from "@/context/CallContext";
+import IncomingCallModal from "@/components/call/IncomingCallModal";
+import IncomingCallBanner from "@/components/call/IncomingCallBanner";
+import ActiveCallScreen from "@/components/call/ActiveCallScreen";
 
 const ChatPage: React.FC = () => {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -17,6 +22,8 @@ const ChatPage: React.FC = () => {
   const shouldLoadMessagesRef = useRef(false);
   const loadMessagesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+
+  const { incomingCall, dismissIncomingCall, startCall, endCall: contextEndCall, setIsMicEnabled, setIsCameraEnabled, activeCall, updateCallStreams, updateCallState, isMicEnabled, isCameraEnabled, showIncomingCall, callViewMode, setCallViewMode } = useCall();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -48,22 +55,90 @@ const ChatPage: React.FC = () => {
     onError: (err) => console.error(err),
   });
 
-  // ✅ REMOVED: Local decrypted media state - useChatLogic handles it
-  // ✅ REMOVED: Auto-decryption useEffect hooks - useChatLogic handles it
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const activeCallRef = useRef(activeCall);
+  
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
 
-  // Filter out temp messages for display (optional)
-  const displayMessages = useMemo(() => 
-    messages.filter(msg => !msg.isFailed), // Show all except failed messages
-    [messages]
-  );
+  const { initiateCall, endCall, answerCallById, rejectCall, toggleMic: toggleMicTrack, toggleCamera: toggleCameraTrack } = useWebRTC({
+    userId: currentUser?._id || "",
+    onCallStateChange: (state, session) => {
+      console.log('📞 Call state changed:', state, session);
+      
+      updateCallState(state);
+      
+      if (session && activeCallRef.current) {
+        const currentLocalId = localStreamRef.current?.id;
+        const currentRemoteId = remoteStreamRef.current?.id;
+        const newLocalId = session.localStream?.id;
+        const newRemoteId = session.remoteStream?.id;
+        
+        if (newLocalId && newLocalId !== currentLocalId) {
+          localStreamRef.current = session.localStream || null;
+        }
+        if (newRemoteId && newRemoteId !== currentRemoteId) {
+          remoteStreamRef.current = session.remoteStream || null;
+        }
+        
+        if (newLocalId !== currentLocalId || newRemoteId !== currentRemoteId) {
+          updateCallStreams(session.localStream, session.remoteStream);
+        }
+      }
+      
+      if (state === 'ended' || state === 'failed') {
+        localStreamRef.current = null;
+        remoteStreamRef.current = null;
+        contextEndCall();
+      }
+    },
+    onRemoteStream: (stream) => {
+      console.log('📹 Remote stream received:', stream);
+      if (activeCallRef.current && stream) {
+        const currentRemoteId = remoteStreamRef.current?.id;
+        const newRemoteId = stream.id;
+        
+        if (newRemoteId !== currentRemoteId) {
+          remoteStreamRef.current = stream;
+          updateCallStreams(localStreamRef.current || undefined, stream);
+        }
+      }
+    },
+    onIncomingCall: async (data) => {
+      console.log('📞 Incoming call notification:', data);
+      try {
+        const response = await fetch(`/api/auth/details/${data.fromUserId}`);
+        const caller = await response.json();
+        showIncomingCall({
+          callId: data.callId,
+          fromUserId: data.fromUserId,
+          fromUserName: caller.fullName || caller.username || 'Unknown',
+          fromUserAvatar: caller.profilePic,
+          type: data.type
+        });
+      } catch (error) {
+        console.error('Failed to fetch caller info:', error);
+        showIncomingCall({
+          callId: data.callId,
+          fromUserId: data.fromUserId,
+          fromUserName: 'Unknown',
+          type: data.type
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Call error:', error);
+      alert(`Call failed: ${error}`);
+    }
+  });
 
-  // Keep a ref of the selected user for event handlers
   const selectedUserRef = useRef(selectedUser);
   useEffect(() => {
     selectedUserRef.current = selectedUser;
   }, [selectedUser]);
 
-  // Load messages with debounce
   const debounceLoadMessages = useCallback(() => {
     if (loadMessagesTimeoutRef.current) {
       clearTimeout(loadMessagesTimeoutRef.current);
@@ -81,7 +156,6 @@ const ChatPage: React.FC = () => {
     }, 300);
   }, [selectedUser, loadMessages, markMessagesAsRead]);
 
-  // Handle typing events
   const handleTyping = useCallback((isTyping: boolean) => {
     if (!selectedUserRef.current?._id || !currentUser?._id) return;
 
@@ -94,35 +168,155 @@ const ChatPage: React.FC = () => {
     }
   }, [currentUser, triggerTyping, stopTyping]);
 
-  // Handle user selection
   const handleSelectUser = useCallback((user: ChatItem) => {
-    // Stop typing if active
     if (isTypingRef.current) {
       isTypingRef.current = false;
       stopTyping?.();
     }
 
-    // Clear pending message loads
     if (loadMessagesTimeoutRef.current) {
       clearTimeout(loadMessagesTimeoutRef.current);
     }
 
-    // Update URL
     const params = new URLSearchParams();
     params.set("userId", user._id);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 
-    // Update state
     setSelectedUser(user);
     setMessages([]);
     setDecryptedMessages({});
     resetUnreadCount(user._id);
     
-    // Load messages
     shouldLoadMessagesRef.current = true;
   }, [router, pathname, setSelectedUser, setMessages, setDecryptedMessages, resetUnreadCount, stopTyping]);
 
-  // Handle closing chat
+  const handleVoiceCall = useCallback(async (userId: string) => {
+    try {
+      console.log('📞 Starting voice call with:', userId);
+      const callee = users.find(u => u._id === userId);
+      if (!callee) {
+        console.error('Callee not found');
+        return;
+      }
+      
+      startCall({
+        callId: '',
+        userId: userId,
+        userName: callee.fullName || callee.username || 'Unknown',
+        userAvatar: callee.profilePic,
+        type: 'audio',
+        startTime: Date.now(),
+        callState: 'initiating',
+      });
+      
+      setCallViewMode('full');
+      
+      await initiateCall(userId, 'audio');
+    } catch (error) {
+      console.error('Failed to start voice call:', error);
+      contextEndCall();
+      localStreamRef.current = null;
+      remoteStreamRef.current = null;
+    }
+  }, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
+  
+  const handleVideoCall = useCallback(async (userId: string) => {
+    try {
+      console.log('📹 Starting video call with:', userId);
+      const callee = users.find(u => u._id === userId);
+      if (!callee) {
+        console.error('Callee not found');
+        return;
+      }
+      
+      startCall({
+        callId: '',
+        userId: userId,
+        userName: callee.fullName || callee.username || 'Unknown',
+        userAvatar: callee.profilePic,
+        type: 'video',
+        startTime: Date.now(),
+        callState: 'initiating',
+      });
+      
+      setCallViewMode('full');
+      
+      await initiateCall(userId, 'video');
+    } catch (error) {
+      console.error('Failed to start video call:', error);
+      contextEndCall();
+      localStreamRef.current = null;
+      remoteStreamRef.current = null;
+    }
+  }, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
+
+  const handleAcceptIncomingCall = useCallback(async () => {
+    if (!incomingCall) return;
+
+    try {
+      setIsMicEnabled(true);
+      setIsCameraEnabled(incomingCall.type === 'video');
+      
+      const isInCallerChat = selectedUser?._id === incomingCall.fromUserId;
+      
+      if (!isInCallerChat) {
+        const callerUser = users.find(u => u._id === incomingCall.fromUserId);
+        if (callerUser) {
+          await handleSelectUser(callerUser);
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } else {
+          const params = new URLSearchParams();
+          params.set("userId", incomingCall.fromUserId);
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+      
+      startCall({
+        callId: incomingCall.callId,
+        userId: incomingCall.fromUserId,
+        userName: incomingCall.fromUserName,
+        userAvatar: incomingCall.fromUserAvatar,
+        type: incomingCall.type,
+        startTime: Date.now(),
+        callState: 'connecting',
+      });
+      
+      setCallViewMode('full');
+      
+      await answerCallById(incomingCall.callId);
+      
+      dismissIncomingCall();
+    } catch (error) {
+      console.error('Failed to accept call:', error);
+      contextEndCall();
+      dismissIncomingCall();
+      localStreamRef.current = null;
+      remoteStreamRef.current = null;
+    }
+  }, [incomingCall, setIsMicEnabled, setIsCameraEnabled, startCall, dismissIncomingCall, answerCallById, contextEndCall, selectedUser, setCallViewMode, users, handleSelectUser, router, pathname]);
+
+  const handleRejectIncomingCall = useCallback(async () => {
+    try {
+      if (incomingCall?.callId) {
+        rejectCall(incomingCall.callId);
+      }
+      dismissIncomingCall();
+    } catch (error) {
+      console.error('Failed to reject call:', error);
+      dismissIncomingCall();
+    }
+  }, [incomingCall, rejectCall, dismissIncomingCall]);
+
+  const handleEndCall = useCallback(async () => {
+    try {
+      await endCall('user-ended');
+      contextEndCall();
+    } catch (error) {
+      console.error('Failed to end call:', error);
+    }
+  }, [endCall, contextEndCall]);
+
   const handleCloseChat = () => {
     if (isTypingRef.current) {
       isTypingRef.current = false;
@@ -141,11 +335,9 @@ const ChatPage: React.FC = () => {
     clearSearchResults?.();
   };
 
-  // Handle sending messages
   const handleSendMessage = async (text: string, files: File[] = []) => {
     if (!selectedUser) return;
 
-    // Stop typing
     if (isTypingRef.current) {
       isTypingRef.current = false;
       stopTyping?.();
@@ -167,7 +359,6 @@ const ChatPage: React.FC = () => {
     });
   };
 
-  // Initial load from URL
   useEffect(() => {
     if (initialLoad.current && currentUser?._id && userIdParam && users.length > 0) {
       const userFromParam = users.find((user) => user._id === userIdParam);
@@ -179,21 +370,18 @@ const ChatPage: React.FC = () => {
     }
   }, [currentUser, userIdParam, users, setSelectedUser]);
 
-  // Load messages when selected user changes
   useEffect(() => {
     if (!selectedUser?._id || !shouldLoadMessagesRef.current) return;
     debounceLoadMessages();
     shouldLoadMessagesRef.current = false;
   }, [selectedUser, debounceLoadMessages]);
 
-  // Auto-load messages when user is already selected
   useEffect(() => {
     if (selectedUser?._id && !shouldLoadMessagesRef.current) {
       shouldLoadMessagesRef.current = true;
     }
   }, [selectedUser]);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       if (loadMessagesTimeoutRef.current) {
@@ -205,7 +393,6 @@ const ChatPage: React.FC = () => {
     };
   }, [stopTyping]);
 
-  // Check if current chat user is typing
   const isUserTypingInChat = useCallback(() => {
     return selectedUser ? typingUsers[selectedUser._id] === true : false;
   }, [selectedUser, typingUsers]);
@@ -226,6 +413,34 @@ const ChatPage: React.FC = () => {
       <div className={cn(styles.blob, styles.blobPurple)} />
       <div className={cn(styles.blob, styles.blobBlue)} />
       <div className={cn(styles.blob, styles.blobTeal)} />
+
+      {incomingCall && (
+        <>
+          {selectedUser?._id !== incomingCall.fromUserId && (
+            <IncomingCallBanner
+              isVisible={!!incomingCall}
+              callerName={incomingCall.fromUserName}
+              callerAvatar={incomingCall.fromUserAvatar}
+              callType={incomingCall.type}
+              onAccept={handleAcceptIncomingCall}
+              onReject={handleRejectIncomingCall}
+            />
+          )}
+          
+          {selectedUser?._id === incomingCall.fromUserId && (
+            <div className={styles.incomingCallOverlay}>
+              <IncomingCallModal
+                isVisible={!!incomingCall}
+                callerName={incomingCall.fromUserName}
+                callerAvatar={incomingCall.fromUserAvatar}
+                callType={incomingCall.type}
+                onAccept={handleAcceptIncomingCall}
+                onReject={handleRejectIncomingCall}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       <div className={styles.mainContainer}>
         <div className={styles.chatWrapper}>
@@ -249,34 +464,103 @@ const ChatPage: React.FC = () => {
             styles.chatAreaContainer,
             mobileView === "list" ? styles.chatAreaHidden : styles.chatAreaVisible
           )}>
-            {selectedUser ? (
-              <>
-                <ChatWindow
-                  selectedUser={users.find(u => u._id === selectedUser?._id) || selectedUser}
-                  messages={messages} // Use all messages including temp
-                  currentUserId={currentUser._id}
-                  decryptedMessages={decryptedMessages}
-                  decryptedMedia={decryptedMedia} // Use directly from useChatLogic
-                  isTyping={isUserTypingInChat()}
-                  onClose={handleCloseChat}
-                  isLoading={false}
+            {!(activeCall && callViewMode === 'full') && (
+              selectedUser ? (
+                <>
+                  <ChatWindow
+                    selectedUser={users.find(u => u._id === selectedUser?._id) || selectedUser}
+                    messages={messages}
+                    currentUserId={currentUser._id}
+                    decryptedMessages={decryptedMessages}
+                    decryptedMedia={decryptedMedia}
+                    isTyping={isUserTypingInChat()}
+                    onClose={handleCloseChat}
+                    isLoading={false}
+                    onVoiceCall={handleVoiceCall}
+                    onVideoCall={handleVideoCall}
+                  />
+                  <div className={styles.inputAreaContainer}>
+                    <InputArea
+                      onSendMessage={handleSendMessage}
+                      onTyping={handleTyping}
+                      disabled={isSending}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className={styles.emptyChat}>
+                  <div className={styles.emptyChatIcon}>💬</div>
+                  <h2 className={styles.emptyChatTitle}>Welcome to Chat</h2>
+                  <p className={styles.emptyChatText}>
+                    Select a conversation from the sidebar to start chatting
+                  </p>
+                </div>
+              )
+            )}
+
+            {activeCall && callViewMode === 'full' && (
+              <div className={styles.callOverlay}>
+                <ActiveCallScreen
+                  isVisible={!!activeCall}
+                  remoteUserName={activeCall.userName}
+                  remoteUserAvatar={activeCall.userAvatar}
+                  callType={activeCall.type}
+                  localStream={activeCall.localStream}
+                  remoteStream={activeCall.remoteStream}
+                  callState={activeCall.callState}
+                  onHangup={handleEndCall}
+                  onToggleMic={() => {
+                    const newState = !isMicEnabled;
+                    setIsMicEnabled(newState);
+                    toggleMicTrack(newState);
+                  }}
+                  onToggleCamera={() => {
+                    const newState = !isCameraEnabled;
+                    setIsCameraEnabled(newState);
+                    toggleCameraTrack(newState);
+                  }}
+                  isMicEnabled={isMicEnabled}
+                  isCameraEnabled={isCameraEnabled}
+                  onCollapse={() => {
+                    if (activeCall.userId) {
+                      const user = users.find(u => u._id === activeCall.userId);
+                      if (user) {
+                        handleSelectUser(user);
+                        setCallViewMode('mini');
+                      }
+                    }
+                  }}
+                  viewMode="full"
                 />
-                <InputArea
-                  onSendMessage={handleSendMessage}
-                  onTyping={handleTyping}
-                  disabled={isSending}
-                />
-              </>
-            ) : (
-              <ChatWindow
-                selectedUser={null}
-                messages={[]}
-                currentUserId={currentUser._id}
-                decryptedMessages={{}}
-                decryptedMedia={{}}
-                isTyping={false}
-                onClose={handleCloseChat}
-                isLoading={false}
+              </div>
+            )}
+
+            {activeCall && callViewMode === 'mini' && selectedUser && selectedUser._id === activeCall.userId && (
+              <ActiveCallScreen
+                isVisible={!!activeCall}
+                remoteUserName={activeCall.userName}
+                remoteUserAvatar={activeCall.userAvatar}
+                callType={activeCall.type}
+                localStream={activeCall.localStream}
+                remoteStream={activeCall.remoteStream}
+                callState={activeCall.callState}
+                onHangup={handleEndCall}
+                onToggleMic={() => {
+                  const newState = !isMicEnabled;
+                  setIsMicEnabled(newState);
+                  toggleMicTrack(newState);
+                }}
+                onToggleCamera={() => {
+                  const newState = !isCameraEnabled;
+                  setIsCameraEnabled(newState);
+                  toggleCameraTrack(newState);
+                }}
+                isMicEnabled={isMicEnabled}
+                isCameraEnabled={isCameraEnabled}
+                viewMode="mini"
+                onBackToCall={() => {
+                  setCallViewMode('full');
+                }}
               />
             )}
           </div>

@@ -193,7 +193,7 @@ export interface FriendRequestSentData {
 }
 
 
-export interface PendingRequestsCountData {
+export interface PendingCountData {
   pendingCount: number;
 }
 
@@ -264,7 +264,7 @@ export interface BaseMessage {
   receiver?: string; // Make optional in BaseMessage
   ciphertext: string; // Encrypted text (base64)
   type: "ratcheted"; // Your backend only uses "ratcheted"
-  contentType: "text" | "image" | "audio" | "video" | "document"; // From backend
+  contentType: "text" | "image" | "audio" | "video" | "document"|"call-log"; // From backend
   
   // Encrypted keys (from backend)
   encryptedKey: string; // Text encryption key for current user

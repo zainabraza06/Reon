@@ -17,6 +17,9 @@ interface ChatWindowProps {
   isTyping: boolean;
   onClose: () => void;
   isLoading?: boolean;
+
+  onVoiceCall?: (userId: string) => void;
+  onVideoCall?: (userId: string) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -28,6 +31,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   isTyping,
   onClose,
   isLoading = false,
+    onVoiceCall,
+  onVideoCall,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -274,12 +279,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
 
         <div className={styles.headerActions}>
-          <button className={styles.actionButton} aria-label="Voice call">
+          <button 
+            className={styles.actionButton} 
+            aria-label="Voice call"
+            onClick={() => selectedUser && onVoiceCall?.(selectedUser._id)}
+            disabled={!selectedUser}
+          >
             <Phone size={20} />
           </button>
-          <button className={styles.actionButton} aria-label="Video call">
+          <button 
+            className={styles.actionButton} 
+            aria-label="Video call"
+            onClick={() => selectedUser && onVideoCall?.(selectedUser._id)}
+            disabled={!selectedUser}
+          >
             <Video size={20} />
           </button>
+
           <button className={styles.actionButton} aria-label="Close chat" onClick={onClose}>
             <X size={20} />
           </button>

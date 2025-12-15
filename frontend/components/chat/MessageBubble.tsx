@@ -55,9 +55,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   }>>({});
   const blobUrlRefs = useRef<Record<number, string>>({});
 
+  // ✅ Check if message is a call log
+  const isCallLog = message.contentType === 'call-log';
+  
   // ✅ SIMPLIFIED: Direct computed values
   const isTempMessage = message.status === 'none'  || message._id.startsWith('temp_');
- 
 
   // ✅ Process media directly without useEffect
   const processedMedia = useMemo(() => {
@@ -366,7 +368,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   const messageStatus = useMemo(() => {
     if (!isMe) return null;
 
-    if (isTempMessage || message.status === 'none') {
+    if (isTempMessage) {
       return {
         icon: <Clock size={14} className={styles.clockIcon} />,
         title: "Sending...",
@@ -599,9 +601,29 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     toggleAudioPlay
   ]);
 
+  // ✅ Class names for different message types
+  const containerClass = `${styles.container} ${isMe ? styles.sent : styles.received} ${isCallLog ? styles.callLogContainer : ''}`;
+  const bubbleClass = `${styles.bubble} ${isMe ? styles.sentBubble : styles.receivedBubble} ${isCallLog ? styles.callLogBubble : ''}`;
+  const metadataClass = `${styles.metadata} ${isMe ? styles.metadataSent : styles.metadataReceived}`;
+
+  // ✅ For call log messages, render specially
+  if (isCallLog) {
+    return (
+      <div className={containerClass}>
+        <div className={bubbleClass}>
+          <div className={styles.callLogContent}>
+            <p className={styles.callLogText}>{displayText}</p>
+            <span className={styles.callLogTimestamp}>{formatTime(message.sentAt)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Regular message rendering
   return (
-    <div className={`${styles.container} ${isMe ? styles.sent : styles.received}`}>
-      <div className={`${styles.bubble} ${isMe ? styles.sentBubble : styles.receivedBubble}`}>
+    <div className={containerClass}>
+      <div className={bubbleClass}>
         {processedMedia.length > 0 && (
           <div className={styles.mediaSection}>
             {processedMedia.map((media, idx) => (
@@ -618,7 +640,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
           </p>
         </div>
 
-        <div className={`${styles.metadata} ${isMe ? styles.metadataSent : styles.metadataReceived}`}>
+        <div className={metadataClass}>
           <span className={styles.timestamp}>{formatTime(message.sentAt)}</span>
           {isMe && messageStatus && (
             <span 
@@ -647,6 +669,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   
   // Check if decrypted text changed
   if (prevProps.decryptedText !== nextProps.decryptedText) {
+    return false;
+  }
+  
+  // Check if message content type changed (call-log vs regular)
+  if (prevProps.message.contentType !== nextProps.message.contentType) {
     return false;
   }
   
