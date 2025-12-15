@@ -24,7 +24,7 @@ const mediaSchema = new mongoose.Schema({
   isEncrypted: { type: Boolean, default: true }
 }, { _id: false });
 
-// ✅ UPDATED messageSchema
+// ✅ UPDATED messageSchema (merged both versions)
 const messageSchema = new mongoose.Schema({
   // User references
   sender: { 
@@ -47,7 +47,7 @@ const messageSchema = new mongoose.Schema({
   },
   contentType: { 
     type: String, 
-    enum: ["text", "image", "audio", "video", "document"], 
+    enum: ["text", "image", "audio", "video", "document", "call-log"], 
     default: "text" 
   },
   encryptedKey: { type: String }, // For receiver's text decryption
@@ -79,6 +79,7 @@ messageSchema.index({ sender: 1, receiver: 1 });
 messageSchema.index({ sentAt: -1 });
 messageSchema.index({ delivered: 1 });
 messageSchema.index({ read: 1 });
+messageSchema.index({ status: 1 });
 
 const Message = mongoose.model("Message", messageSchema);
 export default Message;

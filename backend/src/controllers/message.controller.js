@@ -357,10 +357,32 @@ export const sendMessage = async (req, res) => {
       contentType = "text"
     } = messageData;
 
+    // Check if this is a call-log message
+    const isCallLog = contentType === "call-log";
+    
     // Validate required fields
     const missingFields = [];
     if (!sender) missingFields.push("sender");
     if (!receiver) missingFields.push("receiver");
+    
+ 
+    
+    // For non-call-log messages, validate encryption keys based on content
+    const hasText = ciphertext && ciphertext.trim() !== '';
+    const hasMedia = req.files && req.files.length > 0;
+    
+    if (!isCallLog) {
+      if (hasText) {
+        if (!encryptedKey) missingFields.push("encryptedKey");
+        if (!senderEncryptedKey) missingFields.push("senderEncryptedKey");
+      }
+    }
+
+    else {
+   // For call-log messages, ciphertext is required but encryption keys are optional
+    if (!ciphertext) missingFields.push("ciphertext");
+    console.log("ciphertext calls missing");
+    }
     
     if (missingFields.length > 0) {
       console.error("❌ Missing required fields:", missingFields);
@@ -384,14 +406,10 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // Check message type
-    const hasText = ciphertext && ciphertext.trim() !== '';
-    const hasMedia = req.files && req.files.length > 0;
-    
-    console.log(`🔍 Message type: ${hasText ? 'TEXT' : ''}${hasMedia ? 'MEDIA' : ''}`);
+    console.log(`🔍 Message type: ${hasText ? 'TEXT' : ''}${hasMedia ? 'MEDIA' : ''}${isCallLog ? 'CALL-LOG' : ''}`);
 
-    // Validate text messages
-    if (hasText) {
+    // Validate text messages (non-call-log)
+    if (hasText && !isCallLog) {
       if (!encryptedKey || !senderEncryptedKey) {
         console.error("❌ Text message missing encryption keys");
         return res.status(400).json({ 
@@ -483,11 +501,24 @@ export const sendMessage = async (req, res) => {
       return res.status(404).json({ message: "Receiver not found" });
     }
 
-    // Determine final contentType
+    // Determine final contentType and handle call-log deduplication
     let finalContentType = contentType;
     let finalCiphertext = ciphertext || "";
     let finalEncryptedKey = encryptedKey || "";
     let finalSenderEncryptedKey = senderEncryptedKey || "";
+    let callLogData = null;
+    let callLogId = null;
+
+    // Parse call-log data if applicable
+    if (isCallLog) {
+      try {
+        callLogData = JSON.parse(ciphertext);
+        callLogId = callLogData.callId;
+        console.log(`📞 Call log detected with callId: ${callLogId}`);
+      } catch (e) {
+        console.warn("⚠️ Failed to parse call log data, treating as regular text");
+      }
+    }
 
     // For media-only messages
     if (hasMedia && !hasText) {
@@ -497,17 +528,81 @@ export const sendMessage = async (req, res) => {
       finalSenderEncryptedKey = "";
     }
 
-    // Create message
-    const msg = await Message.create({
-      sender,
-      receiver,
-      ciphertext: finalCiphertext,
-      type,
-      contentType: finalContentType,
-      encryptedKey: finalEncryptedKey,          // Receiver's encrypted key
-      senderEncryptedKey: finalSenderEncryptedKey, // Sender's encrypted key
-      media: mediaArray
-    });
+    // Create message with call-log deduplication
+    let msg;
+    
+    // Check for existing call log with same callId in this chat
+    if (isCallLog && callLogId) {
+      const existingCallLog = await Message.findOne({
+        contentType: 'call-log',
+        $and: [
+          {
+            $or: [
+              { sender, receiver },
+              { sender: receiver, receiver: sender }
+            ]
+          },
+          {
+            ciphertext: { $regex: callLogId }
+          }
+        ]
+      }).sort({ sentAt: -1 });
+
+      if (existingCallLog) {
+        // Verify it's the same chat
+        const existingSender = existingCallLog.sender.toString();
+        const existingReceiver = existingCallLog.receiver.toString();
+        const isSameChat = (existingSender === sender && existingReceiver === receiver) ||
+                          (existingSender === receiver && existingReceiver === sender);
+        
+        if (isSameChat) {
+          // Update existing call log
+          existingCallLog.ciphertext = finalCiphertext;
+          await existingCallLog.save();
+          msg = existingCallLog;
+          console.log(`✅ Updated existing call log: ${msg._id} for callId: ${callLogId}`);
+        } else {
+          // Different chat - create new message
+          msg = await Message.create({
+            sender,
+            receiver,
+            ciphertext: finalCiphertext,
+            type,
+            contentType: finalContentType,
+            encryptedKey: finalEncryptedKey,
+            senderEncryptedKey: finalSenderEncryptedKey,
+            media: mediaArray
+          });
+          console.log(`✅ Created new call log in different chat: ${msg._id}`);
+        }
+      } else {
+        // Create new call log message
+        msg = await Message.create({
+          sender,
+          receiver,
+          ciphertext: finalCiphertext,
+          type,
+          contentType: finalContentType,
+          encryptedKey: finalEncryptedKey,
+          senderEncryptedKey: finalSenderEncryptedKey,
+          media: mediaArray
+        });
+        console.log(`✅ Created new call log: ${msg._id}`);
+      }
+    } else {
+      // Regular message - create normally
+      msg = await Message.create({
+        sender,
+        receiver,
+        ciphertext: finalCiphertext,
+        type,
+        contentType: finalContentType,
+        encryptedKey: finalEncryptedKey,
+        senderEncryptedKey: finalSenderEncryptedKey,
+        media: mediaArray
+      });
+      console.log(`✅ Private message created: ${msg._id}`);
+    }
 
     console.log(`✅ Message created: ${msg._id}`);
     console.log(`   Type: ${msg.contentType}`);
@@ -517,6 +612,11 @@ export const sendMessage = async (req, res) => {
     // Helper function to get appropriate encrypted key
     const getEncryptedKeyForUser = (message, userId) => {
       const isSender = message.sender.toString() === userId;
+      
+      // For call-log messages, return empty or undefined
+      if (message.contentType === 'call-log') {
+        return undefined;
+      }
       
       // For text messages
       if (message.ciphertext && message.ciphertext.trim() !== '') {
@@ -559,8 +659,8 @@ export const sendMessage = async (req, res) => {
       ciphertext: msg.ciphertext,
       type: msg.type,
       contentType: msg.contentType,
-      // 🔥 Return ONLY the encrypted key for the current user
-      encryptedKey: getEncryptedKeyForUser(msg, currentUserId),
+      // For call logs, don't include encrypted key
+      encryptedKey: isCallLog ? undefined : getEncryptedKeyForUser(msg, currentUserId),
       // Still include media with appropriate keys
       media: formatMediaForUser(msg.media, currentUserId),
       sentAt: msg.sentAt,
@@ -604,7 +704,7 @@ export const sendMessage = async (req, res) => {
           ciphertext: msg.ciphertext,
           type: msg.type,
           contentType: msg.contentType,
-          encryptedKey: getEncryptedKeyForUser(msg, receiver), // Receiver's key
+          encryptedKey: isCallLog ? undefined : getEncryptedKeyForUser(msg, receiver),
           media: formatMediaForUser(msg.media, receiver),
           sentAt: msg.sentAt,
           delivered: true,
@@ -621,7 +721,7 @@ export const sendMessage = async (req, res) => {
           ciphertext: msg.ciphertext,
           type: msg.type,
           contentType: msg.contentType,
-          encryptedKey: getEncryptedKeyForUser(msg, sender), // Sender's key
+          encryptedKey: isCallLog ? undefined : getEncryptedKeyForUser(msg, sender),
           media: formatMediaForUser(msg.media, sender),
           sentAt: msg.sentAt,
           delivered: true,
@@ -648,7 +748,7 @@ export const sendMessage = async (req, res) => {
           ciphertext: msg.ciphertext,
           type: msg.type,
           contentType: msg.contentType,
-          encryptedKey: getEncryptedKeyForUser(msg, sender),
+          encryptedKey: isCallLog ? undefined : getEncryptedKeyForUser(msg, sender),
           media: formatMediaForUser(msg.media, sender),
           sentAt: msg.sentAt,
           delivered: false,
@@ -665,7 +765,8 @@ export const sendMessage = async (req, res) => {
     console.log("📤 Response data:", {
       messageId: responseData._id,
       userType: isSender ? 'sender' : 'receiver',
-      keyLength: responseData.encryptedKey?.length || 0
+      keyLength: responseData.encryptedKey?.length || 0,
+      contentType: responseData.contentType
     });
 
     // Return response to the current user

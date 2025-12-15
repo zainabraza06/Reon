@@ -56,7 +56,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   const blobUrlRefs = useRef<Record<number, string>>({});
 
   // ✅ SIMPLIFIED: Direct computed values
-  const isTempMessage = message.status === 'none' || !message._id || message._id.startsWith('temp_');
+  const isTempMessage = message.status === 'none'  || message._id.startsWith('temp_');
+ 
 
   // ✅ Process media directly without useEffect
   const processedMedia = useMemo(() => {

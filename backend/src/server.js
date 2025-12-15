@@ -11,11 +11,14 @@ import settingRoutes from "./routes/settings.route.js";
 import friendRoutes from "./routes/friend.route.js";
 import messageRoutes from "./routes/message.route.js";
 import keyRoutes from "./routes/key.route.js";
+import callRoutes from "./routes/call.route.js";
 
 
 
 import { connectDB } from "./lib/db.js";
 import { initSocket } from "./lib/socket.js";
+import { initCallNamespace } from "./lib/callSocket.js";
+import { getIO } from "./lib/socket.js";
 
 
 import "./utils/passport.js";
@@ -45,6 +48,7 @@ app.use("/api/settings", settingRoutes);
 app.use("/api/users", friendRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/keys", keyRoutes);
+app.use("/api/calls", callRoutes);
 
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
@@ -52,6 +56,7 @@ const server = http.createServer(app);
 
 // Initialize socket
 initSocket(server);
+initCallNamespace(getIO());
 
 
 
