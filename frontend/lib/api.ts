@@ -2,7 +2,7 @@
 import axios, { AxiosInstance } from "axios";
 
 export const api: AxiosInstance = axios.create({
-  baseURL: "https://reon-4g0b.onrender.com/api", // your backend URL
+  baseURL: `${process.env.NEXT_PUBLIC_API_URL}`, // your backend URL
   withCredentials: true,
-  timeout:30000,
+  timeout:60000,
 });
