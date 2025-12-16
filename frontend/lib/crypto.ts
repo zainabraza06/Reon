@@ -207,7 +207,7 @@ export async function decryptFile(
   const aesKey = await decryptAESKey(userId, encryptedAESKeyHex);
 
   // 2. Construct URL
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://reon-4g0b.onrender.com';
   let fullUrl = encryptedFileUrl;
   
   if (encryptedFileUrl.startsWith('/')) {
