@@ -347,15 +347,7 @@ export async function onboard(req, res) {
       throw err;
     }
 
-    // await sendEmail({
-    //   to: user.email,
-    //   subject: "Welcome to Reon Secure Messaging!",
-    //   title: "You're Ready to Chat!",
-    //   body: `<p>Hi ${user.fullName}, your onboarding is complete. You can now enjoy chatting securely with Reon!</p>`,
-    //   buttonText: "Go to Login",
-
-    //   buttonLink: `${FRONTEND_URL}/login`,
-    // });
+    
 
 
     return res.status(200).json({
