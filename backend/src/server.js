@@ -30,7 +30,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 const corsOptions = {
-  origin: "https://reon-tau.vercel.app",
+  origin: [process.env.FRONTEND_URL],
   credentials: true,
   exposedHeaders: ['Content-Disposition', 'X-Encrypted'],
   allowedHeaders: ['Content-Type', 'Authorization']
