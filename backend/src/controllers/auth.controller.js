@@ -78,7 +78,7 @@ export async function signup(req, res) {
     // });
 
     return res.status(201).json({
-      message: "Verification email sent. Please check your inbox.",
+      message: "Successful SignUp. Log into your account.",
     });
 
   } catch (error) {
