@@ -229,15 +229,7 @@ export async function googleCallback(req, res) {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
-  // 4. Send welcome email (optional)
-  await sendEmail({
-    to: req.user.email,
-    subject: "Welcome to Reon Secure Messaging!",
-    title: "Welcome Aboard",
-    body: `<p>Hi ${req.user.fullName}, your email has been verified. Enjoy chatting securely!</p>`,
-    buttonText: "Open App",
-    buttonLink: `${FRONTEND_URL}/chat`,
-  });
+
 
   // -------------------------------
   // 5. REDIRECT LOGIC (same as frontend)
