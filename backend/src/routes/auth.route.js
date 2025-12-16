@@ -66,7 +66,7 @@ router.post(
   "/onboard",
   protectRoute,
   profileUpload.single("profilePic"),
-  onboardValidator,
+ 
   onboard
 );
 
