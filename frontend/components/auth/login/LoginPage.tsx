@@ -209,7 +209,7 @@ export default function LoginPage() {
 
   const handleGoogleLogin = () => {
     showFlash('Redirecting to Google authentication...', 'info');
-    window.location.href = 'http://localhost:5001/api/auth/google';
+    window.location.href = '${process.env.NEXT_PUBLIC_API_URL}/auth/google';
 
   };
 

@@ -70,37 +70,41 @@ export interface FlashMessage {
 
 
 
+// User represents a person in the system
 export interface User {
   _id: string;
   username?: string;
-  profilePic?: string;
-  lastMessage?: string;
-  lastMessageTime?: string;
-  read?:boolean;
-  sent?:boolean;
-  delivered?:boolean;
-  tickStatus?:'none' | 'sent' | 'delivered' | 'read';
-  isTyping?:boolean;
-  
-  
-   lastMessageSenderId?:string;
-  lastMessageMedia?:"image" | "video" | "audio" | "document";
-  unreadCount?: number;
-  isOnline?: boolean;
   fullName?: string;
+  profilePic?: string;
+  isOnline?: boolean;
+  bio?: string;
+  location?: string;
+  nativeLanguage?: string;
   isOnboarded?: boolean;
-    encryptedKey?:string;
-   pendingFriendRequests?: number;
-   location?:string;
-   bio?:string;
-   nativeLanguage?:string;
-   contentType?:string;
+  encryptedKey?: string;
+  pendingFriendRequests?: number;
+  
+  unreadCount: number;
 
   friends?: { _id: string }[];
   chats?: { _id: string }[];
 }
 
-export type ChatItem =User;
+// ChatItem represents a message or conversation info for a user
+export interface ChatItem extends User {
+  lastMessage?: string;
+  lastMessageTime?: string;
+  lastMessageSenderId?: string;
+  lastMessageMedia?: "image" | "video" | "audio" | "document";
+
+
+  read?: boolean;
+  sent?: boolean;
+  delivered?: boolean;
+  tickStatus?: 'none' | 'sent' | 'delivered' | 'read';
+  isTyping?: boolean;
+}
+
 
 
 export interface FriendRequest {

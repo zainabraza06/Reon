@@ -396,7 +396,8 @@ export function useFriendRequests(currentUserId: string | null) {
           _id: friendState.userId,
           fullName: '',
           username: '',
-          profilePic: ''
+          profilePic: '',
+          unreadCount:0
         };
         return [...prev, newFriend];
       });
@@ -574,7 +575,8 @@ export function useFriendRequests(currentUserId: string | null) {
           _id: data.receiver._id,
           fullName: data.receiver.fullName || '',
           username: data.receiver.username || '',
-          profilePic: data.receiver.profilePic || ''
+          profilePic: data.receiver.profilePic || '',
+          unreadCount:0
         };
         
         setFriendsList(prev => {
@@ -594,7 +596,8 @@ export function useFriendRequests(currentUserId: string | null) {
           _id: data.senderId,
           fullName: '',
           username: '',
-          profilePic: ''
+          profilePic: '',
+          unreadCount:0
         };
         
         setFriendsList(prev => {
