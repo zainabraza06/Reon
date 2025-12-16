@@ -88,15 +88,15 @@ export const changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
-    // Send notification email
-    await sendEmail({
-      to: user.email,
-      subject: "Your Password Has Been Changed",
-      title: "Password Update Successful",
-      body: `<p>Hi ${user.fullName}, your password was successfully changed. If you did not perform this action, please reset your password immediately.</p>`,
-      buttonText: "Reset Password",
-      buttonLink: "http://localhost:5173/forgot-password",
-    });
+    // // Send notification email
+    // await sendEmail({
+    //   to: user.email,
+    //   subject: "Your Password Has Been Changed",
+    //   title: "Password Update Successful",
+    //   body: `<p>Hi ${user.fullName}, your password was successfully changed. If you did not perform this action, please reset your password immediately.</p>`,
+    //   buttonText: "Reset Password",
+    //   buttonLink: "http://localhost:5173/forgot-password",
+    // });
 
     return res.status(200).json({ message: "Password updated successfully" });
 
