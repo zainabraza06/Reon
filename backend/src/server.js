@@ -37,6 +37,8 @@ const corsOptions = {
 };
 
 
+
+
 app.use(cors(corsOptions));
 // Security & parsing middleware
 app.use(helmet());
