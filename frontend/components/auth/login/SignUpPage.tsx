@@ -148,7 +148,7 @@ export default function SignupPage() {
     const response = await api.post('/auth/signup', { fullName, email, password });
 
     // Handle both message and success cases from backend
-    const successMessage = response.data.message || 'Verification email sent! Please check your inbox.';
+    const successMessage = response.data.message || 'Account Created.Login to your account.';
     showFlash(successMessage, 'success');
     
     // Reset the form using the stored reference

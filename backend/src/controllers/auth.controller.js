@@ -55,6 +55,7 @@ export async function signup(req, res) {
 
     const verificationToken = crypto.randomBytes(32).toString("hex");
     const tokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    
 
     const user = await User.create({
       fullName,
@@ -62,19 +63,19 @@ export async function signup(req, res) {
       password,
       verificationToken,
       verificationTokenExpires: tokenExpiry,
-      isVerified: false,
+      isVerified: true,
       profilePic: randomAvatar,
     });
 
     const verifyUrl = `${FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
-    await sendEmail({
-      to: user.email,
-      subject: "Verify Your Reon Messaging Account",
-      title: "Verify Your Account",
-      body: `<p>Hi ${user.fullName}, click below to verify your email.</p>`,
-      buttonText: "Verify Email",
-      buttonLink: verifyUrl,
-    });
+    // await sendEmail({
+    //   to: user.email,
+    //   subject: "Verify Your Reon Messaging Account",
+    //   title: "Verify Your Account",
+    //   body: `<p>Hi ${user.fullName}, click below to verify your email.</p>`,
+    //   buttonText: "Verify Email",
+    //   buttonLink: verifyUrl,
+    // });
 
     return res.status(201).json({
       message: "Verification email sent. Please check your inbox.",
