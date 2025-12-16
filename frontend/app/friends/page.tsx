@@ -1,3 +1,5 @@
+
+'use client';
 import MyFriendsPage from "@/components/friends/MyFriendsPage";
 
 

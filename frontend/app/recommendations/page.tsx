@@ -1,3 +1,5 @@
+
+'use client';
 import RecommendedFriendsPage from "@/components/recommendations/RecommendationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 

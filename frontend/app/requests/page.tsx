@@ -1,3 +1,4 @@
+'use client';
 import FriendRequestsPage from "@/components/requests/RequestPage";
 
 

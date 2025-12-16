@@ -1,3 +1,4 @@
+'use client';
 import ChatPage from "@/components/chat/ChatPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
