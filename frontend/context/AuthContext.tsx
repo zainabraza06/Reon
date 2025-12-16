@@ -114,7 +114,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // 🔐 GOOGLE OAUTH
   // -------------------------------------------------
   const loginWithGoogle = () => {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google`;
+    window.location.href = `https://reon-4g0b.onrender.com/auth/google`;
   };
 
   // -------------------------------------------------
