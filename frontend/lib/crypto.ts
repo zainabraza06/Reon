@@ -207,14 +207,14 @@ export async function decryptFile(
   const aesKey = await decryptAESKey(userId, encryptedAESKeyHex);
 
   // 2. Construct URL
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://reon-4g0b.onrender.com/api';
+  const backendUrl =  'https://reon-4g0b.onrender.com';
   console.log("backendUrl",backendUrl);
   let fullUrl = encryptedFileUrl;
   
   if (encryptedFileUrl.startsWith('/')) {
     fullUrl = `${backendUrl}${encryptedFileUrl}`;
   } else if (/^[a-f\d]{24}$/i.test(encryptedFileUrl)) {
-    fullUrl = `${backendUrl}/messages/media/${encryptedFileUrl}`;
+    fullUrl = `${backendUrl}/api/messages/media/${encryptedFileUrl}`;
   }
 
   // 3. Fetch file

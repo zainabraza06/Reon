@@ -262,7 +262,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       }
       
       // Handle relative paths
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const backendUrl = 'https://reon-4g0b.onrender.com';
       console.log("backendUrl", backendUrl);
       
       if (strUrl.includes('/messages/media/')) {
@@ -270,7 +270,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       }
       
       if (/^[a-f\d]{24}$/i.test(strUrl)) {
-        return `${backendUrl}/messages/media/${strUrl}`;
+        return `${backendUrl}/api/messages/media/${strUrl}`;
       }
       
       return strUrl;
