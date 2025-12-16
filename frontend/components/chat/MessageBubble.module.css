@@ -3,7 +3,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
   max-width: 85%;
   position: relative;
   animation: fadeInUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -22,7 +22,7 @@
 .senderName {
   font-size: 0.75rem;
   color: #93c5fd;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.375rem;
   margin-left: 0.5rem;
   font-weight: 500;
   letter-spacing: 0.3px;
@@ -32,7 +32,7 @@
 
 .bubble {
   border-radius: 1.25rem;
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
   position: relative;
   word-break: break-word;
   white-space: pre-wrap;
@@ -84,15 +84,15 @@
 
 /* Media Section */
 .mediaSection {
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .mediaItem {
   border-radius: 0.875rem;
-  overflow: visible;
+  overflow: visible; /* Changed from hidden to allow buttons to be clickable */
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: transform 0.3s ease;
@@ -178,7 +178,7 @@
 .playButton {
   width: 44px;
   height: 44px;
-  min-width: 44px;
+  min-width: 44px; /* Ensure minimum clickable area */
   min-height: 44px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
@@ -193,9 +193,9 @@
   transition: all 0.3s ease;
   font-size: 1.25rem;
   position: relative;
-  z-index: 100;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  z-index: 100; /* High z-index to be above everything */
+  -webkit-tap-highlight-color: transparent; /* Remove mobile tap highlight */
+  touch-action: manipulation; /* Improve touch responsiveness */
 }
 
 /* Audio-specific play button */
@@ -223,7 +223,7 @@
   opacity: 0.5;
 }
 
-/* Interactive button styles */
+/* Interactive button styles - REMOVED GLOBAL SELECTORS */
 .interactiveButton {
   cursor: pointer;
 }
@@ -261,7 +261,7 @@
   border-radius: 0.5rem;
   gap: 1rem;
   position: relative;
-  isolation: isolate;
+  isolation: isolate; /* Create new stacking context */
 }
 
 .audioIcon {
@@ -277,7 +277,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  min-width: 0;
+  min-width: 0; /* Allow flex shrinking */
   position: relative;
   z-index: 2;
 }
@@ -287,7 +287,7 @@
   align-items: center;
   gap: 1rem;
   position: relative;
-  z-index: 10;
+  z-index: 10; /* Higher than container */
 }
 
 .audioInfo {
@@ -295,7 +295,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  min-width: 0;
+  min-width: 0; /* Allow text truncation */
   z-index: 2;
 }
 
@@ -312,7 +312,7 @@
   opacity: 0.7;
 }
 
-/* AUDIO PLAYER - FIXED */
+/* AUDIO PLAYER - FIXED (Do not use display: none) */
 .audioPlayer {
   position: absolute;
   top: 0;
@@ -321,7 +321,7 @@
   height: 1px;
   opacity: 0;
   visibility: hidden;
-  z-index: -1000;
+  z-index: -1000; /* Send to back */
 }
 
 .audioActions {
@@ -520,8 +520,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
   font-size: 0.75rem;
   opacity: 0.8;
   transition: opacity 0.3s ease;
@@ -557,24 +557,62 @@
   height: 1rem;
 }
 
-/* STATUS ICONS - Updated colors */
-.doubleTickRead {
-  color: #0e9b9d !important;
+.readIcon {
+  color: #0d1927;
   filter: drop-shadow(0 0 4px rgba(147, 197, 253, 0.3));
 }
 
+.deliveredIcon {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sentIcon {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sendingIcon {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Media Actions */
+.mediaActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 10;
+}
+
+
+/* STATUS ICONS - Updated colors */
+.status svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* READ - Dark Blue */
+.doubleTickRead {
+  color: #0e9b9d !important; /* Dark blue color */
+  filter: drop-shadow(0 0 4px rgba(147, 197, 253, 0.3));
+}
+
+/* DELIVERED - White */
 .doubleTick {
-  color: white !important;
+  color: white !important; /* White color for delivered */
 }
 
+/* SENT - White Single Tick */
 .singleTick {
-  color: white !important;
+  color: white !important; /* White color for sent */
 }
 
+/* CLOCK (SENDING) - Light Gray */
 .clockIcon {
   color: rgba(255, 255, 255, 0.5) !important;
 }
-
 .downloadButton {
   display: flex;
   align-items: center;
@@ -842,18 +880,6 @@
   cursor: not-allowed;
 }
 
-/* Media Actions */
-.mediaActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 1rem;
-  background: rgba(0, 0, 0, 0.2);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative;
-  z-index: 10;
-}
-
 /* Animations */
 @keyframes fadeInUp {
   from {
@@ -896,6 +922,87 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    max-width: 90%;
+    margin-bottom: 1.25rem;
+  }
+  
+  .bubble {
+    padding: 0.875rem 1rem;
+    border-radius: 1rem;
+  }
+  
+  .image, .videoPlayer {
+    max-height: 18rem;
+  }
+  
+  .mediaActions {
+    padding: 0.625rem 0.875rem;
+  }
+  
+  .downloadPreparing {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  /* Larger touch targets on mobile */
+  .playButton {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .audioContainer .playButton {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    max-width: 95%;
+  }
+  
+  .image, .videoPlayer {
+    max-height: 16rem;
+  }
+  
+  .decryptButton {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+  }
+  
+  .audioContainer {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  .documentContainer {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  /* Even larger touch targets on very small screens */
+  .playButton {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    min-height: 52px;
+  }
+  
+  .audioContainer .playButton {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+  }
 }
 
 /* Floating animation for sent messages */
@@ -991,6 +1098,16 @@
   flex-shrink: 0;
 }
 
+.audioSize {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.documentSize {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
 /* Image loading state */
 .imageContainer.loading {
   min-height: 150px;
@@ -1079,135 +1196,13 @@
   border-color: rgba(239, 68, 68, 0.4);
 }
 
-/* Call log container */
-.callLogContainer {
-  max-width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  align-items: center;
-  margin-bottom: 0.5rem;
+/* Add visual indicator for clickable areas (remove in production) */
+.debugClickable {
+  outline: 2px solid rgba(0, 255, 0, 0.5);
+  outline-offset: 2px;
 }
 
-.callLogBubble {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.5rem 0.75rem;
-  text-align: center;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.callLogContent {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.callLogText {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.875rem;
-  margin: 0;
-  font-weight: 400;
-}
-
-.callLogTimestamp {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.75rem;
-  margin: 0;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .container {
-    max-width: 90%;
-    margin-bottom: 0.375rem;
-  }
-  
-  .bubble {
-    padding: 0.625rem 0.875rem;
-    border-radius: 1rem;
-  }
-  
-  .image, .videoPlayer {
-    max-height: 18rem;
-  }
-  
-  .mediaActions {
-    padding: 0.375rem 0.75rem;
-  }
-  
-  .downloadPreparing {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.75rem;
-  }
-  
-  /* Larger touch targets on mobile */
-  .playButton {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    min-height: 48px;
-  }
-  
-  .audioContainer .playButton {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
-@media (max-width: 480px) {
-  .container {
-    max-width: 95%;
-    margin-bottom: 0.25rem;
-  }
-  
-  .image, .videoPlayer {
-    max-height: 16rem;
-  }
-  
-  .decryptButton {
-    padding: 0.5rem 1rem;
-    font-size: 0.75rem;
-  }
-  
-  .audioContainer {
-    padding: 0.75rem;
-    gap: 0.75rem;
-  }
-  
-  .documentContainer {
-    padding: 0.75rem;
-    gap: 0.75rem;
-  }
-  
-  /* Even larger touch targets on very small screens */
-  .playButton {
-    width: 52px;
-    height: 52px;
-    min-width: 52px;
-    min-height: 52px;
-  }
-  
-  .audioContainer .playButton {
-    width: 46px;
-    height: 46px;
-    min-width: 46px;
-    min-height: 46px;
-  }
-}
-
-/* Optional: Additional classes for message grouping */
-.container.consecutive {
-  margin-bottom: 0.25rem;
-}
-
-.container.withSender {
-  margin-top: 0.25rem;
-}
-
-.container.lastInGroup {
-  margin-bottom: 0.75rem;
+.debugNotClickable {
+  outline: 2px solid rgba(255, 0, 0, 0.5);
+  outline-offset: 2px;
 }
