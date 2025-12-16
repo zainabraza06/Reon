@@ -263,6 +263,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       
       // Handle relative paths
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      console.log("backendUrl", backendUrl);
       
       if (strUrl.includes('/messages/media/')) {
         return `${backendUrl}${strUrl}`;

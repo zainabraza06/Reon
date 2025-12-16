@@ -208,7 +208,7 @@ export async function decryptFile(
 
   // 2. Construct URL
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://reon-4g0b.onrender.com/api';
-  console.log(backendUrl);
+  console.log("backendUrl",backendUrl);
   let fullUrl = encryptedFileUrl;
   
   if (encryptedFileUrl.startsWith('/')) {
