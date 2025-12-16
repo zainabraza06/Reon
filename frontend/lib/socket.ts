@@ -128,7 +128,7 @@ class SocketService {
     });
 
       try {
-      this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001") + "/calls", {
+      this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com/api") + "/calls", {
         auth: { token },
         transports: ['websocket', 'polling'],
         withCredentials: true,
