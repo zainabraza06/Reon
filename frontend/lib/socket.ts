@@ -117,7 +117,7 @@ class SocketService {
       // Grab auth token if available
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-    this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com/api", {
+    this.socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com", {
       auth: { userId },
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -128,7 +128,7 @@ class SocketService {
     });
 
       try {
-      this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com/api") + "/calls", {
+      this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com") + "/calls", {
         auth: { token },
         transports: ['websocket', 'polling'],
         withCredentials: true,
