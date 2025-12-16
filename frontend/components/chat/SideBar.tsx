@@ -199,11 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {item.isOnline && (
               <div className={styles.onlineBadge} title="Online" />
             )}
-            {item.isTyping && (
-              <div className={styles.typingBadge} title="Typing">
-                <div className={styles.typingDotSmall}></div>
-              </div>
-            )}
+           
           </div>
         </div>
 
@@ -214,17 +210,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {item.fullName || item.username}
               </h4>
               
-              {/* Inline typing indicator */}
-              {item.isTyping && (
-                <div className={styles.typingInlineIndicator}>
-                  <span className={styles.typingInlineText}>typing</span>
-                  <div className={styles.typingInlineDots}>
-                    <span className={styles.typingInlineDot}></span>
-                    <span className={styles.typingInlineDot}></span>
-                    <span className={styles.typingInlineDot}></span>
-                  </div>
-                </div>
-              )}
+              
             </div>
             
             <div className={styles.headerRight}>
@@ -241,12 +227,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               )}
               
-              {/* Typing time indicator */}
-              {item.isTyping && (
-                <div className={styles.typingTimeIndicator}>
-                  <span className={styles.typingTimeText}>now</span>
-                </div>
-              )}
+              
             </div>
           </div>
 
