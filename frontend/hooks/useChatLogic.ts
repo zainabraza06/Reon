@@ -850,7 +850,7 @@ const sendTextMessage = async ({
       sentAt: new Date().toISOString(),
       delivered: false,
       read: false,
-      status: "sent" as const,
+      status: "none" as const,
       isTemp: true,
       isVoiceMessage,
     };
@@ -1058,7 +1058,7 @@ const sendMediaMessage = async ({
       sentAt: new Date().toISOString(),
       delivered: false,
       read: false,
-      status: "sent" as const,
+      status: "none" as const,
       isTemp: true,
       isVoiceMessage,
     };

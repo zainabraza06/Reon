@@ -57,6 +57,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
   // ✅ SIMPLIFIED: Direct computed values
   const isTempMessage = message.status === 'none' || !message._id || message._id.startsWith('temp_');
+  console.log("istemp", isTempMessage);
 
   // ✅ Process media directly without useEffect
   const processedMedia = useMemo(() => {
