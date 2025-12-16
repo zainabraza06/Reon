@@ -30,7 +30,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 const corsOptions = {
-  origin: [process.env.FRONTEND_URL],
+  origin: process.env.FRONTEND_URL,
   credentials: true,
   exposedHeaders: ['Content-Disposition', 'X-Encrypted'],
   allowedHeaders: ['Content-Type', 'Authorization']
