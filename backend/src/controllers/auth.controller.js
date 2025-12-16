@@ -310,6 +310,7 @@ export async function onboard(req, res) {
   try {
     const user = req.user;
     const { nativeLanguage, location, bio, username } = req.body;
+    console.log(req.body);
 
     if (user.isOnboarded) {
       return res.status(400).json({ message: "User already onboarded" });
@@ -336,9 +337,12 @@ export async function onboard(req, res) {
     user.profilePic = profilePicUrl;
     user.isOnboarded = true;
 
+    console.log("Updating User");
     // Save with safe duplicate key handling for username
     try {
+
       await user.save();
+      console.log("User updated");
     } catch (err) {
       // Catch MongoDB duplicate key error (race condition)
       if (err.code === 11000 && err.keyPattern?.username) {
