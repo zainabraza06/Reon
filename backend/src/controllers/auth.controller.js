@@ -134,7 +134,7 @@ export async function verifyEmail(req, res) {
         title: "Welcome Aboard",
         body: `<p>Hi ${user.fullName}, your email has been verified. Enjoy chatting securely!</p>`,
         buttonText: "Go to Login",
-        buttonLink: "${FRONTEND_URL}/login",
+        buttonLink: `${FRONTEND_URL}/login`,
       });
       console.log("✅ Welcome email sent");
     } catch (emailError) {
