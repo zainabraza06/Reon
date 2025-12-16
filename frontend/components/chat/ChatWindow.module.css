@@ -248,11 +248,12 @@
     radial-gradient(circle at 20% 80%, rgba(96, 165, 250, 0.05) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
     linear-gradient(to bottom, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.9));
+  gap: 4px; /* Reduced gap between messages */
 }
 
-/* This ensures messages start from bottom */
+/* Remove the old rule that was causing messages to stick to bottom */
 .messagesContainer > *:not(.encryptionNotice) {
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .messagesContainer::-webkit-scrollbar {
@@ -332,14 +333,23 @@
   flex-shrink: 0;
 }
 
-/* Messages wrapper */
+/* Messages wrapper - Updated to be used in JSX */
 .messagesWrapper {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   flex: 1;
   min-height: 0;
-  gap: 6px;
+  gap: 4px; /* Small gap between messages */
+}
+
+/* Message bubble spacing - Add this for consistent spacing */
+.messageBubbleWrapper {
+  margin-bottom: 4px; /* Small margin at bottom of each message */
+}
+
+.messageBubbleWrapper:last-child {
+  margin-bottom: 0; /* No margin for last message */
 }
 
 /* Skeleton wrapper */
@@ -349,7 +359,7 @@
   justify-content: flex-end;
   flex: 1;
   min-height: 0;
-  gap: 6px;
+  gap: 4px;
 }
 
 /* WELCOME SCREEN */
@@ -574,6 +584,7 @@
   
   .messagesContainer {
     padding: 0.75rem;
+    gap: 3px;
   }
   
   .encryptionBadge {
@@ -600,6 +611,14 @@
   .emptyStateFeature {
     width: 100%;
     max-width: 280px;
+  }
+  
+  .messagesWrapper {
+    gap: 3px;
+  }
+  
+  .messageBubbleWrapper {
+    margin-bottom: 3px;
   }
 }
 
@@ -650,7 +669,7 @@
 .skeletonMessageIncoming {
   display: flex;
   gap: 8px;
-  margin: 0 16px;
+  margin: 4px 16px;
   opacity: 0.8;
   flex-shrink: 0;
 }
@@ -658,7 +677,7 @@
 .skeletonMessageOutgoing {
   display: flex;
   justify-content: flex-end;
-  margin: 0 16px;
+  margin: 4px 16px;
   opacity: 0.8;
   flex-shrink: 0;
 }
