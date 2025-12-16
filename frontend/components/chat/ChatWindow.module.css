@@ -339,7 +339,7 @@
   justify-content: flex-end;
   flex: 1;
   min-height: 0;
-  gap: 12px;
+  gap: 6px;
 }
 
 /* Skeleton wrapper */
@@ -349,7 +349,7 @@
   justify-content: flex-end;
   flex: 1;
   min-height: 0;
-  gap: 12px;
+  gap: 6px;
 }
 
 /* WELCOME SCREEN */

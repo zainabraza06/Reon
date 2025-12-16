@@ -601,26 +601,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     toggleAudioPlay
   ]);
 
-  // ✅ Class names for different message types
-  const containerClass = `${styles.container} ${isMe ? styles.sent : styles.received} ${isCallLog ? styles.callLogContainer : ''}`;
-  const bubbleClass = `${styles.bubble} ${isMe ? styles.sentBubble : styles.receivedBubble} ${isCallLog ? styles.callLogBubble : ''}`;
+  // ✅ Class names for message bubble - removed call-log specific classes
+  const containerClass = `${styles.container} ${isMe ? styles.sent : styles.received}`;
+  const bubbleClass = `${styles.bubble} ${isMe ? styles.sentBubble : styles.receivedBubble}`;
   const metadataClass = `${styles.metadata} ${isMe ? styles.metadataSent : styles.metadataReceived}`;
 
-  // ✅ For call log messages, render specially
-  if (isCallLog) {
-    return (
-      <div className={containerClass}>
-        <div className={bubbleClass}>
-          <div className={styles.callLogContent}>
-            <p className={styles.callLogText}>{displayText}</p>
-            <span className={styles.callLogTimestamp}>{formatTime(message.sentAt)}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ✅ Regular message rendering
+  // ✅ Render call log messages with the same style as regular messages
   return (
     <div className={containerClass}>
       <div className={bubbleClass}>

@@ -1,8 +1,7 @@
-
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, FriendRequest } from '@/types';
+import { User } from '@/types';
 import { 
   FiUserPlus, 
   FiUserCheck, 
@@ -10,33 +9,13 @@ import {
   FiArrowLeft,
   FiMessageCircle,
   FiClock,
-  FiSearch
+  FiSearch,
+  FiUsers
 } from 'react-icons/fi';
-import { api } from '@/lib/api';
-import UserProfile from '@/components/chat/UserProfile';
 import { useNotification } from '@/context/NotificationContext';
-import { 
-  socketService, 
-  FriendRequestReceivedData,
-  FriendRequestAcceptedData,
-  FriendRequestWithdrawnData
-} from '@/lib/socket';
 import { useFriendRequests } from '@/hooks/useFriendRequest';
+import UserProfile from '@/components/chat/UserProfile';
 import styles from './RequestPage.module.css';
-
-interface RequestsResponse {
-  total: number;
-  requests: FriendRequest[];
-}
-
-interface ApiError {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  message?: string;
-}
 
 type TabType = 'received' | 'sent';
 
@@ -45,25 +24,105 @@ export default function FriendRequestsPage() {
   const { addNotification } = useNotification();
   
   const [activeTab, setActiveTab] = useState<TabType>('received');
-  const [receivedRequests, setReceivedRequests] = useState<FriendRequest[]>([]);
-  const [sentRequests, setSentRequests] = useState<FriendRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  
-  // UserProfile states
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize hook
+  // Use the custom hook
   const {
+    friendStates,
     pendingCount,
-    setInitialFriendState,
+    isInitialized,
+    friendsList,
+    recommendedFriends,
+    loading,
+    
+    sendFriendRequest,
     acceptFriendRequest,
     rejectFriendRequest,
-    withdrawFriendRequest
+    withdrawFriendRequest,
+    removeFriend,
+    
+    loadFriendsList,
+    loadRecommendedFriends,
+    loadReceivedRequests: loadReceivedRequestsFromHook,
+    loadSentRequests: loadSentRequestsFromHook,
+    loadPendingCount,
+    refreshAll,
+    getFriendState
   } = useFriendRequests(currentUser?._id || null);
+
+  // Filter friend states based on current tab - ONLY show sent and received requests
+  const getRequestsForCurrentTab = useCallback(() => {
+    const allStates = Array.from(friendStates.values());
+    
+    if (activeTab === 'received') {
+      return allStates.filter(state => state.status === 'pending-received');
+    } else {
+      return allStates.filter(state => state.status === 'pending-sent');
+    }
+  }, [friendStates, activeTab]);
+
+  // Load current user data
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const userData = localStorage.getItem('user');
+        if (userData) {
+          const parsedUser = JSON.parse(userData);
+          setCurrentUser(parsedUser);
+        } else {
+          const response = await fetch('/api/users/me');
+          const user = await response.json();
+          setCurrentUser(user);
+        }
+      } catch (error) {
+        console.error('Error loading current user:', error);
+        const defaultUser: User = {
+          _id: 'default',
+          username: 'user',
+          profilePic: '',
+          fullName: 'User',
+          unreadCount: 0,
+          isOnboarded: true
+        };
+        setCurrentUser(defaultUser);
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
+
+  // Initial data loading
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!currentUser || !isInitialized) return;
+      
+      setIsLoading(true);
+      try {
+        await Promise.all([
+          loadReceivedRequestsFromHook(),
+          loadSentRequestsFromHook(),
+          loadPendingCount()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load friend requests'
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (currentUser) {
+      loadInitialData();
+    }
+  }, [currentUser, isInitialized, loadReceivedRequestsFromHook, loadSentRequestsFromHook, loadPendingCount, addNotification]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -77,292 +136,158 @@ export default function FriendRequestsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Socket listeners for Real-time List Updates
-  useEffect(() => {
-    if (!currentUser) return;
-
-    // 1. New Request Received
-    const handleFriendRequestReceived = (data: FriendRequestReceivedData) => {
-      console.log('🔔 [Page] New friend request received:', data);
-      
-      // Update hook state
-      setInitialFriendState(data.sender._id, {
-        userId: data.sender._id,
-        status: 'pending-received',
-        requestId: data.requestId
+  // Handle accept request
+  const handleAcceptRequest = async (userId: string, requestId?: string) => {
+    if (!requestId) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Request ID not found'
       });
+      return;
+    }
 
-      // Update List
-      const newRequest: FriendRequest = {
-        _id: data.requestId,
-        sender: {
-          _id: data.sender._id,
-          fullName: data.sender.fullName,
-          username: data.sender.username,
-          profilePic: data.sender.profilePic,
-          unreadCount: 0,
-          isOnboarded: true
-        },
-        receiver: currentUser, 
-        status: 'pending',
-        createdAt: data.timestamp || new Date().toISOString()
-      };
-
-      setReceivedRequests(prev => {
-        if (prev.some(req => req._id === newRequest._id)) return prev;
-        return [newRequest, ...prev];
-      });
-    };
-
-    // 2. Request Accepted
-    const handleFriendRequestAccepted = (data: FriendRequestAcceptedData) => {
-      console.log('🤝 [Page] Request Accepted Event:', data);
+    try {
+      const result = await acceptFriendRequest(requestId);
       
-      // Remove from Received List (If I accepted it)
-      if (data.receiverId === currentUser._id) {
-        setReceivedRequests(prev => prev.filter(req => req._id !== data.requestId));
-      }
-      
-      // Remove from Sent List (If they accepted my request)
-      if (data.senderId === currentUser._id) {
-        setSentRequests(prev => prev.filter(req => req._id !== data.requestId));
-      }
-    };
-
-    // 3. Request Withdrawn
-    const handleFriendRequestWithdrawn = (data: FriendRequestWithdrawnData) => {
-      console.log('↩️ [Page] Request Withdrawn Event:', data);
-      // Remove from both lists to be safe
-      setReceivedRequests(prev => prev.filter(req => req._id !== data.requestId));
-      setSentRequests(prev => prev.filter(req => req._id !== data.requestId));
-    };
-
-    // 4. Request Rejected
-    const handleFriendRequestRejected = (data: FriendRequestWithdrawnData) => {
-      console.log('❌ [Page] Request Rejected Event:', data);
-      // Remove from both lists
-      setReceivedRequests(prev => prev.filter(req => req._id !== data.requestId));
-      setSentRequests(prev => prev.filter(req => req._id !== data.requestId));
-    };
-
-    // Register Listeners
-    socketService.onFriendRequestReceived(handleFriendRequestReceived);
-    socketService.onFriendRequestAcceptedRealtime(handleFriendRequestAccepted);
-    socketService.onFriendRequestWithdrawn(handleFriendRequestWithdrawn);
-    socketService.onFriendRequestRejected(handleFriendRequestRejected);
-
-    return () => {
-      socketService.removeListener('friend-request-received', handleFriendRequestReceived);
-      socketService.removeListener('friend-request-accepted-realtime', handleFriendRequestAccepted);
-      socketService.removeListener('friend-request-withdrawn', handleFriendRequestWithdrawn);
-      socketService.removeListener('friend-request-rejected', handleFriendRequestRejected);
-    };
-  }, [currentUser, setInitialFriendState]);
-
-  // Load current user data
-  useEffect(() => {
-    const loadCurrentUser = async () => {
-      try {
-        const userData = localStorage.getItem('user');
-        if (userData) {
-          const parsedUser = JSON.parse(userData);
-          setCurrentUser(parsedUser);
-          await loadUserStats();
-        } else {
-          const response = await api.get<User>('/users/me');
-          setCurrentUser(response.data);
-          await loadUserStats();
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Accepted',
+          message: 'You are now friends!'
+        });
+        
+        // Refresh the requests list
+        if (activeTab === 'received') {
+          await loadReceivedRequestsFromHook();
         }
-      } catch (error) {
-        console.error('Error loading current user:', error);
-        setCurrentUser({
-          _id: 'default',
-          username: 'user',
-          profilePic: '',
-          fullName: 'User',
-          unreadCount: 0,
+        await loadPendingCount();
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to accept friend request'
         });
       }
-    };
-
-    loadCurrentUser();
-  }, []);
-
-  // Load user statistics
-  const loadUserStats = async () => {
-   
-  };
-
-  // Load received requests
-  const loadReceivedRequests = useCallback(async () => {
-    try {
-      const response = await api.get<RequestsResponse>('/users/friend-requests/received');
-      setReceivedRequests(response.data.requests);
-      
-      // Sync with hook state
-      response.data.requests.forEach(req => {
-        const senderId = typeof req.sender === 'string' ? req.sender : req.sender._id;
-        setInitialFriendState(senderId, {
-          userId: senderId,
-          status: 'pending-received',
-          requestId: req._id
-        });
-      });
-    } catch (error: unknown) {
-      console.error('Error loading received requests:', error);
-      const apiError = error as ApiError;
-      addNotification({
-        type: 'error',
-        title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to load received requests'
-      });
-    }
-  }, [addNotification, setInitialFriendState]);
-
-  // Load sent requests
-  const loadSentRequests = useCallback(async () => {
-    try {
-      const response = await api.get<RequestsResponse>('/users/friend-requests/sent');
-      setSentRequests(response.data.requests);
-
-      // Sync with hook state
-      response.data.requests.forEach(req => {
-        const receiverId = typeof req.receiver === 'string' ? req.receiver : req.receiver._id;
-        setInitialFriendState(receiverId, {
-          userId: receiverId,
-          status: 'pending-sent',
-          requestId: req._id
-        });
-      });
-    } catch (error: unknown) {
-      console.error('Error loading sent requests:', error);
-      const apiError = error as ApiError;
-      addNotification({
-        type: 'error',
-        title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to load sent requests'
-      });
-    }
-  }, [addNotification, setInitialFriendState]);
-
-  // Load all requests
-  const loadAllRequests = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await Promise.all([loadReceivedRequests(), loadSentRequests()]);
     } catch (error) {
-      console.error('Error loading requests:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadReceivedRequests, loadSentRequests]);
-
-  // Initial load
-  const hasLoadedRef = useRef(false);
-  useEffect(() => {
-    if (!hasLoadedRef.current) {
-      hasLoadedRef.current = true;
-      loadAllRequests();
-    }
-  }, [loadAllRequests]);
-
-  // Handlers
-  const handleAcceptRequest = async (requestId: string, userId: string) => {
-    try {
-      setActionInProgress(requestId);
-      
-      await api.post(`/users/friend-request/${requestId}/accept`);
-      
-      // Update Hook State (for Badge)
-      acceptFriendRequest(userId, requestId);
-
-      // Update Local List immediately
-      setReceivedRequests(prev => prev.filter(req => req._id !== requestId));
-      
-      addNotification({
-        type: 'success',
-        title: 'Request Accepted',
-        message: 'You are now friends!'
-      });
-    } catch (error: unknown) {
       console.error('Error accepting friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to accept friend request'
+        message: 'Failed to accept friend request'
       });
-    } finally {
-      setActionInProgress(null);
     }
   };
 
-  const handleRejectRequest = async (requestId: string, userId: string) => {
-    try {
-      setActionInProgress(requestId);
-      
-      await api.delete(`/users/friend-request/${requestId}`);
-      
-      // Update Hook State
-      rejectFriendRequest(userId, requestId);
-
-      // Update Local List immediately
-      setReceivedRequests(prev => prev.filter(req => req._id !== requestId));
-      
+  // Handle reject request
+  const handleRejectRequest = async (userId: string, requestId?: string) => {
+    if (!requestId) {
       addNotification({
-        type: 'success',
-        title: 'Request Rejected',
-        message: 'Friend request rejected'
+        type: 'error',
+        title: 'Error',
+        message: 'Request ID not found'
       });
-    } catch (error: unknown) {
+      return;
+    }
+
+    try {
+      const result = await rejectFriendRequest(requestId);
+      
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Rejected',
+          message: 'Friend request rejected'
+        });
+        
+        // Refresh the requests list
+        if (activeTab === 'received') {
+          await loadReceivedRequestsFromHook();
+        }
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to reject friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error rejecting friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to reject friend request'
+        message: 'Failed to reject friend request'
       });
-    } finally {
-      setActionInProgress(null);
     }
   };
 
-  const handleWithdrawRequest = async (requestId: string, userId: string) => {
+  // Handle withdraw request
+  const handleWithdrawRequest = async (userId: string, requestId?: string) => {
+    if (!requestId) {
+      addNotification({
+        type: 'error',
+        title: 'Error',
+        message: 'Request ID not found'
+      });
+      return;
+    }
+
     try {
-      setActionInProgress(requestId);
+      const result = await withdrawFriendRequest(requestId);
       
-      await api.post(`/users/friend-request/${requestId}/withdraw`);
-      
-      // Update Hook State
-      withdrawFriendRequest(userId, requestId);
-
-      // Update Local List immediately
-      setSentRequests(prev => prev.filter(req => req._id !== requestId));
-      
-      addNotification({
-        type: 'success',
-        title: 'Request Withdrawn',
-        message: 'Friend request withdrawn successfully'
-      });
-    } catch (error: unknown) {
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Withdrawn',
+          message: 'Friend request withdrawn successfully'
+        });
+        
+        // Refresh the requests list
+        if (activeTab === 'sent') {
+          await loadSentRequestsFromHook();
+        }
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to withdraw friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error withdrawing friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to withdraw friend request'
+        message: 'Failed to withdraw friend request'
       });
-    } finally {
-      setActionInProgress(null);
     }
   };
 
-  const handleMessageUser = (user: User) => {
-    localStorage.setItem('selectedChatUser', JSON.stringify(user));
-    router.push('/chat');
+  // Get user details for a friend state
+  const getUserDetails = (userId: string): User | null => {
+    // Check in friends list
+    const friend = friendsList.find(f => f._id === userId);
+    if (friend) return friend;
+    
+    // Check in recommended friends
+    const recommended = recommendedFriends.find(f => f._id === userId);
+    if (recommended) return recommended;
+    
+    // Return minimal user object
+    return {
+      _id: userId,
+      username: 'user',
+      profilePic: '',
+      fullName: 'Unknown User',
+      unreadCount: 0,
+      isOnboarded: true
+    };
   };
 
-  const formatDate = (dateString: string) => {
+  // Format date
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Recently';
+    
     const date = new Date(dateString);
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
@@ -374,32 +299,32 @@ export default function FriendRequestsPage() {
     return date.toLocaleDateString();
   };
 
-  // Filter Logic
-  const filteredReceivedRequests = receivedRequests.filter(req => {
-    const user = req.sender as User;
-    return user.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           user.username?.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter requests based on search - only show pending-sent or pending-received
+  const filteredRequests = getRequestsForCurrentTab().filter(state => {
+    const user = getUserDetails(state.userId);
+    const matchesSearch = user?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         user?.username?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Only include if it's either pending-sent or pending-received
+    const isCorrectStatus = activeTab === 'received' 
+      ? state.status === 'pending-received'
+      : state.status === 'pending-sent';
+      
+    return matchesSearch && isCorrectStatus;
   });
 
-  const filteredSentRequests = sentRequests.filter(req => {
-    const user = req.receiver as User;
-    return user.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           user.username?.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const hasRequests = filteredRequests.length > 0;
 
-  const currentRequests = activeTab === 'received' ? filteredReceivedRequests : filteredSentRequests;
-  const hasRequests = currentRequests.length > 0;
-
-  const getActionButtons = (request: FriendRequest) => {
-    const isProcessing = actionInProgress === request._id;
-
-    if (activeTab === 'received') {
-      const senderId = typeof request.sender === 'string' ? request.sender : request.sender._id;
+  // Get action buttons based on state - only for pending requests
+  const getActionButtons = (state: { userId: string; status: string; requestId?: string }) => {
+    const isProcessing = loading.action;
+    
+    if (state.status === 'pending-received') {
       return (
         <div className={styles.dualButtons}>
           <button
             className={`${styles.actionButton} ${styles.acceptButton}`}
-            onClick={() => handleAcceptRequest(request._id, senderId)}
+            onClick={() => handleAcceptRequest(state.userId, state.requestId)}
             disabled={isProcessing}
           >
             <FiUserCheck />
@@ -407,7 +332,7 @@ export default function FriendRequestsPage() {
           </button>
           <button
             className={`${styles.actionButton} ${styles.rejectButton}`}
-            onClick={() => handleRejectRequest(request._id, senderId)}
+            onClick={() => handleRejectRequest(state.userId, state.requestId)}
             disabled={isProcessing}
           >
             <FiUserX />
@@ -415,31 +340,21 @@ export default function FriendRequestsPage() {
           </button>
         </div>
       );
-    } else {
-      const receiverId = typeof request.receiver === 'string' ? request.receiver : request.receiver._id;
+    } else if (state.status === 'pending-sent') {
       return (
-        <div className={styles.dualButtons}>
-          <button
-            className={`${styles.actionButton} ${styles.withdrawButton}`}
-            onClick={() => handleWithdrawRequest(request._id, receiverId)}
-            disabled={isProcessing}
-          >
-            <FiUserX />
-            {isProcessing ? 'Withdrawing...' : 'Withdraw'}
-          </button>
-        </div>
+        <button
+          className={`${styles.actionButton} ${styles.withdrawButton}`}
+          onClick={() => handleWithdrawRequest(state.userId, state.requestId)}
+          disabled={isProcessing}
+        >
+          <FiUserX />
+          {isProcessing ? 'Withdrawing...' : 'Withdraw Request'}
+        </button>
       );
     }
+    
+    return null;
   };
-
-  // UserProfile handlers
-  const handleUserProfileLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
-    socketService.disconnect();
-    router.push('/login');
-  };
-
 
   return (
     <div className={styles.fullPage}>
@@ -466,6 +381,7 @@ export default function FriendRequestsPage() {
               <h1 className={styles.title}>Friend Requests</h1>
               <p className={styles.subtitle}>
                 Manage your incoming and outgoing friend requests
+                {pendingCount > 0 && ` • ${pendingCount} pending`}
               </p>
             </div>
           </div>
@@ -478,13 +394,13 @@ export default function FriendRequestsPage() {
                 profilePic: '',
                 fullName: 'User',
                 unreadCount: 0,
+                isOnboarded: true
               }}
               showUserMenu={showUserMenu}
               setShowUserMenu={setShowUserMenu}
               userMenuRef={userMenuRef}
               pendingFriendRequests={pendingCount}
               currentPage="my-requests"
-              
             />
           </div>
         </div>
@@ -496,36 +412,37 @@ export default function FriendRequestsPage() {
               onClick={() => setActiveTab('received')}
             >
               <FiUserPlus />
-              Received Requests
-              {filteredReceivedRequests.length > 0 && (
-                <span className={styles.tabBadge}>{filteredReceivedRequests.length}</span>
-              )}
+              Received
+              <span className={styles.tabBadge}>
+                {getRequestsForCurrentTab().filter(s => s.status === 'pending-received').length}
+              </span>
             </button>
             <button
               className={`${styles.tab} ${activeTab === 'sent' ? styles.activeTab : ''}`}
               onClick={() => setActiveTab('sent')}
             >
               <FiUserCheck />
-              Sent Requests
-              {filteredSentRequests.length > 0 && (
-                <span className={styles.tabBadge}>{filteredSentRequests.length}</span>
-              )}
+              Sent
+              <span className={styles.tabBadge}>
+                {getRequestsForCurrentTab().filter(s => s.status === 'pending-sent').length}
+              </span>
             </button>
+           
           </div>
         </div>
         
         {hasRequests && (
           <div className={styles.searchSection}>
-             <div className={styles.searchWrapper}>
-                <FiSearch className={styles.searchIcon} />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={styles.searchInput}
-                />
-             </div>
+            <div className={styles.searchWrapper}>
+              <FiSearch className={styles.searchIcon} />
+              <input
+                type="text"
+                placeholder="Search by name or username..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={styles.searchInput}
+              />
+            </div>
           </div>
         )}
 
@@ -558,43 +475,47 @@ export default function FriendRequestsPage() {
                       : "You haven't sent any friend requests yet"
                     }
                   </p>
+                  
                 </>
               )}
             </div>
           ) : (
-            <div className={styles.requestsGrid}>
-              {currentRequests.map((request) => {
-                const user = activeTab === 'received' ? request.sender : request.receiver;
-                const userObj = user as User;
+            <div className={styles.requestsList}>
+              {filteredRequests.map((state) => {
+                const user = getUserDetails(state.userId);
+                if (!user) return null;
 
                 return (
-                  <div key={request._id} className={styles.requestCard}>
-                    <div className={styles.cardHeader}>
-                      <div className={styles.userAvatar}>
-                        {userObj.profilePic ? (
-                          <img src={userObj.profilePic} alt={userObj.fullName} />
-                        ) : (
-                          <div className={styles.defaultAvatar}>
-                            {userObj.fullName?.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                      
+                  <div key={state.userId} className={styles.requestCard}>
+                    <div className={styles.requestHeader}>
                       <div className={styles.userInfo}>
-                        <h3 className={styles.userName}>{userObj.fullName}</h3>
-                        <p className={styles.username}>@{userObj.username}</p>
+                        <div className={styles.avatarWrapper}>
+                          {user.profilePic ? (
+                            <img 
+                              src={user.profilePic} 
+                              alt={user.fullName}
+                              className={styles.avatar}
+                            />
+                          ) : (
+                            <div className={styles.avatarPlaceholder}>
+                              {user.fullName?.charAt(0) || user.username?.charAt(0) || 'U'}
+                            </div>
+                          )}
+                        </div>
+                        <div className={styles.userDetails}>
+                          <h4 className={styles.userName}>
+                            {user.fullName || 'Unknown User'}
+                          </h4>
+                          <p className={styles.userUsername}>
+                            @{user.username || 'user'}
+                          </p>
                         
-                        <div className={styles.requestMeta}>
-                          <FiClock className={styles.clockIcon} />
-                          <span className={styles.requestDate}>
-                            {formatDate(request.createdAt)}
-                          </span>
                         </div>
                       </div>
                     </div>
-
-                    <div className={styles.cardActions}>
-                      {getActionButtons(request)}
+                    
+                    <div className={styles.requestActions}>
+                      {getActionButtons(state)}
                     </div>
                   </div>
                 );

@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect,  useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   FiSearch, 
-  FiUser, 
+
   FiMapPin, 
   FiGlobe, 
   FiUsers,
@@ -11,66 +11,36 @@ import {
   FiX,
   FiMessageCircle,
   FiUserMinus,
-
+  
+  FiUserCheck
 } from 'react-icons/fi';
-import { api } from '@/lib/api';
 import { useNotification } from '@/context/NotificationContext';
 import UserProfile from '@/components/chat/UserProfile';
-import { User } from '@/types';
 import { socketService } from '@/lib/socket';
 import { useFriendRequests } from '@/hooks/useFriendRequest';
 import styles from './MyFriendsPage.module.css';
 import Image from 'next/image';
-
-interface Friend {
-  _id: string;
-  fullName: string;
-  username: string;
-  profilePic: string;
-  location: string;
-  nativeLanguage: string;
-  mutualFriendsCount: number;
-}
-
-interface FriendsResponse {
-  page: number;
-  limit: number;
-  total: number;
-  friends: Friend[];
-}
-
-interface ApiError {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  message?: string;
-}
+import { User } from '@/types';
 
 export default function MyFriendsPage() {
   const router = useRouter();
   const { addNotification } = useNotification();
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   
   // UserProfile states
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
- 
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Initialize hook with current user ID
+  // Use the friend requests hook
   const {
     pendingCount,
+    friendsList,
+    loading,
     getFriendState,
-    setInitialFriendState,
-    removeFriend
+    removeFriend,
+    loadFriendsList
   } = useFriendRequests(currentUser?._id || null);
 
   // Close user menu when clicking outside
@@ -96,27 +66,25 @@ export default function MyFriendsPage() {
           user = JSON.parse(userData);
           setCurrentUser(user);
         } else {
-          const response = await api.get<User>('/users/me');
-          user = response.data;
+          const response = await fetch('/api/users/me');
+          user = await response.json();
           setCurrentUser(user);
           localStorage.setItem('user', JSON.stringify(user));
         }
 
         // Connect socket with current user
         if (user._id && user._id !== 'default') {
-          setTimeout(() => {
-            socketService.connect(user._id);
-          }, 1000);
+          socketService.connect(user._id);
         }
 
-    
       } catch (error) {
         console.error('Error loading current user:', error);
-        const defaultUser = {
+        const defaultUser: User = {
           _id: 'default',
+          fullName: 'User',
           username: 'user',
           profilePic: '',
-          fullName: 'User',
+          isOnboarded: true,
           unreadCount: 0
         };
         setCurrentUser(defaultUser);
@@ -126,101 +94,69 @@ export default function MyFriendsPage() {
     loadCurrentUser();
   }, []);
 
-  
-
-  // Load friends
-  const loadFriends = useCallback(async (pageNum: number = 1, search: string = '') => {
-    try {
-      if (pageNum === 1) {
-        setIsLoading(true);
-      } else {
-        setIsLoadingMore(true);
-      }
-
-      const params = {
-        page: pageNum,
-        limit: 20,
-        ...(search && { search })
-      };
-
-      const response = await api.get<FriendsResponse>('/users/friends', { params });
-      const data = response.data;
-
-      // Sync hook state: Everyone in this list is a 'friend'
-      data.friends.forEach(friend => {
-        setInitialFriendState(friend._id, { userId: friend._id, status: 'friends' });
-      });
-
-      if (pageNum === 1) {
-        setFriends(data.friends);
-      } else {
-        setFriends(prev => [...prev, ...data.friends]);
-      }
-      setHasMore(data.friends.length === 20);
-      setPage(pageNum);
-    } catch (error: unknown) {
-      console.error('Error loading friends:', error);
-      const apiError = error as ApiError;
-      addNotification({
-        type: 'error',
-        title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to load friends'
-      });
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [addNotification, setInitialFriendState]);
-
-  // Initial load
+  // Load friends when currentUser is available
   useEffect(() => {
-    loadFriends();
-  }, [loadFriends]);
+    const loadFriendsData = async () => {
+      if (!currentUser) return;
+
+      try {
+        await loadFriendsList(searchQuery, 1, 20);
+      } catch (error) {
+        console.error('Error loading friends:', error);
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load friends'
+        });
+      }
+    };
+
+    if (currentUser) {
+      loadFriendsData();
+    }
+  }, [currentUser, addNotification, loadFriendsList]);
 
   // Search with debounce
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setPage(1);
-      loadFriends(1, searchQuery);
+      if (currentUser) {
+        loadFriendsList(searchQuery, 1, 20);
+      }
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, loadFriends]);
+  }, [searchQuery, currentUser, loadFriendsList]);
 
-  // Handle Remove Friend
+  // Handle Remove Friend using hook
   const handleRemoveFriend = async (friendId: string) => {
     try {
       setActionInProgress(friendId);
       
-      // Use the standard endpoint consistent with RecommendationPage and Controller
-      await api.patch(`/users/friends/${friendId}`);
-
-      // Use the hook to update state and emit socket event
-      removeFriend(friendId);
+      const result = await removeFriend(friendId);
       
-      addNotification({
-        type: 'success',
-        title: 'Friend Removed',
-        message: 'Friend removed successfully'
-      });
-    } catch (error: unknown) {
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Friend Removed',
+          message: 'Friend removed successfully'
+        });
+        // Real-time: Friend will temporarily show "Removed" then disappear from list
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to remove friend'
+        });
+      }
+    } catch (error) {
       console.error('Error removing friend:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to remove friend'
+        message: 'Failed to remove friend'
       });
     } finally {
       setActionInProgress(null);
-    }
-  };
-
-
-
-  const loadMore = () => {
-    if (!isLoadingMore && hasMore) {
-      loadFriends(page + 1, searchQuery);
     }
   };
 
@@ -230,12 +166,26 @@ export default function MyFriendsPage() {
 
  
 
-  
-  const visibleFriends = friends.filter(friend => {
-    const state = getFriendState(friend._id);
+  // Filter friends based on search query
+  const filteredFriends = friendsList.filter((friend: User) => {
+    if (!searchQuery) return true;
     
-    return state.status === 'friends';
+    const query = searchQuery.toLowerCase();
+    const fullName = friend.fullName?.toLowerCase() || '';
+    const username = friend.username?.toLowerCase() || '';
+    const location = friend.location?.toLowerCase() || '';
+    const nativeLanguage = friend.nativeLanguage?.toLowerCase() || '';
+    
+    return (
+      fullName.includes(query) ||
+      username.includes(query) ||
+      location.includes(query) ||
+      nativeLanguage.includes(query)
+    );
   });
+
+  // Check if we should show loading state
+  const isLoadingInitial = loading.friends && friendsList.length === 0 && searchQuery === '';
 
   return (
     <div className={styles.fullPage}>
@@ -265,6 +215,8 @@ export default function MyFriendsPage() {
                 Connect and chat with your friends
               </p>
             </div>
+            
+            
           </div>
 
           {/* Integrated UserProfile */}
@@ -272,24 +224,20 @@ export default function MyFriendsPage() {
             <UserProfile
               currentUser={currentUser || { 
                 _id: 'default',
+                fullName: 'User',
                 username: 'user',
                 profilePic: '',
-                fullName: 'User',
-                unreadCount: 0,
-                isOnboarded: true
+                isOnboarded: true,
+                unreadCount: 0
               }}
               showUserMenu={showUserMenu}
               setShowUserMenu={setShowUserMenu}
               userMenuRef={userMenuRef}
-              pendingFriendRequests={pendingCount} // Use real-time count from hook
+              pendingFriendRequests={pendingCount}
               currentPage="friends"
-              
             />
           </div>
         </div>
-
-  
-       
 
         {/* Centered Search Section */}
         <div className={styles.centeredSearchSection}>
@@ -320,125 +268,110 @@ export default function MyFriendsPage() {
 
         {/* Results */}
         <div className={styles.resultsSection}>
-          {isLoading && page === 1 ? (
+          {isLoadingInitial ? (
             <div className={styles.loadingState}>
               <div className={styles.loadingSpinner}></div>
               <p>Loading your friends...</p>
             </div>
-          ) : visibleFriends.length === 0 ? (
+          ) : filteredFriends.length === 0 ? (
             <div className={styles.emptyState}>
               <FiUsers className={styles.emptyIcon} />
               <h3>No friends found</h3>
               <p>
                 {searchQuery 
                   ? `No friends match "${searchQuery}"`
-                  : "You haven't added any friends yet or they have been removed."
+                  : "You haven't added any friends yet."
                 }
               </p>
             </div>
           ) : (
             <>
               <div className={styles.resultsGrid}>
-                {visibleFriends.map((friend) => (
-                  <div key={friend._id} className={styles.friendCard}>
-                    <div className={styles.cardHeader}>
-                 <div className={styles.userAvatar}>
-                  {friend.profilePic ? (
-                    <Image
-                      src={friend.profilePic}
-                      alt={friend.fullName}
-                      width={40}       // adjust size as needed
-                      height={40}      // adjust size as needed
-                      className={styles.avatarImage}
-                      priority          // optional: marks image as high-priority for LCP
-                    />
-                  ) : (
-                    <div className={styles.defaultAvatar}>
-                      {friend.fullName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                      
-                      <div className={styles.userInfo}>
-                        <h3 className={styles.userName}>{friend.fullName}</h3>
-                        <p className={styles.username}>@{friend.username}</p>
+                {filteredFriends.map((friend: User) => {
+                  const isProcessing = actionInProgress === friend._id;
+                  const friendState = getFriendState(friend._id);
+                  
+                  // Only show friends (not removed or other statuses)
+                  const isFriend = friendState.status === 'friends';
+                  
+                  // Don't render if not a friend
+                  if (!isFriend) {
+                    return null;
+                  }
+
+                  return (
+                    <div key={friend._id} className={styles.friendCard}>
+                      <div className={styles.cardHeader}>
+                        <div className={styles.userAvatar}>
+                          {friend.profilePic ? (
+                            <Image
+                              src={friend.profilePic}
+                              alt={friend.fullName || 'Friend'}
+                              width={40}
+                              height={40}
+                              className={styles.avatarImage}
+                              priority
+                            />
+                          ) : (
+                            <div className={styles.defaultAvatar}>
+                              {friend.fullName?.charAt(0)?.toUpperCase() || friend.username?.charAt(0)?.toUpperCase() || 'F'}
+                            </div>
+                          )}
+                        </div>
                         
-                        <div className={styles.friendBadge}>
-                          <span className={styles.badge}>
-                            <FiUser />
-                            Friends
-                          </span>
+                        <div className={styles.userInfo}>
+                          <h3 className={styles.userName}>{friend.fullName || 'Anonymous User'}</h3>
+                          <p className={styles.username}>@{friend.username || 'user'}</p>
+                          
+                          <div className={styles.friendBadge}>
+                            <span className={styles.badge}>
+                              <FiUserCheck />
+                              Friends
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className={styles.userDetails}>
-                      {friend.location && (
-                        <div className={styles.detailItem}>
-                          <FiMapPin className={styles.detailIcon} />
-                          <span>{friend.location}</span>
-                        </div>
-                      )}
-                      
-                      {friend.nativeLanguage && (
-                        <div className={styles.detailItem}>
-                          <FiGlobe className={styles.detailIcon} />
-                          <span>{friend.nativeLanguage}</span>
-                        </div>
-                      )}
-                      
-                      {friend.mutualFriendsCount > 0 && (
-                        <div className={styles.detailItem}>
-                          <FiUsers className={styles.detailIcon} />
-                          <span>{friend.mutualFriendsCount} mutual friends</span>
-                        </div>
-                      )}
-                    </div>
+                      <div className={styles.userDetails}>
+                        {friend.location && (
+                          <div className={styles.detailItem}>
+                            <FiMapPin className={styles.detailIcon} />
+                            <span>{friend.location}</span>
+                          </div>
+                        )}
+                        
+                        {friend.nativeLanguage && (
+                          <div className={styles.detailItem}>
+                            <FiGlobe className={styles.detailIcon} />
+                            <span>{friend.nativeLanguage}</span>
+                          </div>
+                        )}
+                      </div>
 
-                    <div className={styles.cardActions}>
-                      <button
-                        className={`${styles.actionButton} ${styles.removeButton}`}
-                        onClick={() => handleRemoveFriend(friend._id)}
-                        disabled={actionInProgress === friend._id}
-                      >
-                        <FiUserMinus />
-                        {actionInProgress === friend._id ? 'Removing...' : 'Remove Friend'}
-                      </button>
-                      
-                    
-                            <button
-                                className={`${styles.actionButton} ${styles.messageButton}`}
-                                onClick={() => {
-                                  // Navigate to chat with user ID in URL
-                                  router.push(`/chat?userId=${friend._id}`);
-                                }}
-                              >
-                                <FiMessageCircle />
-                                Message
-                              </button>
+                      <div className={styles.cardActions}>
+                        <button
+                          className={`${styles.actionButton} ${styles.removeButton}`}
+                          onClick={() => handleRemoveFriend(friend._id)}
+                          disabled={isProcessing || loading.action}
+                        >
+                          <FiUserMinus />
+                          {isProcessing || loading.action ? 'Removing...' : 'Remove Friend'}
+                        </button>
+                        
+                        <button
+                          className={`${styles.actionButton} ${styles.messageButton}`}
+                          onClick={() => {
+                            router.push(`/chat?userId=${friend._id}`);
+                          }}
+                        >
+                          <FiMessageCircle />
+                          Message
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-
-              {/* Load More */}
-              {hasMore && (
-                <div className={styles.loadMoreSection}>
-                  {isLoadingMore ? (
-                    <div className={styles.loadingMore}>
-                      <div className={styles.loadingSpinner}></div>
-                      <span>Loading more friends...</span>
-                    </div>
-                  ) : (
-                    <button
-                      className={styles.loadMoreButton}
-                      onClick={loadMore}
-                    >
-                      Load More
-                    </button>
-                  )}
-                </div>
-              )}
             </>
           )}
         </div>

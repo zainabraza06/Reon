@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, {  useState } from "react";
 import { Phone, PhoneOff, Video } from "lucide-react";
-import { useRingtone } from "@/hooks/useRingtone";
 import styles from "./IncomingCallModal.module.css";
 
 interface IncomingCallModalProps {
@@ -23,30 +22,16 @@ const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   onReject,
 }) => {
   const [isRinging, setIsRinging] = useState(true);
-  const { playRingtone, stopRingtone } = useRingtone();
 
-  useEffect(() => {
-    if (isVisible) {
-      setIsRinging(true);
-      playRingtone();
-    } else {
-      setIsRinging(false);
-      stopRingtone();
-    }
 
-    return () => {
-      stopRingtone();
-    };
-  }, [isVisible, playRingtone, stopRingtone]);
 
   // Stop ringtone when call is accepted or rejected
   const handleAccept = () => {
-    stopRingtone();
+
     onAccept();
   };
 
   const handleReject = () => {
-    stopRingtone();
     onReject();
   };
 

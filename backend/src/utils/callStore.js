@@ -8,6 +8,7 @@ const cleanup = () => {
   const now = Date.now();
   for (const [callId, session] of callSessions.entries()) {
     if (session.expiresAt <= now) {
+      console.log(`🧹 Cleaning up expired call session: ${callId}`);
       callSessions.delete(callId);
     }
   }
@@ -36,6 +37,7 @@ export const createSession = ({
     iceRestartCount: 0
   };
   callSessions.set(callId, session);
+  console.log(`✅ Created session: ${callId}, from: ${fromUserId}, to: ${toUserId}`);
   return session;
 };
 
@@ -43,9 +45,14 @@ export const getSession = (callId) => callSessions.get(callId);
 
 export const updateStatus = (callId, status) => {
   const session = callSessions.get(callId);
-  if (!session) return null;
+  if (!session) {
+    console.log(`❌ Cannot update status: session ${callId} not found`);
+    return null;
+  }
+  console.log(`📞 Call ${callId} status: ${session.status} -> ${status}`);
   session.status = status;
   session.updatedAt = Date.now();
+  session.expiresAt = Date.now() + CALL_TTL_MS;
   return session;
 };
 
@@ -62,22 +69,59 @@ export const incrementIceRestart = (callId) => {
   if (!session) return null;
   session.iceRestartCount = (session.iceRestartCount || 0) + 1;
   session.updatedAt = Date.now();
+  session.expiresAt = Date.now() + CALL_TTL_MS;
   return session;
 };
 
 export const assertParticipant = (callId, userId) => {
   const session = callSessions.get(callId);
-  if (!session) return false;
+  if (!session) {
+    console.log(`❌ Assert participant failed: session ${callId} not found`);
+    return false;
+  }
   const uid = userId.toString();
-  return session.fromUserId === uid || session.toUserId === uid;
+  const isParticipant = session.fromUserId === uid || session.toUserId === uid;
+  if (!isParticipant) {
+    console.log(`❌ User ${uid} is not a participant of call ${callId}`);
+  }
+  return isParticipant;
 };
 
 export const endSession = (callId, reason = "ended") => {
   const session = callSessions.get(callId);
-  if (!session) return null;
+  if (!session) {
+    console.log(`❌ Cannot end session: ${callId} not found`);
+    return null;
+  }
+  console.log(`📞 Ending session ${callId}, reason: ${reason}`);
   session.status = reason;
   session.updatedAt = Date.now();
   callSessions.delete(callId);
   return session;
 };
 
+// NEW: Clean up sessions for disconnected user
+export const cleanupUserSessions = (userId) => {
+  const uid = userId.toString();
+  let cleanedCount = 0;
+  
+  for (const [callId, session] of callSessions.entries()) {
+    if ((session.fromUserId === uid || session.toUserId === uid) && 
+        session.status !== 'ended' && 
+        session.status !== 'rejected' &&
+        session.status !== 'busy') {
+      console.log(`🧹 Cleaning up call ${callId} for disconnected user ${uid}, status was: ${session.status}`);
+      endSession(callId, 'user-disconnected');
+      cleanedCount++;
+    }
+  }
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned up ${cleanedCount} call sessions for user ${uid}`);
+  }
+};
+
+// Optional: Get all sessions for debugging
+export const getAllSessions = () => {
+  return Array.from(callSessions.values());
+};

@@ -5,7 +5,10 @@ import {
   getSession,
   updateStatus,
   assertParticipant,
-  touchSession
+  touchSession,
+  endSession,
+  incrementIceRestart,
+  cleanupUserSessions
 } from "../utils/callStore.js";
 import { buildIceServers } from "../utils/turn.js";
 import { isUserOnline } from "../lib/socket.js";
@@ -43,6 +46,8 @@ export const createCallSession = async (req, res) => {
     
     // Check if callee is online
     const calleeIsOnline = isUserOnline(toUserId.toString());
+
+    console.log(`📞 Call session created: ${callId}, from: ${fromUserId}, to: ${toUserId}, type: ${type}`);
 
     return res.status(201).json({
       callId,
@@ -109,3 +114,284 @@ export const getTurnCredentialsForCall = async (req, res) => {
 // Optional: mark status updates via signaling can reuse this helper
 export const markCallStatus = (callId, status) => updateStatus(callId, status);
 
+import jwt from "jsonwebtoken";
+import { validateKeyEnvelope } from "../utils/callKeyExchange.js";
+
+// Utility function for logging
+const logCallEvent = (event, data, userId) => {
+  console.log(`📞 [${event}] from ${userId}:`, {
+    callId: data.callId,
+    reason: data.reason || data.trackType || 'N/A',
+    timestamp: new Date().toISOString()
+  });
+};
+
+const getToken = (socket) => {
+  const authToken = socket.handshake.auth?.token || socket.handshake.query?.token;
+  if (authToken) return authToken;
+  const header = socket.handshake.headers?.authorization;
+  if (header?.startsWith("Bearer ")) return header.split(" ")[1];
+  const cookie = socket.handshake.headers?.cookie;
+  if (cookie) {
+    const tokenCookie = cookie
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith("token="));
+    if (tokenCookie) return tokenCookie.split("token=")[1];
+  }
+  return null;
+};
+
+export const initCallNamespace = (io) => {
+  const nsp = io.of("/calls");
+
+  nsp.use(async (socket, next) => {
+    try {
+      const token = getToken(socket);
+      if (!token) return next(new Error("auth_required"));
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.id).select("_id fullName username profilePic");
+      if (!user) return next(new Error("user_not_found"));
+
+      socket.user = user;
+      socket.join(user._id.toString());
+      console.log(`✅ User ${user._id} (${user.username}) connected to calls namespace`);
+      return next();
+    } catch (err) {
+      console.error("Auth error in calls namespace:", err.message);
+      return next(new Error("auth_failed"));
+    }
+  });
+
+  const emitToPeer = (callId, fromUserId, event, payload) => {
+    const session = getSession(callId);
+    if (!session) {
+      console.log(`❌ Cannot emit ${event}: session ${callId} not found`);
+      return;
+    }
+    
+    const target =
+      session.fromUserId === fromUserId.toString()
+        ? session.toUserId
+        : session.fromUserId;
+    
+    console.log(`📤 Emitting ${event} to ${target} for call ${callId}`);
+    nsp.to(target).emit(event, payload);
+  };
+
+  nsp.on("connection", (socket) => {
+    const userId = socket.user._id.toString();
+    const userName = socket.user.username || socket.user.fullName || userId;
+    console.log(`👤 User ${userName} (${userId}) connected to calls socket`);
+
+    const ensureAuthorized = (callId) => {
+      const session = getSession(callId);
+      if (!session) {
+        console.log(`❌ Session ${callId} not found for user ${userId}`);
+        return { ok: false, status: "not_found" };
+      }
+      
+      if (!assertParticipant(callId, userId)) {
+        console.log(`❌ User ${userId} not authorized for call ${callId}`);
+        return { ok: false, status: "forbidden" };
+      }
+      
+      return { ok: true, session };
+    };
+
+    // Helper to send error response
+    const sendError = (callId, reason) => {
+      socket.emit("call:error", { 
+        callId, 
+        reason,
+        timestamp: Date.now()
+      });
+    };
+
+    socket.on("call:initiate", (data = {}) => {
+      const { callId, toUserId, type } = data;
+      logCallEvent('call:initiate', data, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) {
+        sendError(callId, auth.status);
+        return;
+      }
+      
+      updateStatus(callId, "ringing");
+      emitToPeer(callId, userId, "call:initiate", {
+        callId,
+        fromUserId: userId,
+        fromUserName: userName,
+        fromUserAvatar: socket.user.profilePic,
+        type: type || auth.session.type
+      });
+    });
+
+    socket.on("call:ringing", ({ callId }) => {
+      logCallEvent('call:ringing', { callId }, userId);
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "ringing");
+      emitToPeer(callId, userId, "call:ringing", { callId });
+    });
+
+    socket.on("call:offer", ({ callId, sdp }) => {
+      logCallEvent('call:offer', { callId }, userId);
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "connecting");
+      emitToPeer(callId, userId, "call:offer", { callId, sdp });
+    });
+
+    socket.on("call:answer", ({ callId, sdp }) => {
+      logCallEvent('call:answer', { callId }, userId);
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "connected");
+      emitToPeer(callId, userId, "call:answer", { callId, sdp });
+    });
+
+    socket.on("call:candidate", ({ callId, candidate }) => {
+      // Don't log candidates to reduce noise
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok || !candidate) return;
+      
+      emitToPeer(callId, userId, "call:candidate", { callId, candidate });
+    });
+
+    socket.on("call:ice-restart", ({ callId, offer }) => {
+      logCallEvent('call:ice-restart', { callId }, userId);
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      incrementIceRestart(callId);
+      emitToPeer(callId, userId, "call:ice-restart", { callId, offer });
+    });
+
+    socket.on("call:key-exchange", (payload) => {
+      if (!payload) return;
+      if (!validateKeyEnvelope(payload)) return;
+      
+      const auth = ensureAuthorized(payload.callId);
+      if (!auth.ok) return;
+      
+      emitToPeer(payload.callId, userId, "call:key-exchange", payload);
+    });
+
+    socket.on("call:reject", ({ callId, reason = "user-rejected" }) => {
+      logCallEvent('call:reject', { callId, reason }, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) {
+        console.log(`❌ Reject unauthorized: ${auth.status} for call ${callId}`);
+        sendError(callId, auth.status);
+        return;
+      }
+      
+      console.log(`✅ Call ${callId} rejected by ${userName} with reason: ${reason}`);
+      
+      // Update status first
+      updateStatus(callId, "rejected");
+      
+      // Notify the other participant
+      emitToPeer(callId, userId, "call:reject", { 
+        callId, 
+        reason,
+        timestamp: Date.now()
+      });
+      
+      // End the session after a short delay to ensure message is delivered
+      setTimeout(() => {
+        endSession(callId, "rejected");
+      }, 100);
+    });
+
+    socket.on("call:busy", ({ callId, reason = "busy" }) => {
+      logCallEvent('call:busy', { callId, reason }, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "busy");
+      emitToPeer(callId, userId, "call:busy", { 
+        callId, 
+        reason,
+        timestamp: Date.now()
+      });
+      
+      // End session after notifying
+      setTimeout(() => {
+        endSession(callId, "busy");
+      }, 100);
+    });
+
+    socket.on("call:missed", ({ callId }) => {
+      logCallEvent('call:missed', { callId }, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "missed");
+      emitToPeer(callId, userId, "call:missed", { callId });
+      endSession(callId, "missed");
+    });
+
+    socket.on("call:hangup", ({ callId, reason = "hangup" }) => {
+      logCallEvent('call:hangup', { callId, reason }, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      updateStatus(callId, "ended");
+      emitToPeer(callId, userId, "call:hangup", { 
+        callId, 
+        reason,
+        timestamp: Date.now()
+      });
+      
+      setTimeout(() => {
+        endSession(callId, reason);
+      }, 100);
+    });
+
+    // NEW: Handle track updates for camera/mic toggle
+    socket.on("call:track:update", ({ callId, trackType, enabled }) => {
+      logCallEvent('call:track:update', { callId, trackType, enabled }, userId);
+      
+      const auth = ensureAuthorized(callId);
+      if (!auth.ok) return;
+      
+      // Forward the track update to the other participant
+      emitToPeer(callId, userId, "call:track:update", { 
+        callId, 
+        trackType, 
+        enabled,
+        userId, // Include userId so frontend knows who toggled
+        userName,
+        timestamp: Date.now()
+      });
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log(`👤 User ${userName} (${userId}) disconnected from calls socket. Reason: ${reason}`);
+      
+      // Clean up any pending calls for this user
+      cleanupUserSessions(userId);
+      
+      // Notify any active calls that user disconnected
+      // This could be enhanced to notify specific call participants
+    });
+  });
+
+  // For debugging purposes only: list supported events
+  nsp.on("connect_error", (err) => {
+    console.error("Call namespace connection error:", err.message);
+  });
+
+  return nsp;
+};

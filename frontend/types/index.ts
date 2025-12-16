@@ -50,13 +50,6 @@ export interface Notification {
   data?: unknown;
 }
 
-export interface FriendRequest {
-  _id: string;
-  sender: User;
-  receiver: User;
-  status: 'pending' | 'accepted' | 'declined';
-  createdAt: string;
-}
 
 
 export interface TypingEvent {
@@ -92,7 +85,7 @@ export interface User {
   
    lastMessageSenderId?:string;
   lastMessageMedia?:"image" | "video" | "audio" | "document";
-  unreadCount: number;
+  unreadCount?: number;
   isOnline?: boolean;
   fullName?: string;
   isOnboarded?: boolean;
@@ -100,6 +93,8 @@ export interface User {
    pendingFriendRequests?: number;
    location?:string;
    bio?:string;
+   nativeLanguage?:string;
+   contentType?:string;
 
   friends?: { _id: string }[];
   chats?: { _id: string }[];
@@ -108,14 +103,24 @@ export interface User {
 export type ChatItem =User;
 
 
+export interface FriendRequest {
+  _id: string;
+  sender: User;
+  receiver: User;
+  status: 'pending' | 'accepted' | 'rejected'|'withdrawn';
+  createdAt: string;
+}
 
+
+// types.ts (updated)
 export interface Friend {
   _id: string;
   fullName: string;
   email?: string;
+  username?: string;
+  profilePic?: string;
+  nativeLangugae?:string;
 }
-
-
 
 export interface OnlineStatusEvent {
   userId: string;
@@ -134,16 +139,7 @@ export interface AuthContextType {
 }
 
 
-export interface FriendRequestReceivedData {
-  requestId: string;
-  sender: {
-    _id: string;
-    fullName: string;
-    username: string;
-    profilePic: string;
-  };
-  timestamp: string;
-}
+
 
 export interface FriendRemovedData {
   userId: string;
@@ -151,16 +147,17 @@ export interface FriendRemovedData {
   timestamp: string;
 }
 
+export interface FriendRequestReceivedData {
+  requestId: string;
+  sender: Friend; // Use Friend interface instead
+  timestamp: string;
+}
+
 export interface FriendRequestAcceptedData {
   requestId: string;
   senderId: string;
   receiverId: string;
-  receiver: {
-    _id: string;
-    fullName?: string;
-    username?: string;
-    profilePic?: string;
-  };
+  receiver: Friend; // Now this matches Friend interface
   timestamp: string;
 }
 
@@ -173,7 +170,7 @@ export interface FriendRequestData {
 
  export interface FriendRequestRejectedData {
   requestId: string;
-  rejectorId: string;
+  receiverId: string;
   senderId: string;
   rejectedAt: string;
 }
@@ -194,7 +191,20 @@ export interface FriendRequestSentData {
 
 
 export interface PendingCountData {
-  pendingCount: number;
+  count: number;
+}
+
+export type FriendStatus = 
+  | 'none'              // Not friends, no request
+  | 'pending-sent'      // You sent a request
+  | 'pending-received'  // You received a request
+  | 'friends'           // You are friends
+  | 'removed'           // Recently removed (temporary state)
+
+export interface FriendRequestState {
+  userId: string;
+  status: FriendStatus;
+  requestId?: string; // Only for pending states
 }
 
 
@@ -302,7 +312,7 @@ export interface BackendMessage {
   receiver: string;
   ciphertext: string;
   type: "ratcheted";
-  contentType: "text" | "image" | "audio" | "video" | "document";
+  contentType: "text" | "image" | "audio" | "video" | "document"|"call-log";
   encryptedKey: string; // Already resolved for current user
   media: MediaForBackend[]; // Backend media format
   sentAt: string;
@@ -342,5 +352,7 @@ export interface TypingEvent {
   to: string;
   isTyping: boolean;
 }
+
+
 
 

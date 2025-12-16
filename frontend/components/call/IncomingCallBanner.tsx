@@ -2,7 +2,7 @@
 
 import React, { useEffect } from "react";
 import { Phone, PhoneOff, Video } from "lucide-react";
-import { useRingtone } from "@/hooks/useRingtone";
+
 import styles from "./IncomingCallBanner.module.css";
 
 interface IncomingCallBannerProps {
@@ -22,28 +22,18 @@ const IncomingCallBanner: React.FC<IncomingCallBannerProps> = ({
   onAccept,
   onReject,
 }) => {
-  const { playRingtone, stopRingtone } = useRingtone();
+ 
 
-  useEffect(() => {
-    if (isVisible) {
-      playRingtone();
-    } else {
-      stopRingtone();
-    }
-
-    return () => {
-      stopRingtone();
-    };
-  }, [isVisible, playRingtone, stopRingtone]);
+ 
 
   // Stop ringtone when call is accepted or rejected
   const handleAccept = () => {
-    stopRingtone();
+
     onAccept();
   };
 
   const handleReject = () => {
-    stopRingtone();
+
     onReject();
   };
 

@@ -15,6 +15,7 @@ import { useCall } from "@/context/CallContext";
 import IncomingCallModal from "@/components/call/IncomingCallModal";
 import IncomingCallBanner from "@/components/call/IncomingCallBanner";
 import ActiveCallScreen from "@/components/call/ActiveCallScreen";
+import { api } from "@/lib/api";
 
 const ChatPage: React.FC = () => {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -63,7 +64,7 @@ const ChatPage: React.FC = () => {
     activeCallRef.current = activeCall;
   }, [activeCall]);
 
-  const { initiateCall, endCall, answerCallById, rejectCall, toggleMic: toggleMicTrack, toggleCamera: toggleCameraTrack } = useWebRTC({
+  const { initiateCall, endCall, answerCallById, rejectCall, toggleMic: toggleMicTrack } = useWebRTC({
     userId: currentUser?._id || "",
     onCallStateChange: (state, session) => {
       console.log('📞 Call state changed:', state, session);
@@ -109,8 +110,8 @@ const ChatPage: React.FC = () => {
     onIncomingCall: async (data) => {
       console.log('📞 Incoming call notification:', data);
       try {
-        const response = await fetch(`/api/auth/details/${data.fromUserId}`);
-        const caller = await response.json();
+        const response = await api.get(`/auth/details/${data.fromUserId}`);
+        const caller=response.data.data;
         showIncomingCall({
           callId: data.callId,
           fromUserId: data.fromUserId,
@@ -130,7 +131,7 @@ const ChatPage: React.FC = () => {
     },
     onError: (error) => {
       console.error('❌ Call error:', error);
-      alert(`Call failed: ${error}`);
+
     }
   });
 
@@ -190,65 +191,107 @@ const ChatPage: React.FC = () => {
     shouldLoadMessagesRef.current = true;
   }, [router, pathname, setSelectedUser, setMessages, setDecryptedMessages, resetUnreadCount, stopTyping]);
 
-  const handleVoiceCall = useCallback(async (userId: string) => {
-    try {
-      console.log('📞 Starting voice call with:', userId);
-      const callee = users.find(u => u._id === userId);
-      if (!callee) {
-        console.error('Callee not found');
+const handleVoiceCall = useCallback(async (userId: string) => {
+  try {
+    console.log('📞 Starting voice call with:', userId);
+    
+    // First try to find user in local users array
+    let callee = users.find(u => u._id === userId);
+    
+    // If not found locally, fetch from API
+    if (!callee) {
+      console.log('User not found locally, fetching from API...');
+      try {
+        const response = await api.get(`/api/auth/details/${userId}`);
+        if (response.data.success) {
+          callee = response.data.data;
+        } else {
+          throw new Error('User not found');
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch user details:', fetchError);
+       
         return;
       }
-      
-      startCall({
-        callId: '',
-        userId: userId,
-        userName: callee.fullName || callee.username || 'Unknown',
-        userAvatar: callee.profilePic,
-        type: 'audio',
-        startTime: Date.now(),
-        callState: 'initiating',
-      });
-      
-      setCallViewMode('full');
-      
-      await initiateCall(userId, 'audio');
-    } catch (error) {
-      console.error('Failed to start voice call:', error);
-      contextEndCall();
-      localStreamRef.current = null;
-      remoteStreamRef.current = null;
     }
-  }, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
-  
-  const handleVideoCall = useCallback(async (userId: string) => {
-    try {
-      console.log('📹 Starting video call with:', userId);
-      const callee = users.find(u => u._id === userId);
-      if (!callee) {
-        console.error('Callee not found');
+    
+    if (!callee) {
+      console.error('Callee not found');
+    
+      return;
+    }
+    
+    startCall({
+      callId: '',
+      userId: userId,
+      userName: callee.fullName || callee.username || 'Unknown',
+      userAvatar: callee.profilePic,
+      type: 'audio',
+      startTime: Date.now(),
+      callState: 'initiating',
+    });
+    
+    setCallViewMode('full');
+    
+    await initiateCall(userId, 'audio');
+  } catch (error) {
+    console.error('Failed to start voice call:', error);
+    contextEndCall();
+    localStreamRef.current = null;
+    remoteStreamRef.current = null;
+  }
+}, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
+
+const handleVideoCall = useCallback(async (userId: string) => {
+  try {
+    console.log('📹 Starting video call with:', userId);
+    
+    // First try to find user in local users array
+    let callee = users.find(u => u._id === userId);
+    
+    // If not found locally, fetch from API
+    if (!callee) {
+      console.log('User not found locally, fetching from API...');
+      try {
+        const response = await api.get(`/auth/details/${userId}`);
+        if (response.data.success) {
+          callee = response.data.data;
+        } else {
+          throw new Error('User not found');
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch user details:', fetchError);
+       
         return;
       }
-      
-      startCall({
-        callId: '',
-        userId: userId,
-        userName: callee.fullName || callee.username || 'Unknown',
-        userAvatar: callee.profilePic,
-        type: 'video',
-        startTime: Date.now(),
-        callState: 'initiating',
-      });
-      
-      setCallViewMode('full');
-      
-      await initiateCall(userId, 'video');
-    } catch (error) {
-      console.error('Failed to start video call:', error);
-      contextEndCall();
-      localStreamRef.current = null;
-      remoteStreamRef.current = null;
     }
-  }, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
+    
+    if (!callee) {
+      console.error('Callee not found');
+    
+      return;
+    }
+    
+    startCall({
+      callId: '',
+      userId: userId,
+      userName: callee.fullName || callee.username || 'Unknown',
+      userAvatar: callee.profilePic,
+      type: 'video',
+      startTime: Date.now(),
+      callState: 'initiating',
+    });
+    
+    setCallViewMode('full');
+    
+    await initiateCall(userId, 'video');
+  } catch (error) {
+    console.error('Failed to start video call:', error);
+    contextEndCall();
+    localStreamRef.current = null;
+    remoteStreamRef.current = null;
+  }
+}, [initiateCall, users, startCall, contextEndCall, setCallViewMode]);
 
   const handleAcceptIncomingCall = useCallback(async () => {
     if (!incomingCall) return;
@@ -514,11 +557,7 @@ const ChatPage: React.FC = () => {
                     setIsMicEnabled(newState);
                     toggleMicTrack(newState);
                   }}
-                  onToggleCamera={() => {
-                    const newState = !isCameraEnabled;
-                    setIsCameraEnabled(newState);
-                    toggleCameraTrack(newState);
-                  }}
+                
                   isMicEnabled={isMicEnabled}
                   isCameraEnabled={isCameraEnabled}
                   onCollapse={() => {
@@ -550,11 +589,7 @@ const ChatPage: React.FC = () => {
                   setIsMicEnabled(newState);
                   toggleMicTrack(newState);
                 }}
-                onToggleCamera={() => {
-                  const newState = !isCameraEnabled;
-                  setIsCameraEnabled(newState);
-                  toggleCameraTrack(newState);
-                }}
+               
                 isMicEnabled={isMicEnabled}
                 isCameraEnabled={isCameraEnabled}
                 viewMode="mini"
@@ -570,4 +605,4 @@ const ChatPage: React.FC = () => {
   );
 };
 
-export default ChatPage;
+export default ChatPage; 

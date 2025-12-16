@@ -2,21 +2,149 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { socketService } from '@/lib/socket';
-import {
-  FriendRequestState,
-  FriendRequestReceivedData,
-  FriendRequestSentData,
-  FriendRequestAcceptedData,
-  FriendRequestWithdrawnData,
-  FriendRequestRejectedData,
-  FriendRemovedData,
-  PendingCountData
-} from "@/types";
+import { api } from '@/lib/api';
+import { AxiosError } from 'axios';
+import { User, FriendRequest } from '@/types';
+
+export type FriendStatus = 'none' | 'friends' | 'pending-sent' | 'pending-received' | 'removed';
+
+export interface FriendRequestState {
+  userId: string;
+  status: FriendStatus;
+  requestId?: string;
+}
+
+export interface RecommendedFriend extends User {
+  mutualFriendsCount: number;
+  score: number;
+  friendRequestSent: boolean;
+  friendRequestReceived: boolean;
+  isFriend: boolean;
+  locationBonus?: number;
+  languageBonus?: number;
+}
+
+export interface PendingCountResponse {
+  pendingCount: number;
+}
+
+export interface RecommendedFriendsResponse {
+  success: boolean;
+  page: number;
+  limit: number;
+  total: number;
+  recommended: RecommendedFriend[];
+}
+
+export interface FriendsListResponse {
+  page: number;
+  limit: number;
+  total: number;
+  friends: User[];
+}
+
+export interface FriendRequestsResponse {
+  total: number;
+  requests: FriendRequest[];
+}
+
+export interface SendRequestResponse {
+  message: string;
+  requestId: string;
+}
+
+export interface AcceptRequestResponse {
+  message: string;
+}
+
+export interface WithdrawRequestResponse {
+  message: string;
+}
+
+export interface RejectRequestResponse {
+  message: string;
+}
+
+export interface RemoveFriendResponse {
+  message: string;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+interface SocketFriendRequestReceivedData {
+  requestId: string;
+  sender: User;
+  timestamp: string;
+}
+
+interface SocketFriendRequestSentData {
+  senderId: string;
+  receiverId: string;
+  requestId: string;
+  timestamp: string;
+}
+
+interface SocketFriendRequestAcceptedData {
+  requestId: string;
+  senderId: string;
+  receiverId: string;
+  receiver: User;
+  timestamp: string;
+}
+
+interface SocketFriendRequestWithdrawnData {
+  requestId: string;
+  senderId: string;
+  receiverId: string;
+}
+
+interface SocketFriendRequestRejectedData {
+  requestId: string;
+  senderId: string;
+  receiverId: string;
+  timestamp: string;
+}
+
+interface SocketFriendRemovedData {
+  userId: string;
+  friendId: string;
+  timestamp: string;
+}
+
+interface SocketPendingCountData {
+  count: number;
+}
+
+interface ApiErrorResponse {
+  message: string;
+  error?: string;
+  success?: boolean;
+}
 
 export function useFriendRequests(currentUserId: string | null) {
   const [friendStates, setFriendStates] = useState<Map<string, FriendRequestState>>(new Map());
-  const [pendingCount, setPendingCount] = useState(0);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+  const [friendsList, setFriendsList] = useState<User[]>([]);
+  const [recommendedFriends, setRecommendedFriends] = useState<RecommendedFriend[]>([]);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0
+  });
+  
+  const [loading, setLoading] = useState({
+    friends: false,
+    recommended: false,
+    sentRequests: false,
+    receivedRequests: false,
+    action: false
+  });
 
   const updateFriendState = useCallback((userId: string, updates: Partial<FriendRequestState>) => {
     setFriendStates(prev => {
@@ -27,44 +155,396 @@ export function useFriendRequests(currentUserId: string | null) {
     });
   }, []);
 
-  const removeFriendState = useCallback((userId: string) => {
-    setFriendStates(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(userId);
-      return newMap;
+  const temporarilyRemove = useCallback((userId: string) => {
+    updateFriendState(userId, {
+      userId,
+      status: 'removed',
+      requestId: undefined
     });
-  }, []);
 
-  // Initialize socket listeners and fetch initial data
-  useEffect(() => {
-    if (!currentUserId || !socketService.isConnected()) {
-      console.log('Socket not connected or no user ID');
-      return;
+    const timeoutId = setTimeout(() => {
+      updateFriendState(userId, {
+        userId,
+        status: 'none',
+        requestId: undefined
+      });
+    }, 5000);
+
+    return () => clearTimeout(timeoutId);
+  }, [updateFriendState]);
+
+  const loadFriendsList = useCallback(async (search = "", page = 1, limit = 10): Promise<ApiResponse<FriendsListResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    setLoading(prev => ({ ...prev, friends: true }));
+    try {
+      const response = await api.get<FriendsListResponse>('/users/friends', {
+        params: { search, page, limit }
+      });
+      
+      const data: FriendsListResponse = response.data;
+      
+      setFriendsList(data.friends);
+      setPagination({
+        page: data.page,
+        limit: data.limit,
+        total: data.total
+      });
+      
+      data.friends.forEach((friend: User) => {
+        updateFriendState(friend._id, {
+          userId: friend._id,
+          status: 'friends',
+          requestId: undefined
+        });
+      });
+      
+      return { success: true, data };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to load friends';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, friends: false }));
+    }
+  }, [currentUserId, updateFriendState]);
+
+  const loadRecommendedFriends = useCallback(async (search = "", page = 1, limit = 10): Promise<ApiResponse<RecommendedFriendsResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    setLoading(prev => ({ ...prev, recommended: true }));
+    try {
+      const response = await api.get<RecommendedFriendsResponse>('/users/recommendation', {
+        params: { search, page, limit }
+      });
+      
+      const data: RecommendedFriendsResponse = response.data;
+      
+      setRecommendedFriends(data.recommended);
+      setPagination({
+        page: data.page,
+        limit: data.limit,
+        total: data.total
+      });
+      
+      data.recommended.forEach((friend: RecommendedFriend) => {
+        let status: FriendStatus = 'none';
+        if (friend.isFriend) {
+          status = 'friends';
+        } else if (friend.friendRequestSent) {
+          status = 'pending-sent';
+        } else if (friend.friendRequestReceived) {
+          status = 'pending-received';
+        }
+
+        updateFriendState(friend._id, {
+          userId: friend._id,
+          status,
+          requestId: undefined
+        });
+      });
+      
+      return { success: true, data };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to load recommended friends';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, recommended: false }));
+    }
+  }, [currentUserId, updateFriendState]);
+
+  const loadReceivedRequests = useCallback(async (): Promise<ApiResponse<FriendRequestsResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    setLoading(prev => ({ ...prev, receivedRequests: true }));
+    try {
+      const response = await api.get<FriendRequestsResponse>('/users/friend-requests/received');
+      
+      const data: FriendRequestsResponse = response.data;
+      
+      data.requests.forEach((request: FriendRequest) => {
+        updateFriendState(request.sender._id, {
+          userId: request.sender._id,
+          status: 'pending-received',
+          requestId: request._id
+        });
+      });
+      
+      return { success: true, data };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to load received requests';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, receivedRequests: false }));
+    }
+  }, [currentUserId, updateFriendState]);
+
+  const loadSentRequests = useCallback(async (): Promise<ApiResponse<FriendRequestsResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    setLoading(prev => ({ ...prev, sentRequests: true }));
+    try {
+      const response = await api.get<FriendRequestsResponse>('/users/friend-requests/sent');
+      
+      const data: FriendRequestsResponse = response.data;
+      
+      data.requests.forEach((request: FriendRequest) => {
+        updateFriendState(request.receiver._id, {
+          userId: request.receiver._id,
+          status: 'pending-sent',
+          requestId: request._id
+        });
+      });
+      
+      return { success: true, data };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to load sent requests';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, sentRequests: false }));
+    }
+  }, [currentUserId, updateFriendState]);
+
+  const loadPendingCount = useCallback(async (): Promise<ApiResponse<PendingCountResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const response = await api.get<PendingCountResponse>('/users/friend-request/pending-count');
+      const data: PendingCountResponse = response.data;
+      setPendingCount(data.pendingCount);
+      return { success: true, data };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to load pending count';
+      return { success: false, error: errorMessage };
+    }
+  }, [currentUserId]);
+
+  const sendFriendRequest = useCallback(async (receiverId: string): Promise<ApiResponse<SendRequestResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+    
+    const currentState = friendStates.get(receiverId);
+    if (currentState?.status === 'removed') {
+      return { success: false, error: 'Please wait before sending a new request' };
+    }
+    
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      const tempRequestId = `temp-${Date.now()}`;
+      updateFriendState(receiverId, {
+        userId: receiverId,
+        status: 'pending-sent',
+        requestId: tempRequestId
+      });
+
+      const response = await api.post<SendRequestResponse>(`/users/friend-request/${receiverId}`);
+      const data: SendRequestResponse = response.data;
+      
+      updateFriendState(receiverId, {
+        userId: receiverId,
+        status: 'pending-sent',
+        requestId: data.requestId
+      });
+
+      setRecommendedFriends(prev => prev.filter(friend => friend._id !== receiverId));
+
+      return { success: true, data };
+    } catch (error: unknown) {
+      updateFriendState(receiverId, {
+        userId: receiverId,
+        status: 'none',
+        requestId: undefined
+      });
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to send friend request';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
+  }, [currentUserId, friendStates, updateFriendState]);
+
+  const acceptFriendRequest = useCallback(async (requestId: string): Promise<ApiResponse<AcceptRequestResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    const friendState = Array.from(friendStates.values()).find(
+      state => state.requestId === requestId
+    );
+    
+    if (!friendState) {
+      return { success: false, error: 'Request not found' };
     }
 
-    console.log('Setting up friend request listeners for user:', currentUserId);
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      updateFriendState(friendState.userId, {
+        status: 'friends',
+        requestId: undefined
+      });
+      setPendingCount(prev => Math.max(0, prev - 1));
 
-    // Fetch initial pending count
-    const fetchInitialData = async () => {
-      try {
-        const response = await fetch(`/api/friends/requests/pending-count`);
-        if (response.ok) {
-          const data = await response.json();
-          setPendingCount(data.pendingCount);
-          console.log('Initial pending count:', data.pendingCount);
-        }
-      } catch (error) {
-        console.error('Failed to fetch pending count:', error);
-      } finally {
-        setIsInitialized(true);
+      const response = await api.post<AcceptRequestResponse>(`/users/friend-request/${requestId}/accept`);
+      const data: AcceptRequestResponse = response.data;
+      
+      setFriendsList(prev => {
+        const exists = prev.some(friend => friend._id === friendState.userId);
+        if (exists) return prev;
+        
+        const newFriend: User = {
+          _id: friendState.userId,
+          fullName: '',
+          username: '',
+          profilePic: ''
+        };
+        return [...prev, newFriend];
+      });
+
+      setRecommendedFriends(prev => prev.filter(friend => friend._id !== friendState.userId));
+
+      return { success: true, data };
+    } catch (error: unknown) {
+      updateFriendState(friendState.userId, {
+        status: 'pending-received',
+        requestId: requestId
+      });
+      setPendingCount(prev => prev + 1);
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to accept friend request';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
+  }, [currentUserId, friendStates, updateFriendState]);
+
+  const rejectFriendRequest = useCallback(async (requestId: string): Promise<ApiResponse<RejectRequestResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    const friendState = Array.from(friendStates.values()).find(
+      state => state.requestId === requestId
+    );
+    
+    if (!friendState) {
+      return { success: false, error: 'Request not found' };
+    }
+
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      updateFriendState(friendState.userId, {
+        status: 'none',
+        requestId: undefined
+      });
+      setPendingCount(prev => Math.max(0, prev - 1));
+
+      const response = await api.delete<RejectRequestResponse>(`/users/friend-request/${requestId}`);
+      const data: RejectRequestResponse = response.data;
+
+      return { success: true, data };
+    } catch (error: unknown) {
+      updateFriendState(friendState.userId, {
+        status: 'pending-received',
+        requestId: requestId
+      });
+      setPendingCount(prev => prev + 1);
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to reject friend request';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
+  }, [currentUserId, friendStates, updateFriendState]);
+
+  const withdrawFriendRequest = useCallback(async (requestId: string): Promise<ApiResponse<WithdrawRequestResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    const friendState = Array.from(friendStates.values()).find(
+      state => state.requestId === requestId
+    );
+    
+    if (!friendState) {
+      return { success: false, error: 'Request not found' };
+    }
+
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      updateFriendState(friendState.userId, {
+        status: 'none',
+        requestId: undefined
+      });
+
+      const response = await api.post<WithdrawRequestResponse>(`/users/friend-request/${requestId}/withdraw`);
+      const data: WithdrawRequestResponse = response.data;
+
+      return { success: true, data };
+    } catch (error: unknown) {
+      updateFriendState(friendState.userId, {
+        status: 'pending-sent',
+        requestId: requestId
+      });
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to withdraw friend request';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
+  }, [currentUserId, friendStates, updateFriendState]);
+
+  const removeFriend = useCallback(async (friendId: string): Promise<ApiResponse<RemoveFriendResponse>> => {
+    if (!currentUserId) return { success: false, error: 'Not authenticated' };
+
+    setLoading(prev => ({ ...prev, action: true }));
+    try {
+      temporarilyRemove(friendId);
+      setFriendsList(prev => prev.filter(friend => friend._id !== friendId));
+
+      const response = await api.patch<RemoveFriendResponse>(`/users/friends/${friendId}`);
+      const data: RemoveFriendResponse = response.data;
+
+      return { success: true, data };
+    } catch (error: unknown) {
+      const friendToRestore = friendsList.find(friend => friend._id === friendId);
+      if (friendToRestore) {
+        updateFriendState(friendId, {
+          status: 'friends',
+          requestId: undefined
+        });
+        setFriendsList(prev => [...prev, friendToRestore]);
       }
-    };
+      
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to remove friend';
+      return { success: false, error: errorMessage };
+    } finally {
+      setLoading(prev => ({ ...prev, action: false }));
+    }
+  }, [currentUserId, updateFriendState, temporarilyRemove, friendsList]);
 
-    fetchInitialData();
+  const initializeData = useCallback(async (): Promise<void> => {
+    if (!currentUserId) return;
 
-    // Event Handlers
-    const handleFriendRequestReceived = (data: FriendRequestReceivedData) => {
-      console.log('🔔 Friend request received from:', data.sender._id);
+    try {
+      setIsInitialized(false);
+      await Promise.all([
+        loadPendingCount(),
+        loadFriendsList(),
+        loadRecommendedFriends(),
+        loadReceivedRequests(),
+        loadSentRequests()
+      ]);
+    } catch (error: unknown) {
+      console.error('Failed to initialize friend data:', error);
+    } finally {
+      setIsInitialized(true);
+    }
+  }, [currentUserId, loadPendingCount, loadFriendsList, loadRecommendedFriends, loadReceivedRequests, loadSentRequests]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    initializeData();
+
+    const handleFriendRequestReceived = (data: SocketFriendRequestReceivedData) => {
       updateFriendState(data.sender._id, {
         userId: data.sender._id,
         status: 'pending-received',
@@ -73,39 +553,61 @@ export function useFriendRequests(currentUserId: string | null) {
       setPendingCount(prev => prev + 1);
     };
 
-    const handleFriendRequestSent = (data: FriendRequestSentData) => {
-      console.log('🚀 Friend request sent confirmation for:', data.receiverId);
+    const handleFriendRequestSent = (data: SocketFriendRequestSentData) => {
       updateFriendState(data.receiverId, {
         userId: data.receiverId,
         status: 'pending-sent',
         requestId: data.requestId
       });
+      setRecommendedFriends(prev => prev.filter(friend => friend._id !== data.receiverId));
     };
 
-    const handleFriendRequestAccepted = (data: FriendRequestAcceptedData) => {
-      console.log('🤝 Friend request accepted:', data);
-      
+    const handleFriendRequestAccepted = (data: SocketFriendRequestAcceptedData) => {
       if (data.senderId === currentUserId) {
-        // I sent the request
         updateFriendState(data.receiverId, {
           userId: data.receiverId,
           status: 'friends',
           requestId: undefined
         });
+        
+        const newFriend: User = {
+          _id: data.receiver._id,
+          fullName: data.receiver.fullName || '',
+          username: data.receiver.username || '',
+          profilePic: data.receiver.profilePic || ''
+        };
+        
+        setFriendsList(prev => {
+          const exists = prev.some(friend => friend._id === data.receiverId);
+          if (exists) return prev;
+          return [...prev, newFriend];
+        });
       } else if (data.receiverId === currentUserId) {
-        // I accepted the request
         updateFriendState(data.senderId, {
           userId: data.senderId,
           status: 'friends',
           requestId: undefined
         });
         setPendingCount(prev => Math.max(0, prev - 1));
+        
+        const newFriend: User = {
+          _id: data.senderId,
+          fullName: '',
+          username: '',
+          profilePic: ''
+        };
+        
+        setFriendsList(prev => {
+          const exists = prev.some(friend => friend._id === data.senderId);
+          if (exists) return prev;
+          return [...prev, newFriend];
+        });
+        
+        setRecommendedFriends(prev => prev.filter(friend => friend._id !== data.senderId));
       }
     };
 
-    const handleFriendRequestWithdrawn = (data: FriendRequestWithdrawnData) => {
-      console.log('↩️ Friend request withdrawn:', data);
-      
+    const handleFriendRequestWithdrawn = (data: SocketFriendRequestWithdrawnData) => {
       const isSender = data.senderId === currentUserId;
       const targetUserId = isSender ? data.receiverId : data.senderId;
 
@@ -117,24 +619,19 @@ export function useFriendRequests(currentUserId: string | null) {
         });
       }
 
-      // If I received the request, decrease count
       if (!isSender) {
         setPendingCount(prev => Math.max(0, prev - 1));
       }
     };
 
-    const handleFriendRequestRejected = (data: FriendRequestRejectedData) => {
-      console.log('❌ Friend request rejected:', data);
-      
+    const handleFriendRequestRejected = (data: SocketFriendRequestRejectedData) => {
       if (currentUserId === data.senderId) {
-        // My request was rejected
         updateFriendState(data.receiverId, {
           userId: data.receiverId,
           status: 'none',
           requestId: undefined
         });
       } else if (currentUserId === data.receiverId) {
-        // I rejected a request
         updateFriendState(data.senderId, {
           userId: data.senderId,
           status: 'none',
@@ -144,328 +641,78 @@ export function useFriendRequests(currentUserId: string | null) {
       }
     };
 
-    const handleFriendRemoved = (data: FriendRemovedData) => {
-      console.log('💔 Friend removed:', data);
-      
+    const handleFriendRemoved = (data: SocketFriendRemovedData) => {
       if (currentUserId === data.userId) {
-        // I removed someone
-        updateFriendState(data.friendId, {
-          userId: data.friendId,
-          status: 'none',
-          requestId: undefined
-        });
+        temporarilyRemove(data.friendId);
+        setFriendsList(prev => prev.filter(friend => friend._id !== data.friendId));
       } else if (currentUserId === data.friendId) {
-        // Someone removed me
-        updateFriendState(data.userId, {
-          userId: data.userId,
-          status: 'none',
-          requestId: undefined
-        });
+        temporarilyRemove(data.userId);
+        setFriendsList(prev => prev.filter(friend => friend._id !== data.userId));
       }
     };
 
-    const handlePendingCountUpdate = (data: PendingCountData) => {
-      console.log('📊 Pending count updated:', data.count);
+    const handlePendingCountUpdate = (data: SocketPendingCountData) => {
       setPendingCount(data.count);
     };
 
-    // Register socket listeners using socketService methods
-    socketService.onFriendRequestReceived(handleFriendRequestReceived);
-    socketService.onFriendRequestSent(handleFriendRequestSent);
-    socketService.onFriendRequestAccepted(handleFriendRequestAccepted);
-    socketService.onFriendRequestWithdrawn(handleFriendRequestWithdrawn);
-    socketService.onFriendRequestRejected(handleFriendRequestRejected);
-    socketService.onFriendRemoved(handleFriendRemoved);
-    socketService.onPendingRequestsCountUpdated(handlePendingCountUpdate);
+    socketService.on('friend-request-received', handleFriendRequestReceived);
+    socketService.on('friend-request-sent-realtime', handleFriendRequestSent);
+    socketService.on('friend-request-accepted-realtime', handleFriendRequestAccepted);
+    socketService.on('friend-request-withdrawn', handleFriendRequestWithdrawn);
+    socketService.on('friend-request-rejected', handleFriendRequestRejected);
+    socketService.on('friend-removed', handleFriendRemoved);
+    socketService.on('pending-requests-count-updated', handlePendingCountUpdate);
 
-    // Cleanup function
     return () => {
-      console.log('Cleaning up friend request listeners');
-      socketService.removeListener('friend-request-received', handleFriendRequestReceived);
-      socketService.removeListener('friend-request-sent-realtime', handleFriendRequestSent);
-      socketService.removeListener('friend-request-accepted-realtime', handleFriendRequestAccepted);
-      socketService.removeListener('friend-request-withdrawn', handleFriendRequestWithdrawn);
-      socketService.removeListener('friend-request-rejected', handleFriendRequestRejected);
-      socketService.removeListener('friend-removed', handleFriendRemoved);
-      socketService.removeListener('pending-requests-count-updated', handlePendingCountUpdate);
+      socketService.off('friend-request-received', handleFriendRequestReceived);
+      socketService.off('friend-request-sent-realtime', handleFriendRequestSent);
+      socketService.off('friend-request-accepted-realtime', handleFriendRequestAccepted);
+      socketService.off('friend-request-withdrawn', handleFriendRequestWithdrawn);
+      socketService.off('friend-request-rejected', handleFriendRequestRejected);
+      socketService.off('friend-removed', handleFriendRemoved);
+      socketService.off('pending-requests-count-updated', handlePendingCountUpdate);
     };
-  }, [currentUserId, updateFriendState]);
+  }, [currentUserId, updateFriendState, temporarilyRemove, initializeData]);
 
-  // Action Methods
-  const sendFriendRequest = useCallback(async (receiverId: string) => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-    
-    try {
-      // Optimistic update first
-      const tempRequestId = `temp-${Date.now()}`;
-      updateFriendState(receiverId, {
-        userId: receiverId,
-        status: 'pending-sent',
-        requestId: tempRequestId
-      });
-
-      // API call
-      const response = await fetch(`/api/friends/request/send/${receiverId}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        // Revert on error
-        updateFriendState(receiverId, {
-          userId: receiverId,
-          status: 'none',
-          requestId: undefined
-        });
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-
-      // Note: Socket event will confirm with actual requestId
-      const data = await response.json();
-      return { success: true, requestId: data.requestId };
-    } catch (error) {
-      console.error('Error sending friend request:', error);
-      // Revert on network error
-      updateFriendState(receiverId, {
-        userId: receiverId,
-        status: 'none',
-        requestId: undefined
-      });
-      return { success: false, error: 'Failed to send friend request' };
-    }
-  }, [currentUserId, updateFriendState]);
-
-  const acceptFriendRequest = useCallback(async (requestId: string) => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
-    try {
-      // Find which user this request is from
-      const friendState = Array.from(friendStates.values()).find(
-        state => state.requestId === requestId
-      );
-      
-      if (!friendState) {
-        return { success: false, error: 'Request not found' };
-      }
-
-      // Optimistic update
-      updateFriendState(friendState.userId, {
-        status: 'friends',
-        requestId: undefined
-      });
-      setPendingCount(prev => Math.max(0, prev - 1));
-
-      // API call
-      const response = await fetch(`/api/friends/request/accept/${requestId}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        // Revert on error
-        updateFriendState(friendState.userId, {
-          status: 'pending-received',
-          requestId
-        });
-        setPendingCount(prev => prev + 1);
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error accepting friend request:', error);
-      return { success: false, error: 'Failed to accept friend request' };
-    }
-  }, [currentUserId, friendStates, updateFriendState]);
-
-  const rejectFriendRequest = useCallback(async (requestId: string) => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
-    try {
-      const friendState = Array.from(friendStates.values()).find(
-        state => state.requestId === requestId
-      );
-      
-      if (!friendState) {
-        return { success: false, error: 'Request not found' };
-      }
-
-      // Optimistic update
-      updateFriendState(friendState.userId, {
-        status: 'none',
-        requestId: undefined
-      });
-      setPendingCount(prev => Math.max(0, prev - 1));
-
-      // API call
-      const response = await fetch(`/api/friends/request/reject/${requestId}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        // Revert on error
-        updateFriendState(friendState.userId, {
-          status: 'pending-received',
-          requestId
-        });
-        setPendingCount(prev => prev + 1);
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error rejecting friend request:', error);
-      return { success: false, error: 'Failed to reject friend request' };
-    }
-  }, [currentUserId, friendStates, updateFriendState]);
-
-  const withdrawFriendRequest = useCallback(async (requestId: string) => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
-    try {
-      const friendState = Array.from(friendStates.values()).find(
-        state => state.requestId === requestId
-      );
-      
-      if (!friendState) {
-        return { success: false, error: 'Request not found' };
-      }
-
-      // Optimistic update
-      updateFriendState(friendState.userId, {
-        status: 'none',
-        requestId: undefined
-      });
-
-      // API call
-      const response = await fetch(`/api/friends/request/withdraw/${requestId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        // Revert on error
-        updateFriendState(friendState.userId, {
-          status: 'pending-sent',
-          requestId
-        });
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error withdrawing friend request:', error);
-      return { success: false, error: 'Failed to withdraw friend request' };
-    }
-  }, [currentUserId, friendStates, updateFriendState]);
-
-  const removeFriend = useCallback(async (friendId: string) => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
-    try {
-      // Optimistic update
-      updateFriendState(friendId, {
-        status: 'none',
-        requestId: undefined
-      });
-
-      // API call
-      const response = await fetch(`/api/friends/remove/${friendId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        // Revert on error
-        updateFriendState(friendId, {
-          status: 'friends',
-          requestId: undefined
-        });
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error removing friend:', error);
-      return { success: false, error: 'Failed to remove friend' };
-    }
-  }, [currentUserId, updateFriendState]);
-
-  // Helper Methods
   const getFriendState = useCallback((userId: string): FriendRequestState => {
     return friendStates.get(userId) || { userId, status: 'none' };
   }, [friendStates]);
 
-  const setInitialFriendState = useCallback((userId: string, state: FriendRequestState) => {
-    updateFriendState(userId, state);
-  }, [updateFriendState]);
-
-  const fetchFriendStatus = useCallback(async (userId: string) => {
-    if (!currentUserId) return;
-
-    try {
-      const response = await fetch(`/api/friends/status/${userId}`);
-      if (response.ok) {
-        const data = await response.json();
-        updateFriendState(userId, {
-          userId,
-          status: data.status,
-          requestId: data.requestId
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching friend status:', error);
-    }
-  }, [currentUserId, updateFriendState]);
-
-  const loadReceivedRequests = useCallback(async () => {
+  const refreshAll = useCallback(async (): Promise<ApiResponse> => {
     if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
+    
     try {
-      const response = await fetch('/api/friends/requests/received');
-      if (!response.ok) {
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-      const data = await response.json();
-      return { success: true, requests: data.requests };
-    } catch (error) {
-      console.error('Error loading received requests:', error);
-      return { success: false, error: 'Failed to load received requests' };
+      await initializeData();
+      return { success: true };
+    } catch (error: unknown) {
+      const axiosError = error as AxiosError<ApiErrorResponse>;
+      const errorMessage = axiosError.response?.data?.message || axiosError.message || 'Failed to refresh data';
+      return { success: false, error: errorMessage };
     }
-  }, [currentUserId]);
-
-  const loadSentRequests = useCallback(async () => {
-    if (!currentUserId) return { success: false, error: 'Not authenticated' };
-
-    try {
-      const response = await fetch('/api/friends/requests/sent');
-      if (!response.ok) {
-        const error = await response.json();
-        return { success: false, error: error.message };
-      }
-      const data = await response.json();
-      return { success: true, requests: data.requests };
-    } catch (error) {
-      console.error('Error loading sent requests:', error);
-      return { success: false, error: 'Failed to load sent requests' };
-    }
-  }, [currentUserId]);
+  }, [currentUserId, initializeData]);
 
   return {
     friendStates,
     pendingCount,
     isInitialized,
+    friendsList,
+    recommendedFriends,
+    pagination,
+    loading,
+    
     getFriendState,
-    setInitialFriendState,
-    fetchFriendStatus,
+    
     sendFriendRequest,
     acceptFriendRequest,
     rejectFriendRequest,
     withdrawFriendRequest,
     removeFriend,
+    
+    loadFriendsList,
+    loadRecommendedFriends,
     loadReceivedRequests,
-    loadSentRequests
+    loadSentRequests,
+    loadPendingCount,
+    refreshAll
   };
 }

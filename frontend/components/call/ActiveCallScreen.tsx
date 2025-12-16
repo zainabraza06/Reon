@@ -25,7 +25,7 @@ interface ActiveCallScreenProps {
   callState?: CallState;
   onHangup: () => void;
   onToggleMic: () => void;
-  onToggleCamera: () => void;
+ 
   isMicEnabled: boolean;
   isCameraEnabled: boolean;
   onOpenChat?: () => void;
@@ -45,7 +45,7 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   callState = 'idle',
   onHangup,
   onToggleMic,
-  onToggleCamera,
+
   isMicEnabled,
   isCameraEnabled,
   onOpenChat,
@@ -95,35 +95,41 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   };
 
-  // Timer - only start when call is connected
-  useEffect(() => {
-    // Clear any existing timer
+// Timer - only start when call is connected
+useEffect(() => {
+  // Clear any existing timer
+  if (timerIntervalRef.current) {
+    clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = null;
+  }
+
+  // Reset duration when call ends or fails - defer with setTimeout
+  if (callState === 'ended' || callState === 'failed' || callState === 'idle') {
+    setTimeout(() => {
+      setCallDuration(0);
+    }, 0);
+    return;
+  }
+
+  // Only start timer when connected
+  if (callState === 'connected' && isVisible) {
+    // Reset duration and start timer - use setTimeout to defer state updates
+    setTimeout(() => {
+      setCallDuration(0);
+      
+      timerIntervalRef.current = setInterval(() => {
+        setCallDuration((prev) => prev + 1);
+      }, 1000);
+    }, 0);
+  }
+
+  return () => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
-    // Reset duration when call ends or fails
-    if (callState === 'ended' || callState === 'failed' || callState === 'idle') {
-      setCallDuration(0);
-      return;
-    }
-
-    // Only start timer when connected
-    if (callState === 'connected' && isVisible) {
-      setCallDuration(0); // Reset when connection is established
-      timerIntervalRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    }
-
-    return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-    };
-  }, [callState, isVisible]);
+  };
+}, [callState, isVisible]);
 
   // Handle remote stream - use stream ID to avoid infinite loops
   useEffect(() => {
@@ -218,17 +224,6 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
               {isMicEnabled ? <Mic size={16} /> : <MicOff size={16} />}
             </button>
 
-            {callType === "video" && (
-              <button
-                className={`${styles.miniButton} ${
-                  !isCameraEnabled ? styles.miniButtonDisabled : ""
-                }`}
-                onClick={onToggleCamera}
-                title={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
-              >
-                {isCameraEnabled ? <Video size={16} /> : <VideoOff size={16} />}
-              </button>
-            )}
 
             <button
               className={`${styles.miniButton} ${styles.miniEndButton}`}
@@ -335,18 +330,7 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           {isMicEnabled ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
 
-        {/* Toggle Video (only for video calls) */}
-        {isVideoCall && (
-          <button
-            className={`${styles.actionButton} ${
-              !isCameraEnabled ? styles.actionButtonDisabled : ""
-            }`}
-            onClick={onToggleCamera}
-            title={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
-          >
-            {isCameraEnabled ? <Video size={20} /> : <VideoOff size={20} />}
-          </button>
-        )}
+       
 
         {/* Show Chat Button */}
         {onCollapse && (

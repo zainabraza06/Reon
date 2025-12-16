@@ -149,18 +149,7 @@ export default function UserProfile({
                 {isActivePage('my-friends') && <div className={styles.activeIndicator}></div>}
               </button>
 
-              {/* Create Group
-              <button 
-                className={styles.menuItem} 
-                onClick={() => {
-                  setShowUserMenu(false);
-                  router.push('/groups/create');
-                }}
-              >
-                <FiUsers className={styles.menuIcon} />
-                <span>Create Group</span>
-              </button> */}
-
+             
               {/* Friend Requests */}
               <button 
                 className={`${styles.menuItem} ${isActivePage('my-requests') ? styles.activeMenuItem : ''}`} 

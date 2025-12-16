@@ -13,184 +13,42 @@ import {
   FiX,
   FiRefreshCw
 } from 'react-icons/fi';
-import { api } from '@/lib/api';
 import { useNotification } from '@/context/NotificationContext';
 import UserProfile from '@/components/chat/UserProfile';
-import { User } from '@/types';
 import { socketService } from '@/lib/socket';
+import { User } from '@/types';
 import { useFriendRequests } from '@/hooks/useFriendRequest';
 import styles from './RecommendationPage.module.css';
-
-interface RecommendedUser {
-  _id: string;
-  fullName: string;
-  username: string;
-  profilePic: string;
-  location: string;
-  nativeLanguage: string;
-  mutualFriendsCount: number;
-  score: number;
-  lastSeen?: string;
-}
-
-interface RecommendedFriendsResponse {
-  page: number;
-  limit: number;
-  total: number;
-  recommended: RecommendedUser[];
-}
-
-interface ApiError {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  message?: string;
-}
-
-interface FriendRequest {
-  _id: string;
-  sender: string | {
-    _id: string;
-    fullName: string;
-    username: string;
-    profilePic: string;
-  };
-  receiver: string | {
-    _id: string;
-    fullName: string;
-    username: string;
-    profilePic: string;
-  };
-  status: string;
-  createdAt: string;
-}
-
-interface FriendRequestsResponse {
-  requests: FriendRequest[];
-  total: number;
-}
 
 export default function RecommendedFriendsPage() {
   const router = useRouter();
   const { addNotification } = useNotification();
-  const [recommendedUsers, setRecommendedUsers] = useState<RecommendedUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   // Use the friend requests hook
   const {
     pendingCount,
+    recommendedFriends: recommendedUsers,
+    pagination,
+    loading,
     getFriendState,
-    setInitialFriendState,
     sendFriendRequest,
     acceptFriendRequest,
     rejectFriendRequest,
     withdrawFriendRequest,
-    removeFriend
+    removeFriend,
+    loadRecommendedFriends,
+    refreshAll
   } = useFriendRequests(currentUser?._id || null);
 
-  // Check user relationships and sync with hook
-  const checkUserRelationships = async (users: RecommendedUser[]): Promise<RecommendedUser[]> => {
-    try {
-      const [friendsResponse, sentRequestsResponse, receivedRequestsResponse] = await Promise.all([
-        api.get('/users/friends').catch(() => ({ data: { friends: [] } })),
-        api.get<FriendRequestsResponse>('/users/friend-requests/sent').catch(() => ({ data: { requests: [] } })),
-        api.get<FriendRequestsResponse>('/users/friend-requests/received').catch(() => ({ data: { requests: [] } }))
-      ]);
-
-      const friends = friendsResponse.data?.friends || [];
-      const sentRequests = sentRequestsResponse.data?.requests || [];
-      const receivedRequests = receivedRequestsResponse.data?.requests || [];
-
-      // Initialize friend states in the hook
-      users.forEach(user => {
-        let status: 'none' | 'pending-sent' | 'pending-received' | 'friends' = 'none';
-        let requestId: string | undefined;
-
-        if (friends.some((friend: User) => friend._id === user._id)) {
-          status = 'friends';
-        } else {
-          const sentRequest = sentRequests.find((req: FriendRequest) => {
-            const receiverId = typeof req.receiver === 'object' ? req.receiver._id : req.receiver;
-            return receiverId === user._id;
-          });
-          
-          const receivedRequest = receivedRequests.find((req: FriendRequest) => {
-            const senderId = typeof req.sender === 'string' ? req.sender : req.sender?._id;
-            return senderId === user._id;
-          });
-
-          if (sentRequest) {
-            status = 'pending-sent';
-            requestId = sentRequest._id;
-          } else if (receivedRequest) {
-            status = 'pending-received';
-            requestId = receivedRequest._id;
-          }
-        }
-
-        setInitialFriendState(user._id, { userId: user._id, status, requestId });
-      });
-
-      return users;
-    } catch (error) {
-      console.error('Error checking relationships:', error);
-      return users;
-    }
-  };
-
-  // Load recommended friends
-  const loadRecommendedFriends = useCallback(async (pageNum: number = 1, search: string = '') => {
-    try {
-      if (pageNum === 1) {
-        setIsLoading(true);
-      } else {
-        setIsLoadingMore(true);
-      }
-
-      const params = {
-        page: pageNum,
-        limit: 20,
-        ...(search && { search })
-      };
-
-      const response = await api.get<RecommendedFriendsResponse>('/users/recommendation', { params });
-      const data = response.data;
-
-      await checkUserRelationships(data.recommended);
-
-      if (pageNum === 1) {
-        setRecommendedUsers(data.recommended);
-      } else {
-        setRecommendedUsers(prev => [...prev, ...data.recommended]);
-      }
-      setHasMore(data.recommended.length === 20);
-      setPage(pageNum);
-    } catch (error: unknown) {
-      console.error('Error loading recommended friends:', error);
-      const apiError = error as ApiError;
-      addNotification({
-        type: 'error',
-        title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to load recommended users'
-      });
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [addNotification, setInitialFriendState]);
-
-  // Load current user and connect socket
+  // Load current user and initialize socket
   useEffect(() => {
     const loadCurrentUser = async () => {
       try {
@@ -201,28 +59,26 @@ export default function RecommendedFriendsPage() {
           user = JSON.parse(userData);
           setCurrentUser(user);
         } else {
-          const response = await api.get<User>('/users/me');
-          user = response.data;
+          const response = await fetch('/api/users/me');
+          user = await response.json();
           setCurrentUser(user);
           localStorage.setItem('user', JSON.stringify(user));
         }
 
         // Connect socket with current user
         if (user._id && user._id !== 'default') {
-          setTimeout(() => {
-            socketService.connect(user._id);
-          }, 1000);
+          socketService.connect(user._id);
         }
 
       } catch (error) {
         console.error('Error loading current user:', error);
-        const defaultUser = {
+        const defaultUser: User = {
           _id: 'default',
           username: 'user',
           profilePic: '',
           fullName: 'User',
           unreadCount: 0,
-          onboarded: true
+          isOnboarded: true
         };
         setCurrentUser(defaultUser);
       }
@@ -231,44 +87,75 @@ export default function RecommendedFriendsPage() {
     loadCurrentUser();
   }, []);
 
- 
-
-  // Initial load
-  useEffect(() => {
-    loadRecommendedFriends();
-  }, [loadRecommendedFriends]);
-
-  // Search with debounce
+  // Initial load and search with debounce
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setPage(1);
-      loadRecommendedFriends(1, searchQuery);
+      const loadData = async () => {
+        try {
+          await loadRecommendedFriends(searchQuery, 1, 20);
+          setPage(1);
+          setHasMore(pagination.total > pagination.page * pagination.limit);
+        } catch (error) {
+          console.error('Error loading recommended friends:', error);
+          addNotification({
+            type: 'error',
+            title: 'Error',
+            message: 'Failed to load recommendations'
+          });
+        }
+      };
+      
+      loadData();
     }, 500);
+    
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, loadRecommendedFriends]);
+  }, [searchQuery, loadRecommendedFriends, pagination.total, pagination.page, pagination.limit, addNotification]);
 
-  // Action handlers
+  // Load more function
+  const handleLoadMore = useCallback(async () => {
+    if (!loading.recommended && hasMore && currentUser) {
+      try {
+        await loadRecommendedFriends(searchQuery, page + 1, 20);
+        setPage(prev => prev + 1);
+        setHasMore(pagination.total > (page + 1) * pagination.limit);
+      } catch (error) {
+        console.error('Error loading more friends:', error);
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Failed to load more users'
+        });
+      }
+    }
+  }, [loading.recommended, hasMore, currentUser, searchQuery, page, loadRecommendedFriends, pagination.total, pagination.limit, addNotification]);
+
+  // Action handlers using the hook
   const handleSendRequest = async (userId: string) => {
     try {
       setActionInProgress(userId);
-      const response = await api.post(`/users/friend-request/${userId}`);
-      const { requestId } = response.data;
-
-      // Use the hook to update state
-      sendFriendRequest(userId, requestId);
-
-      addNotification({
-        type: 'success',
-        title: 'Request Sent',
-        message: 'Friend request sent successfully'
-      });
-    } catch (error: unknown) {
+      
+      const result = await sendFriendRequest(userId);
+      
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Sent',
+          message: 'Friend request sent successfully'
+        });
+        // Real-time update: Button will change to "Request Sent" via hook
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to send friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error sending friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to send friend request'
+        message: 'Failed to send friend request'
       });
     } finally {
       setActionInProgress(null);
@@ -280,21 +167,37 @@ export default function RecommendedFriendsPage() {
       setActionInProgress(userId);
       const friendState = getFriendState(userId);
       
-      if (!friendState.requestId) throw new Error('Friend request not found');
+      if (!friendState.requestId) {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Friend request not found'
+        });
+        return;
+      }
 
-      await api.post(`/users/friend-request/${friendState.requestId}/withdraw`);
-
-      // Use the hook to update state
-      withdrawFriendRequest(userId, friendState.requestId);
-
+      const result = await withdrawFriendRequest(friendState.requestId);
       
-    } catch (error: unknown) {
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Withdrawn',
+          message: 'Friend request withdrawn successfully'
+        });
+        // Real-time update: Button will change back to "Send Request"
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to withdraw friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error withdrawing friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to withdraw friend request'
+        message: 'Failed to withdraw friend request'
       });
     } finally {
       setActionInProgress(null);
@@ -306,25 +209,37 @@ export default function RecommendedFriendsPage() {
       setActionInProgress(userId);
       const friendState = getFriendState(userId);
       
-      if (!friendState.requestId) throw new Error('Friend request not found');
+      if (!friendState.requestId) {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Friend request not found'
+        });
+        return;
+      }
 
-      await api.post(`/users/friend-request/${friendState.requestId}/accept`);
-
-      // Use the hook to update state
-      acceptFriendRequest(userId, friendState.requestId);
-
-      addNotification({
-        type: 'success',
-        title: 'Request Accepted',
-        message: 'You are now friends!'
-      });
-    } catch (error: unknown) {
+      const result = await acceptFriendRequest(friendState.requestId);
+      
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Accepted',
+          message: 'You are now friends!'
+        });
+        // Real-time update: Button will change to "Friends"
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to accept friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error accepting friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to accept friend request'
+        message: 'Failed to accept friend request'
       });
     } finally {
       setActionInProgress(null);
@@ -336,25 +251,37 @@ export default function RecommendedFriendsPage() {
       setActionInProgress(userId);
       const friendState = getFriendState(userId);
       
-      if (!friendState.requestId) throw new Error('Friend request not found');
+      if (!friendState.requestId) {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: 'Friend request not found'
+        });
+        return;
+      }
 
-      await api.delete(`/users/friend-request/${friendState.requestId}`);
-
-      // Hook expects (senderId, requestId)
-      rejectFriendRequest(userId, friendState.requestId);
-
-      addNotification({
-        type: 'success',
-        title: 'Request Rejected',
-        message: 'Friend request rejected'
-      });
-    } catch (error: unknown) {
+      const result = await rejectFriendRequest(friendState.requestId);
+      
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Request Rejected',
+          message: 'Friend request rejected'
+        });
+        // Real-time update: Button will change to "Send Request"
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to reject friend request'
+        });
+      }
+    } catch (error) {
       console.error('Error rejecting friend request:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to reject friend request'
+        message: 'Failed to reject friend request'
       });
     } finally {
       setActionInProgress(null);
@@ -364,95 +291,109 @@ export default function RecommendedFriendsPage() {
   const handleRemoveFriend = async (userId: string) => {
     try {
       setActionInProgress(userId);
-      await api.patch(`/users/friends/${userId}`);
-
-      // Use the hook to update state
-      removeFriend(userId);
-
-      addNotification({
-        type: 'success',
-        title: 'Friend Removed',
-        message: 'User removed from friends'
-      });
-    } catch (error: unknown) {
+      
+      const result = await removeFriend(userId);
+      
+      if (result.success) {
+        addNotification({
+          type: 'success',
+          title: 'Friend Removed',
+          message: 'User removed from friends'
+        });
+        // Real-time update: Button will change to "Removed" temporarily, then "Send Request"
+      } else {
+        addNotification({
+          type: 'error',
+          title: 'Error',
+          message: result.error || 'Failed to remove friend'
+        });
+      }
+    } catch (error) {
       console.error('Error removing friend:', error);
-      const apiError = error as ApiError;
       addNotification({
         type: 'error',
         title: 'Error',
-        message: apiError.response?.data?.message || 'Failed to remove friend'
+        message: 'Failed to remove friend'
       });
     } finally {
       setActionInProgress(null);
     }
   };
 
-  const getActionButtons = (user: RecommendedUser) => {
+  const getActionButtons = (user: User & { mutualFriendsCount: number; score: number; }) => {
     const isProcessing = actionInProgress === user._id;
     const friendState = getFriendState(user._id);
 
-    if (friendState.status === 'friends') {
-      return (
-        <button
-          className={`${styles.actionButton} ${styles.removeButton}`}
-          onClick={() => handleRemoveFriend(user._id)}
-          disabled={isProcessing}
-        >
-          <FiUserCheck />
-          {isProcessing ? 'Removing...' : 'Friends'}
-        </button>
-      );
-    }
-
-    if (friendState.status === 'pending-received') {
-      return (
-        <div className={styles.dualButtons}>
+    switch (friendState.status) {
+      case 'friends':
+        return (
           <button
-            className={`${styles.actionButton} ${styles.acceptButton}`}
-            onClick={() => handleAcceptRequest(user._id)}
-            disabled={isProcessing}
+            className={`${styles.actionButton} ${styles.removeButton}`}
+            onClick={() => handleRemoveFriend(user._id)}
+            disabled={isProcessing || loading.action}
           >
             <FiUserCheck />
-            {isProcessing ? 'Accepting...' : 'Accept'}
+            {isProcessing || loading.action ? 'Removing...' : 'Friends'}
           </button>
+        );
+
+      case 'pending-received':
+        return (
+          <div className={styles.dualButtons}>
+            <button
+              className={`${styles.actionButton} ${styles.acceptButton}`}
+              onClick={() => handleAcceptRequest(user._id)}
+              disabled={isProcessing || loading.action}
+            >
+              <FiUserCheck />
+              {isProcessing || loading.action ? 'Accepting...' : 'Accept'}
+            </button>
+            <button
+              className={`${styles.actionButton} ${styles.rejectButton}`}
+              onClick={() => handleRejectRequest(user._id)}
+              disabled={isProcessing || loading.action}
+            >
+              <FiUserX />
+              {isProcessing || loading.action ? 'Rejecting...' : 'Reject'}
+            </button>
+          </div>
+        );
+
+      case 'pending-sent':
+        return (
           <button
-            className={`${styles.actionButton} ${styles.rejectButton}`}
-            onClick={() => handleRejectRequest(user._id)}
-            disabled={isProcessing}
+            className={`${styles.actionButton} ${styles.withdrawButton}`}
+            onClick={() => handleWithdrawRequest(user._id)}
+            disabled={isProcessing || loading.action}
           >
-            <FiUserX />
-            {isProcessing ? 'Rejecting...' : 'Reject'}
+            <FiUserPlus />
+            {isProcessing || loading.action ? 'Withdrawing...' : 'Request Sent'}
           </button>
-        </div>
-      );
-    }
+        );
 
-    if (friendState.status === 'pending-sent') {
-      return (
-        <button
-          className={`${styles.actionButton} ${styles.withdrawButton}`}
-          onClick={() => handleWithdrawRequest(user._id)}
-          disabled={isProcessing}
-        >
-          <FiUserPlus />
-          {isProcessing ? 'Withdrawing...' : 'Request Sent'}
-        </button>
-      );
-    }
+      case 'removed':
+        return (
+          <button
+            className={`${styles.actionButton} ${styles.removedButton}`}
+            disabled
+          >
+            Removed
+          </button>
+        );
 
-    return (
-      <button
-        className={`${styles.actionButton} ${styles.addButton}`}
-        onClick={() => handleSendRequest(user._id)}
-        disabled={isProcessing}
-      >
-        <FiUserPlus />
-        {isProcessing ? 'Sending...' : 'Send Request'}
-      </button>
-    );
+      default: // 'none' status
+        return (
+          <button
+            className={`${styles.actionButton} ${styles.addButton}`}
+            onClick={() => handleSendRequest(user._id)}
+            disabled={isProcessing || loading.action}
+          >
+            <FiUserPlus />
+            {isProcessing || loading.action ? 'Sending...' : 'Send Request'}
+          </button>
+        );
+    }
   };
-
-
 
   // Close menu on outside click
   useEffect(() => {
@@ -465,14 +406,6 @@ export default function RecommendedFriendsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  
-
-  const loadMore = () => {
-    if (!isLoadingMore && hasMore) {
-      loadRecommendedFriends(page + 1, searchQuery);
-    }
-  };
-
   const getScoreColor = (score: number) => {
     if (score >= 10) return styles.highScore;
     if (score >= 5) return styles.mediumScore;
@@ -483,7 +416,9 @@ export default function RecommendedFriendsPage() {
     setSearchQuery('');
   };
 
- 
+  
+  // Calculate if we should show loading state
+  const isLoadingInitial = loading.recommended && recommendedUsers.length === 0;
 
   return (
     <div className={styles.fullPage}>
@@ -513,6 +448,8 @@ export default function RecommendedFriendsPage() {
                 Discover people you might know and connect with them
               </p>
             </div>
+            
+            
           </div>
 
           {/* Integrated UserProfile */}
@@ -534,8 +471,6 @@ export default function RecommendedFriendsPage() {
             />
           </div>
         </div>
-
-       
 
         {/* Centered Search Section */}
         <div className={styles.centeredSearchSection}>
@@ -566,7 +501,7 @@ export default function RecommendedFriendsPage() {
 
         {/* Results */}
         <div className={styles.resultsSection}>
-          {isLoading && page === 1 ? (
+          {isLoadingInitial ? (
             <div className={styles.loadingState}>
               <div className={styles.loadingSpinner}></div>
               <p>Finding recommended users...</p>
@@ -585,70 +520,79 @@ export default function RecommendedFriendsPage() {
           ) : (
             <>
               <div className={styles.resultsGrid}>
-                {recommendedUsers.map((user) => (
-                  <div key={user._id} className={styles.userCard}>
-                    <div className={styles.cardHeader}>
-                      <div className={styles.userAvatar}>
-                        {user.profilePic ? (
-                          <img src={user.profilePic} alt={user.fullName} />
-                        ) : (
-                          <div className={styles.defaultAvatar}>
-                            {user.fullName.charAt(0).toUpperCase()}
+                {recommendedUsers.map((user) => {
+                  // Type assertion to include recommendation properties
+                  const recommendedUser = user as User & { 
+                    mutualFriendsCount: number; 
+                    score: number;
+                    friendRequestSent?: boolean;
+                    friendRequestReceived?: boolean;
+                    isFriend?: boolean;
+                  };
+                  
+                  const friendState = getFriendState(user._id);
+                  
+                  return (
+                    <div key={user._id} className={styles.userCard}>
+                      <div className={styles.cardHeader}>
+                        <div className={styles.userAvatar}>
+                          {user.profilePic ? (
+                            <img src={user.profilePic} alt={user.fullName} />
+                          ) : (
+                            <div className={styles.defaultAvatar}>
+                              {user.fullName?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase() || 'U'}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className={styles.userInfo}>
+                          <h3 className={styles.userName}>{user.fullName || 'Anonymous User'}</h3>
+                          <p className={styles.username}>@{user.username || 'user'}</p>
+                         
+                          
+                          <div className={styles.matchScore}>
+                            {'score' in recommendedUser && (
+                              <span className={`${styles.scoreBadge} ${getScoreColor(recommendedUser.score)}`}>
+                                Match: {recommendedUser.score} pts
+                              </span>
+                            )}
+                            {'mutualFriendsCount' in recommendedUser && recommendedUser.mutualFriendsCount > 0 && (
+                              <span className={styles.mutualBadge}>
+                                {recommendedUser.mutualFriendsCount} mutual friends
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={styles.userDetails}>
+                        {user.location && (
+                          <div className={styles.detailItem}>
+                            <FiMapPin className={styles.detailIcon} />
+                            <span>{user.location}</span>
                           </div>
                         )}
-                    
+                        
+                        {user.nativeLanguage && (
+                          <div className={styles.detailItem}>
+                            <FiGlobe className={styles.detailIcon} />
+                            <span>{user.nativeLanguage}</span>
+                          </div>
+                        )}
                       </div>
-                      
-                      <div className={styles.userInfo}>
-                        <h3 className={styles.userName}>{user.fullName}</h3>
-                        <p className={styles.username}>@{user.username}</p>
-                        
-                        <div className={styles.userStatus}>
-                         
-                        </div>
-                        
-                        <div className={styles.matchScore}>
-                          <span className={`${styles.scoreBadge} ${getScoreColor(user.score)}`}>
-                            Match: {user.score} pts
-                          </span>
-                        </div>
+
+                      <div className={styles.cardActions}>
+                        {getActionButtons(recommendedUser)}
                       </div>
                     </div>
-
-                    <div className={styles.userDetails}>
-                      {user.location && (
-                        <div className={styles.detailItem}>
-                          <FiMapPin className={styles.detailIcon} />
-                          <span>{user.location}</span>
-                        </div>
-                      )}
-                      
-                      {user.nativeLanguage && (
-                        <div className={styles.detailItem}>
-                          <FiGlobe className={styles.detailIcon} />
-                          <span>{user.nativeLanguage}</span>
-                        </div>
-                      )}
-                      
-                      {user.mutualFriendsCount > 0 && (
-                        <div className={styles.detailItem}>
-                          <FiUsers className={styles.detailIcon} />
-                          <span>{user.mutualFriendsCount} mutual friends</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={styles.cardActions}>
-                      {getActionButtons(user)}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Load More */}
               {hasMore && (
                 <div className={styles.loadMoreSection}>
-                  {isLoadingMore ? (
+                  {loading.recommended ? (
                     <div className={styles.loadingMore}>
                       <div className={styles.loadingSpinner}></div>
                       <span>Loading more users...</span>
@@ -656,7 +600,8 @@ export default function RecommendedFriendsPage() {
                   ) : (
                     <button
                       className={styles.loadMoreButton}
-                      onClick={loadMore}
+                      onClick={handleLoadMore}
+                      disabled={loading.recommended}
                     >
                       Load More
                     </button>
