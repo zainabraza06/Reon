@@ -95,7 +95,7 @@ export const serveMediaFile = async (req, res) => {
     const file = files[0];
     
     // Set CORS headers for media display
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.setHeader('Access-Control-Allow-Origin', 'https://reon-tau.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, X-Encryption-IV, X-File-Name');
     
@@ -204,7 +204,7 @@ export const downloadEncryptedFile = async (req, res) => {
     const file = files[0];
     
     // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.setHeader('Access-Control-Allow-Origin', 'https://reon-tau.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Encrypted, X-Encryption-IV, X-File-Name');
     
