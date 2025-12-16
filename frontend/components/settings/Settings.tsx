@@ -532,30 +532,21 @@ export default function ProfileSettingsPage() {
 
           {/* Integrated UserProfile */}
           <div className={styles.userProfileSection}>
-            <UserProfile
-              currentUser={currentUser || { 
-                _id: 'default',
-                username: 'user',
-                profilePic: '',
-                fullName: 'User',
-                unreadCount: 0,
-                isOnboarded: true
-              }}
-              showUserMenu={showUserMenu}
-              setShowUserMenu={setShowUserMenu}
-              userMenuRef={userMenuRef}
-              unreadNotifications={unreadNotifications}
-              pendingFriendRequests={pendingFriendRequests}
-              currentPage="settings"
-              onLogout={handleUserProfileLogout}
-              onCreateGroup={handleUserProfileCreateGroup}
-              onSettings={handleUserProfileSettings}
-              onNotificationsClick={handleUserProfileNotifications}
-              onFriendRequestsClick={handleUserProfileFriendRequests}
-              onRecommendationsClick={handleUserProfileRecommendations}
-              onMessagesClick={handleUserProfileMessages}
-              onHomeClick={handleUserProfileHome}
-            />
+           <UserProfile
+                         currentUser={currentUser || { 
+                           _id: 'default',
+                           username: 'user',
+                           profilePic: '',
+                           fullName: 'User',
+                           unreadCount: 0,
+                           isOnboarded: true
+                         }}
+                         showUserMenu={showUserMenu}
+                         setShowUserMenu={setShowUserMenu}
+                         userMenuRef={userMenuRef}
+                         pendingFriendRequests={pendingFriendRequests}
+                         currentPage="settings"
+                       />
           </div>
         </div>
 
