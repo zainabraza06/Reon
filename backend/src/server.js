@@ -1,3 +1,4 @@
+
 import express from "express";
 import dotenv from "dotenv";
 import http from "http";
@@ -26,6 +27,7 @@ import "./utils/passport.js";
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 
 const corsOptions = {
   origin: [process.env.FRONTEND_URL],
