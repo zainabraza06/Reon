@@ -1926,44 +1926,59 @@ const handleMessageSent = useCallback(async (message: Message) => {
 
 
   const handleUserStatusChanged = useCallback((data: UserStatusChangedData) => {
-    if (!isMountedRef.current) {
-      return;
+  if (!isMountedRef.current) {
+    return;
+  }
+
+  // Update online friends set
+  setOnlineFriends(prev => {
+    const newSet = new Set(prev);
+    if (data.isOnline) {
+      newSet.add(data.userId);
+    } else {
+      newSet.delete(data.userId);
     }
+    return newSet;
+  });
 
-    // Update online friends set
-    setOnlineFriends(prev => {
-      const newSet = new Set(prev);
-      if (data.isOnline) {
-        newSet.add(data.userId);
-      } else {
-        newSet.delete(data.userId);
-      }
-      return newSet;
-    });
-
-    // Update users in sidebar
-    setUsers(prev => prev.map(item => {
-      if (item._id === data.userId) {
-        return { 
-          ...item, 
-          isOnline: data.isOnline
-        };
-      }
-      return item;
-    }));
-
-      setSearchResults(prev => prev.map(item => {
+  // Update users in sidebar
+  setUsers(prev => prev.map(item => {
     if (item._id === data.userId) {
-     
       return { 
         ...item, 
-        isOnline: data.isOnline
+        isOnline: data.isOnline,
+        
       };
     }
     return item;
   }));
-  }, []);
 
+  // Update search results
+  setSearchResults(prev => prev.map(item => {
+    if (item._id === data.userId) {
+      return { 
+        ...item, 
+        isOnline: data.isOnline,
+   
+      };
+    }
+    return item;
+  }));
+
+  // 🔥 CRITICAL: Also update selectedUser if it's the same user
+  setSelectedUser(prev => {
+    if (prev && prev._id === data.userId) {
+      console.log('🔄 Updating selectedUser status:', data.userId, data.isOnline);
+      return {
+        ...prev,
+        isOnline: data.isOnline,
+
+      };
+    }
+    return prev;
+  });
+
+}, []);
   
 
   const handleAuthenticated = useCallback((data: AuthenticatedData) => {
