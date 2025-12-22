@@ -829,8 +829,8 @@ const sendTextMessage = async ({
       ciphertext: encryptedText,
       type: "ratcheted" as const,
       contentType: "text", // Always "text" for text-only messages
-      encryptedKey: encryptedTextAESKeyForSender,//sending the AES key encrypted with sender public key for  reciever as a result the reciever will not be able to genearte original AES key as it need to be encrypted with reciever's public key so message will not be encrypted.
-      senderEncryptedKey: encryptedTextAESKeyForSender,
+      encryptedKey: encryptedTextAESKeyForRecipient,// encrypted AES key with receiver's public key
+      senderEncryptedKey: encryptedTextAESKeyForSender,// encrypted AES key with sender's public key for decrypting messages on loading chats between two users
     };
 
     formData.append("data", JSON.stringify(messagePayload));
