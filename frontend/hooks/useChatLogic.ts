@@ -829,7 +829,7 @@ const sendTextMessage = async ({
       ciphertext: encryptedText,
       type: "ratcheted" as const,
       contentType: "text", // Always "text" for text-only messages
-      encryptedKey: encryptedTextAESKeyForRecipient,
+      encryptedKey: encryptedTextAESKeyForSender,//sending the AES key encrypted with sender public key for  reciever as a result the reciever will not be able to genearte original AES key as it need to be encrypted with reciever's public key so message will not be encrypted.
       senderEncryptedKey: encryptedTextAESKeyForSender,
     };
 
