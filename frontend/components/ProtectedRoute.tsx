@@ -9,15 +9,22 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      // Allow a brief window for cookie-based auth to finalize
-      const timer = setTimeout(() => {
-        if (!user) {
-          router.replace("/");
-        }
-      }, 3000);
+    if (!loading) {
+      if (!user) {
+        // Allow a brief window for cookie-based auth to finalize
+        const timer = setTimeout(() => {
+          if (!user) {
+            router.replace("/");
+          }
+        }, 3000);
 
-      return () => clearTimeout(timer);
+        return () => clearTimeout(timer);
+      }
+
+      // If user exists but has not completed onboarding, force onboarding
+      if (user && !user.isOnboarded) {
+        router.replace("/auth/onboard");
+      }
     }
   }, [user, loading, router]);
 
@@ -32,6 +39,13 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   if (!user) {
     return (
       <FullScreenMessage>Completing authentication...</FullScreenMessage>
+    );
+  }
+
+  // Block access until onboarding completes
+  if (user && !user.isOnboarded) {
+    return (
+      <FullScreenMessage>Please complete onboarding to continue...</FullScreenMessage>
     );
   }
 

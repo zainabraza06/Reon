@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // local not present — check if server already has a public key for this user
       try {
-        await api.get(`/keys/${userId}`);
+        await api.get(`/keys/publicKey/${userId}`);
         // server has a public key but local private key missing -> block login on this device
         addNotification({
           type: 'error',
@@ -48,6 +48,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Clear any partial auth state
         localStorage.removeItem('user');
         setUser(null);
+        // Redirect back to login to prevent access
+        router.replace('/auth/login');
         return false;
       } catch (err: unknown) {
         // If server returns 404, there is no public key yet — allow this device to generate keys
