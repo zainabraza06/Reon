@@ -25,6 +25,7 @@ export default function FriendRequestsPage() {
   
   const [activeTab, setActiveTab] = useState<TabType>('received');
   const [searchQuery, setSearchQuery] = useState('');
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -148,6 +149,7 @@ export default function FriendRequestsPage() {
     }
 
     try {
+      setActionInProgress(userId);
       const result = await acceptFriendRequest(requestId);
       
       if (result.success) {
@@ -177,6 +179,9 @@ export default function FriendRequestsPage() {
         message: 'Failed to accept friend request'
       });
     }
+    finally {
+      setActionInProgress(null);
+    }
   };
 
   // Handle reject request
@@ -191,6 +196,7 @@ export default function FriendRequestsPage() {
     }
 
     try {
+      setActionInProgress(userId);
       const result = await rejectFriendRequest(requestId);
       
       if (result.success) {
@@ -219,6 +225,9 @@ export default function FriendRequestsPage() {
         message: 'Failed to reject friend request'
       });
     }
+    finally {
+      setActionInProgress(null);
+    }
   };
 
   // Handle withdraw request
@@ -233,6 +242,7 @@ export default function FriendRequestsPage() {
     }
 
     try {
+      setActionInProgress(userId);
       const result = await withdrawFriendRequest(requestId);
       
       if (result.success) {
@@ -260,6 +270,9 @@ export default function FriendRequestsPage() {
         title: 'Error',
         message: 'Failed to withdraw friend request'
       });
+    }
+    finally {
+      setActionInProgress(null);
     }
   };
 
@@ -317,27 +330,27 @@ export default function FriendRequestsPage() {
 
   // Get action buttons based on state - only for pending requests
   const getActionButtons = (state: { userId: string; status: string; requestId?: string }) => {
-    const isProcessing = loading.action;
+    const isProcessing = actionInProgress === state.userId;
     
     if (state.status === 'pending-received') {
       return (
         <div className={styles.dualButtons}>
-          <button
-            className={`${styles.actionButton} ${styles.acceptButton}`}
-            onClick={() => handleAcceptRequest(state.userId, state.requestId)}
-            disabled={isProcessing}
-          >
-            <FiUserCheck />
-            {isProcessing ? 'Accepting...' : 'Accept'}
-          </button>
-          <button
-            className={`${styles.actionButton} ${styles.rejectButton}`}
-            onClick={() => handleRejectRequest(state.userId, state.requestId)}
-            disabled={isProcessing}
-          >
-            <FiUserX />
-            {isProcessing ? 'Rejecting...' : 'Reject'}
-          </button>
+            <button
+              className={`${styles.actionButton} ${styles.acceptButton}`}
+              onClick={() => handleAcceptRequest(state.userId, state.requestId)}
+              disabled={isProcessing}
+            >
+              <FiUserCheck />
+              {isProcessing ? 'Accepting...' : 'Accept'}
+            </button>
+            <button
+              className={`${styles.actionButton} ${styles.rejectButton}`}
+              onClick={() => handleRejectRequest(state.userId, state.requestId)}
+              disabled={isProcessing}
+            >
+              <FiUserX />
+              {isProcessing ? 'Rejecting...' : 'Reject'}
+            </button>
         </div>
       );
     } else if (state.status === 'pending-sent') {
@@ -345,7 +358,7 @@ export default function FriendRequestsPage() {
         <button
           className={`${styles.actionButton} ${styles.withdrawButton}`}
           onClick={() => handleWithdrawRequest(state.userId, state.requestId)}
-          disabled={isProcessing}
+            disabled={isProcessing}
         >
           <FiUserX />
           {isProcessing ? 'Withdrawing...' : 'Withdraw Request'}

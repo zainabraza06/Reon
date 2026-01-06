@@ -17,6 +17,7 @@ interface ChatWindowProps {
   isTyping: boolean;
   onClose: () => void;
   isLoading?: boolean;
+  onLoadMore?: () => Promise<void>;
 
   onVoiceCall?: (userId: string) => void;
   onVideoCall?: (userId: string) => void;
@@ -31,6 +32,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   isTyping,
   onClose,
   isLoading = false,
+    onLoadMore,
     onVoiceCall,
   onVideoCall,
 }) => {
@@ -40,6 +42,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showSkeleton, setShowSkeleton] = useState(true);
   const prevMessagesLengthRef = useRef<number>(0);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,6 +112,48 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       scrollTimeoutRef.current = null;
     }, 150);
   }, []);
+
+  // Trigger load more when user scrolls near top
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onLoadMore) return;
+
+    let ticking = false;
+
+    const onScroll = async () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(async () => {
+        try {
+          if (container.scrollTop < 120 && !loadingOlderRef.current) {
+            if (!onLoadMore) return;
+            loadingOlderRef.current = true;
+            setLoadingOlder(true);
+            const prevScrollHeight = container.scrollHeight;
+            const prevScrollTop = container.scrollTop;
+            try {
+              await onLoadMore();
+              // Wait for DOM to update then restore position
+              requestAnimationFrame(() => {
+                const newScrollHeight = container.scrollHeight;
+                container.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
+              });
+            } catch (err) {
+              console.error('onLoadMore error', err);
+            } finally {
+              loadingOlderRef.current = false;
+              setLoadingOlder(false);
+            }
+          }
+        } finally {
+          ticking = false;
+        }
+      });
+    };
+
+    container.addEventListener('scroll', onScroll);
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [onLoadMore]);
 
   useEffect(() => {
     const container = containerRef.current;

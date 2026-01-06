@@ -269,6 +269,9 @@ export function useFriendRequests(currentUserId: string | null) {
           status: 'pending-received',
           requestId: request._id
         });
+
+        // Keep the recommended list entry visible and mark as received
+        setRecommendedFriends(prev => prev.map(f => f._id === request.sender._id ? ({ ...f, friendRequestReceived: true }) : f));
       });
       
       return { success: true, data };
@@ -296,6 +299,9 @@ export function useFriendRequests(currentUserId: string | null) {
           status: 'pending-sent',
           requestId: request._id
         });
+
+        // Keep the recommended list entry visible and mark as sent
+        setRecommendedFriends(prev => prev.map(f => f._id === request.receiver._id ? ({ ...f, friendRequestSent: true }) : f));
       });
       
       return { success: true, data };
@@ -340,6 +346,9 @@ export function useFriendRequests(currentUserId: string | null) {
         requestId: tempRequestId
       });
 
+      // Update recommended entry to reflect pending-sent (do not remove it)
+      setRecommendedFriends(prev => prev.map(f => f._id === receiverId ? ({ ...f, friendRequestSent: true }) : f));
+
       const response = await api.post<SendRequestResponse>(`/users/friend-request/${receiverId}`);
       const data: SendRequestResponse = response.data;
       
@@ -349,7 +358,8 @@ export function useFriendRequests(currentUserId: string | null) {
         requestId: data.requestId
       });
 
-      setRecommendedFriends(prev => prev.filter(friend => friend._id !== receiverId));
+      // Persist the sent flag on the recommended list (keeps user visible like Instagram)
+      setRecommendedFriends(prev => prev.map(f => f._id === receiverId ? ({ ...f, friendRequestSent: true }) : f));
 
       return { success: true, data };
     } catch (error: unknown) {
@@ -402,7 +412,8 @@ export function useFriendRequests(currentUserId: string | null) {
         return [...prev, newFriend];
       });
 
-      setRecommendedFriends(prev => prev.filter(friend => friend._id !== friendState.userId));
+      // Keep the user visible but mark as friend so UI shows message/remove
+      setRecommendedFriends(prev => prev.map(friend => friend._id === friendState.userId ? ({ ...friend, isFriend: true, friendRequestSent: false, friendRequestReceived: false }) : friend));
 
       return { success: true, data };
     } catch (error: unknown) {
@@ -436,6 +447,8 @@ export function useFriendRequests(currentUserId: string | null) {
         status: 'none',
         requestId: undefined
       });
+      // Ensure recommended list shows request as cleared but keep user visible
+      setRecommendedFriends(prev => prev.map(f => f._id === friendState.userId ? ({ ...f, friendRequestReceived: false }) : f));
       setPendingCount(prev => Math.max(0, prev - 1));
 
       const response = await api.delete<RejectRequestResponse>(`/users/friend-request/${requestId}`);
@@ -469,10 +482,13 @@ export function useFriendRequests(currentUserId: string | null) {
 
     setLoading(prev => ({ ...prev, action: true }));
     try {
+
       updateFriendState(friendState.userId, {
         status: 'none',
         requestId: undefined
       });
+      // Keep user visible and clear sent flag
+      setRecommendedFriends(prev => prev.map(f => f._id === friendState.userId ? ({ ...f, friendRequestSent: false }) : f));
 
       const response = await api.post<WithdrawRequestResponse>(`/users/friend-request/${requestId}/withdraw`);
       const data: WithdrawRequestResponse = response.data;
@@ -552,6 +568,8 @@ export function useFriendRequests(currentUserId: string | null) {
         requestId: data.requestId
       });
       setPendingCount(prev => prev + 1);
+      // Mark recommended entry as having a received request (keep visible)
+      setRecommendedFriends(prev => prev.map(f => f._id === data.sender._id ? ({ ...f, friendRequestReceived: true }) : f));
     };
 
     const handleFriendRequestSent = (data: SocketFriendRequestSentData) => {
@@ -560,7 +578,8 @@ export function useFriendRequests(currentUserId: string | null) {
         status: 'pending-sent',
         requestId: data.requestId
       });
-      setRecommendedFriends(prev => prev.filter(friend => friend._id !== data.receiverId));
+      // Mark recommended entry as sent (do not remove it)
+      setRecommendedFriends(prev => prev.map(f => f._id === data.receiverId ? ({ ...f, friendRequestSent: true }) : f));
     };
 
     const handleFriendRequestAccepted = (data: SocketFriendRequestAcceptedData) => {
@@ -584,6 +603,9 @@ export function useFriendRequests(currentUserId: string | null) {
           if (exists) return prev;
           return [...prev, newFriend];
         });
+
+        // Mark recommended entry as a friend instead of removing
+        setRecommendedFriends(prev => prev.map(f => f._id === data.receiverId ? ({ ...f, isFriend: true, friendRequestSent: false, friendRequestReceived: false }) : f));
       } else if (data.receiverId === currentUserId) {
         updateFriendState(data.senderId, {
           userId: data.senderId,
@@ -605,8 +627,9 @@ export function useFriendRequests(currentUserId: string | null) {
           if (exists) return prev;
           return [...prev, newFriend];
         });
-        
-        setRecommendedFriends(prev => prev.filter(friend => friend._id !== data.senderId));
+
+        // Mark recommended entry as a friend and clear any request flags
+        setRecommendedFriends(prev => prev.map(f => f._id === data.senderId ? ({ ...f, isFriend: true, friendRequestSent: false, friendRequestReceived: false }) : f));
       }
     };
 
@@ -625,6 +648,10 @@ export function useFriendRequests(currentUserId: string | null) {
       if (!isSender) {
         setPendingCount(prev => Math.max(0, prev - 1));
       }
+      // Clear sent/received flags on recommended list but keep user visible
+      if (targetUserId) {
+        setRecommendedFriends(prev => prev.map(f => f._id === targetUserId ? ({ ...f, friendRequestSent: false, friendRequestReceived: false }) : f));
+      }
     };
 
     const handleFriendRequestRejected = (data: SocketFriendRequestRejectedData) => {
@@ -642,6 +669,12 @@ export function useFriendRequests(currentUserId: string | null) {
         });
         setPendingCount(prev => Math.max(0, prev - 1));
       }
+      // Ensure recommended list entries reflect cleared request state
+      setRecommendedFriends(prev => prev.map(f => {
+        if (f._id === data.receiverId) return { ...f, friendRequestSent: false };
+        if (f._id === data.senderId) return { ...f, friendRequestReceived: false };
+        return f;
+      }));
     };
 
     const handleFriendRemoved = (data: SocketFriendRemovedData) => {
@@ -652,6 +685,12 @@ export function useFriendRequests(currentUserId: string | null) {
         temporarilyRemove(data.userId);
         setFriendsList(prev => prev.filter(friend => friend._id !== data.userId));
       }
+      // Mark recommended entry as not-friend (but keep visible)
+      setRecommendedFriends(prev => prev.map(f => {
+        if (f._id === data.friendId) return { ...f, isFriend: false };
+        if (f._id === data.userId) return { ...f, isFriend: false };
+        return f;
+      }));
     };
 
     const handlePendingCountUpdate = (data: SocketPendingCountData) => {

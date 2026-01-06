@@ -1162,19 +1162,21 @@ const sendMediaMessage = async ({
 
 
 
-const loadMessages = useCallback(async () => {
-  console.log("Loading messages for selectedUser:", selectedUser);
+const loadMessages = useCallback(async (opts?: { limit?: number }) => {
+  console.log("Loading latest messages for selectedUser:", selectedUser);
   
   if (!userId || !selectedUser) {
     console.log("❌ Cannot load: missing userId or selectedUser");
     return;
   }
 
+  const limit = opts?.limit ?? 50;
+
   try {
     setIsLoading(true);
     
-    // Get messages from backend
-    const response = await api.get(`/messages/${selectedUser._id}`);
+    // Get latest messages from backend (server returns ascending order)
+    const response = await api.get(`/messages/${selectedUser._id}`, { params: { limit } });
     
     if (isMountedRef.current && response?.data?.success && response.data.data) {
       // Convert BackendMessage[] to Message[]
@@ -1199,7 +1201,7 @@ const loadMessages = useCallback(async () => {
       
       console.log(`📥 Loaded ${uiMessages.length} messages from backend`);
       
-      // Set messages first
+      // Set messages (uiMessages are ascending oldest->newest)
       setMessages(uiMessages);
       
       // ✅ USE decryptMessageContent INSTEAD OF decryptMessage
@@ -1250,6 +1252,53 @@ const loadMessages = useCallback(async () => {
     }
   }
 }, [userId, selectedUser?._id, decryptMessageContent]); // ✅ Changed dependency
+
+// Load older messages before the earliest loaded message
+const loadOlderMessages = useCallback(async (opts?: { limit?: number }) => {
+  if (!userId || !selectedUser) return;
+  if (messages.length === 0) return;
+
+  const limit = opts?.limit ?? 50;
+  const earliest = messages[0].sentAt;
+  if (!earliest) return;
+
+  try {
+    // fetch older messages before earliest
+    const response = await api.get(`/messages/${selectedUser._id}`, { params: { limit, before: earliest } });
+    if (isMountedRef.current && response?.data?.success && response.data.data) {
+      const backendMessages: BackendMessage[] = response.data.data;
+      const uiMessages: Message[] = backendMessages.map(backendMsg => ({
+        ...backendMsg,
+        text: '',
+        media: backendMsg.media?.map(backendMedia => ({
+          url: backendMedia.url,
+          type: backendMedia.type,
+          fileName: backendMedia.fileName,
+          fileSize: backendMedia.fileSize,
+          encryptedKey: backendMedia.encryptedKey,
+          senderEncryptedKey: backendMedia.senderEncryptedKey,
+          encryptionIV: backendMedia.encryptionIV,
+          isEncrypted: true,
+          downloadUrl: backendMedia.downloadUrl,
+          originalName: backendMedia.originalName,
+          fileId: backendMedia.fileId,
+        } as MediaForUI)) || []
+      }));
+
+      if (uiMessages.length === 0) return;
+
+      // Prepend older messages
+      setMessages(prev => [...uiMessages, ...prev]);
+
+      // Decrypt the newly added older messages in background
+      for (const msg of uiMessages) {
+        decryptMessageContent(msg).catch(err => console.warn('decrypt older failed', err));
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load older messages', error);
+  }
+}, [userId, selectedUser?._id, messages, decryptMessageContent]);
 
 
 
@@ -2609,6 +2658,7 @@ const clearSearchResults = useCallback(() => {
     handleMessageRead,
     handleMessageSent,
     loadMessages,
+    loadOlderMessages,
     refreshChatList,
     refreshMessages,
     searchUsers,

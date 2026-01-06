@@ -51,6 +51,7 @@ const ChatPage: React.FC = () => {
     markMessagesAsRead,
     triggerTyping,
     stopTyping,
+    loadOlderMessages,
   } = useChatLogic({
     userId: currentUser?._id || "",
     onError: (err) => console.error(err),
@@ -521,6 +522,7 @@ const handleVideoCall = useCallback(async (userId: string) => {
                     isLoading={false}
                     onVoiceCall={handleVoiceCall}
                     onVideoCall={handleVideoCall}
+                    onLoadMore={() => loadOlderMessages?.()}
                   />
                   <div className={styles.inputAreaContainer}>
                     <InputArea

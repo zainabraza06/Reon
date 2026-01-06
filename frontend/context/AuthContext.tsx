@@ -10,6 +10,8 @@ import {
   ensureRSAKeys,
   getKeyPair
 } from "@/lib/crypto";
+import { useNotification } from '@/context/NotificationContext';
+import { isAxiosError } from 'axios';
 
 import { User, AuthContextType } from "@/types";
 
@@ -20,6 +22,47 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { addNotification } = useNotification();
+
+  // Helper: validate local keypair vs server
+  const validateKeyOwnership = async (userId: string) => {
+    try {
+      const local = await getKeyPair(userId);
+      if (local) {
+        // local pair exists — import/ensure keys for usage
+        await ensureRSAKeys(userId);
+        return true;
+      }
+
+      // local not present — check if server already has a public key for this user
+      try {
+        await api.get(`/keys/${userId}`);
+        // server has a public key but local private key missing -> block login on this device
+        addNotification({
+          type: 'error',
+          title: 'Device not registered',
+          message: 'This account was registered on a different device. Please login from the original device.',
+          duration: 8000
+        });
+
+        // Clear any partial auth state
+        localStorage.removeItem('user');
+        setUser(null);
+        return false;
+      } catch (err: unknown) {
+        // If server returns 404, there is no public key yet — allow this device to generate keys
+        if (isAxiosError(err) && err.response?.status === 404) {
+          await generateRSAKeys(userId);
+          return true;
+        }
+        // other errors: rethrow
+        throw err;
+      }
+    } catch (err) {
+      console.error('Key validation failed', err);
+      return false;
+    }
+  };
 
   // -------------------------------------------------
   // 🔐 Check session using httpOnly cookies
@@ -32,8 +75,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(userData);
       localStorage.setItem("user", JSON.stringify(userData));
 
-      // 🔐 Ensure RSA keys are present
-      await ensureRSAKeys(userData._id);
+      // 🔐 Validate key ownership: either import local keys, or generate if first device,
+      // or block login if keys exist on server but not locally.
+      const ok = await validateKeyOwnership(userData._id);
+      if (!ok) return null;
 
       return userData;
     } catch (err) {
@@ -56,10 +101,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           const parsed = JSON.parse(stored) as User;
           setUser(parsed);
 
-          // Ensure keys exist
-          await ensureRSAKeys(parsed._id);
+          // Validate local/server key ownership and ensure keys are ready
+          const ok = await validateKeyOwnership(parsed._id);
+          if (!ok) {
+            setLoading(false);
+            return;
+          }
 
-          // Validate with backend
+          // Validate session with backend
           await checkAuth();
         } else {
           await checkAuth();
@@ -88,12 +137,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(userData);
       localStorage.setItem("user", JSON.stringify(userData));
 
-      // 🔐 Ensure or generate RSA keys
-      const existing = await getKeyPair(userData._id);
-      if (!existing) {
-        await generateRSAKeys(userData._id);
-      } else {
-        await ensureRSAKeys(userData._id);
+      // 🔐 Validate key ownership on login as well
+      const ok = await validateKeyOwnership(userData._id);
+      if (!ok) {
+        // blocked: throw to caller so login UI can react
+        throw new Error('Device not registered');
       }
 
       // Routing logic

@@ -40,7 +40,8 @@ export default function MyFriendsPage() {
     loading,
     getFriendState,
     removeFriend,
-    loadFriendsList
+    loadFriendsList,
+    sendFriendRequest
   } = useFriendRequests(currentUser?._id || null);
 
   // Close user menu when clicking outside
@@ -155,6 +156,24 @@ export default function MyFriendsPage() {
         title: 'Error',
         message: 'Failed to remove friend'
       });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  // Allow sending a friend request from this page (after removal)
+  const handleSendRequest = async (userId: string) => {
+    try {
+      setActionInProgress(userId);
+      const result = await sendFriendRequest(userId);
+      if (result.success) {
+        addNotification({ type: 'success', title: 'Request Sent', message: 'Friend request sent successfully' });
+      } else {
+        addNotification({ type: 'error', title: 'Error', message: result.error || 'Failed to send friend request' });
+      }
+    } catch (err) {
+      console.error('Error sending request from friends page:', err);
+      addNotification({ type: 'error', title: 'Error', message: 'Failed to send friend request' });
     } finally {
       setActionInProgress(null);
     }
@@ -290,14 +309,10 @@ export default function MyFriendsPage() {
                 {filteredFriends.map((friend: User) => {
                   const isProcessing = actionInProgress === friend._id;
                   const friendState = getFriendState(friend._id);
-                  
-                  // Only show friends (not removed or other statuses)
-                  const isFriend = friendState.status === 'friends';
-                  
-                  // Don't render if not a friend
-                  if (!isFriend) {
-                    return null;
-                  }
+
+                  // Show both actual friends and recently-removed entries so user can re-send requests
+                  const isFriendOrRemoved = friendState.status === 'friends' || friendState.status === 'removed';
+                  if (!isFriendOrRemoved) return null;
 
                   return (
                     <div key={friend._id} className={styles.friendCard}>
@@ -349,24 +364,43 @@ export default function MyFriendsPage() {
                       </div>
 
                       <div className={styles.cardActions}>
-                        <button
-                          className={`${styles.actionButton} ${styles.removeButton}`}
-                          onClick={() => handleRemoveFriend(friend._id)}
-                          disabled={isProcessing || loading.action}
-                        >
-                          <FiUserMinus />
-                          {isProcessing || loading.action ? 'Removing...' : 'Remove Friend'}
-                        </button>
-                        
-                        <button
-                          className={`${styles.actionButton} ${styles.messageButton}`}
-                          onClick={() => {
-                            router.push(`/chat?userId=${friend._id}`);
-                          }}
-                        >
-                          <FiMessageCircle />
-                          Message
-                        </button>
+                        {friendState.status === 'removed' ? (
+                          <>
+                            <button className={`${styles.actionButton} ${styles.removeButton}`} disabled>
+                              <FiUserMinus />
+                              Removed
+                            </button>
+                            <button
+                              className={`${styles.actionButton} ${styles.sendButton}`}
+                              onClick={() => handleSendRequest(friend._id)}
+                              disabled={isProcessing || loading.action}
+                            >
+                              <FiUserCheck />
+                              {isProcessing || loading.action ? 'Sending...' : 'Send Request'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className={`${styles.actionButton} ${styles.removeButton}`}
+                              onClick={() => handleRemoveFriend(friend._id)}
+                              disabled={isProcessing || loading.action}
+                            >
+                              <FiUserMinus />
+                              {isProcessing || loading.action ? 'Removing...' : 'Remove Friend'}
+                            </button>
+
+                            <button
+                              className={`${styles.actionButton} ${styles.messageButton}`}
+                              onClick={() => {
+                                router.push(`/chat?userId=${friend._id}`);
+                              }}
+                            >
+                              <FiMessageCircle />
+                              Message
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

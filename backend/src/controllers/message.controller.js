@@ -715,24 +715,48 @@ export const getMessages = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { receiverId } = req.params;
+    const limitParam = parseInt(req.query.limit, 10) || 50;
+    const before = req.query.before; // ISO date string expected
+    const limit = Math.min(Math.max(limitParam, 5), 200); // clamp between 5 and 200
 
     // Validate receiverId
     if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
       return res.status(400).json({ message: "Invalid receiver ID" });
     }
 
-    // Query for private messages
-    const messages = await Message.find({
+    // Build base filter for private messages
+    const baseFilter = {
       $or: [
         { sender: currentUserId, receiver: receiverId },
         { sender: receiverId, receiver: currentUserId }
       ]
-    })
-    .populate('sender', 'username fullName profilePic email')
-    .populate('receiver', 'username fullName profilePic email')
-    .sort({ sentAt: 1 });
+    };
 
-    console.log(`📥 Found ${messages.length} messages between users`);
+    let query = Message.find(baseFilter)
+      .populate('sender', 'username fullName profilePic email')
+      .populate('receiver', 'username fullName profilePic email');
+
+    // If `before` provided, load messages older than that timestamp
+    if (before) {
+      const beforeDate = new Date(before);
+      if (!isNaN(beforeDate.getTime())) {
+        query = query.where('sentAt').lt(beforeDate).sort({ sentAt: -1 }).limit(limit);
+      } else {
+        // invalid before parameter
+        return res.status(400).json({ message: 'Invalid before parameter' });
+      }
+    } else {
+      // No before -> load latest `limit` messages
+      query = query.sort({ sentAt: -1 }).limit(limit);
+    }
+
+    // Execute query
+    let messages = await query.exec();
+
+    // Query returns newest-first due to sort({sentAt:-1}); normalize to ascending order
+    messages = messages.reverse();
+
+    console.log(`📥 Found ${messages.length} messages between users (limit ${limit}${before ? ', before '+before : ''})`);
 
     // Normalize messages
     const normalizedMessages = messages.map(msg => {
