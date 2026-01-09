@@ -404,13 +404,40 @@ const handleVideoCall = useCallback(async (userId: string) => {
   };
 
   useEffect(() => {
-    if (initialLoad.current && currentUser?._id && userIdParam && users.length > 0) {
+    if (initialLoad.current && currentUser?._id && userIdParam) {
       const userFromParam = users.find((user) => user._id === userIdParam);
+      
       if (userFromParam) {
+        // User found in list
         setSelectedUser(userFromParam);
         shouldLoadMessagesRef.current = true;
+        initialLoad.current = false;
+      } else if (users.length > 0) {
+        // Users list is loaded but user not found - might not be in contacts
+        // Try to fetch user details from API
+        api.get(`/auth/details/${userIdParam}`)
+          .then(res => {
+            if (res.data.data) {
+              const user = res.data.data;
+              const chatItem: ChatItem = {
+                _id: user._id,
+                username: user.username,
+                fullName: user.fullName,
+                profilePic: user.profilePic || '',
+                lastMessage: '',
+                isOnline: false,
+                unreadCount: 0,
+              };
+              setSelectedUser(chatItem);
+              shouldLoadMessagesRef.current = true;
+              initialLoad.current = false;
+            }
+          })
+          .catch(err => {
+            console.error('Failed to fetch user details:', err);
+            initialLoad.current = false;
+          });
       }
-      initialLoad.current = false;
     }
   }, [currentUser, userIdParam, users, setSelectedUser]);
 
