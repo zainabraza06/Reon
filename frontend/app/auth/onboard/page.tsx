@@ -4,7 +4,9 @@ import OnboardingRoute from "@/components/OnboardingRoute";
 
 
 export default function OnBoardingPage(){
-  return (<OnboardingRoute>
-   <OnboardingPage/>;
-  </OnboardingRoute>);
+  return (
+    <OnboardingRoute>
+      <OnboardingPage />
+    </OnboardingRoute>
+  );
 }
