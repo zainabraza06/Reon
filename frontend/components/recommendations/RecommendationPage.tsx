@@ -337,7 +337,7 @@ export default function RecommendedFriendsPage() {
             disabled={isRemoving || loading.action}
           >
             <FiUserCheck />
-            {isRemoving || loading.action ? 'Removing...' : 'Friends'}
+            {isRemoving || loading.action ? 'Accepting...' : 'Friends'}
           </button>
         );
 
@@ -371,7 +371,7 @@ export default function RecommendedFriendsPage() {
             disabled={isWithdrawing || loading.action}
           >
             <FiUserPlus />
-            {isWithdrawing || loading.action ? 'Withdrawing...' : 'Request Sent'}
+            {isWithdrawing || loading.action ? 'Sending...' : 'Request Sent'}
           </button>
         );
 
