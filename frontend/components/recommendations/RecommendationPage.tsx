@@ -25,7 +25,7 @@ export default function RecommendedFriendsPage() {
   const { addNotification } = useNotification();
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [actionInProgress, setActionInProgress] = useState<{ userId: string; action: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -132,7 +132,7 @@ export default function RecommendedFriendsPage() {
   // Action handlers using the hook
   const handleSendRequest = async (userId: string) => {
     try {
-      setActionInProgress(userId);
+      setActionInProgress({ userId, action: 'send' });
       
       const result = await sendFriendRequest(userId);
       
@@ -164,7 +164,7 @@ export default function RecommendedFriendsPage() {
 
   const handleWithdrawRequest = async (userId: string) => {
     try {
-      setActionInProgress(userId);
+      setActionInProgress({ userId, action: 'withdraw' });
       const friendState = getFriendState(userId);
       
       if (!friendState.requestId) {
@@ -206,7 +206,7 @@ export default function RecommendedFriendsPage() {
 
   const handleAcceptRequest = async (userId: string) => {
     try {
-      setActionInProgress(userId);
+      setActionInProgress({ userId, action: 'accept' });
       const friendState = getFriendState(userId);
       
       if (!friendState.requestId) {
@@ -248,7 +248,7 @@ export default function RecommendedFriendsPage() {
 
   const handleRejectRequest = async (userId: string) => {
     try {
-      setActionInProgress(userId);
+      setActionInProgress({ userId, action: 'reject' });
       const friendState = getFriendState(userId);
       
       if (!friendState.requestId) {
@@ -290,7 +290,7 @@ export default function RecommendedFriendsPage() {
 
   const handleRemoveFriend = async (userId: string) => {
     try {
-      setActionInProgress(userId);
+      setActionInProgress({ userId, action: 'remove' });
       
       const result = await removeFriend(userId);
       
@@ -321,7 +321,11 @@ export default function RecommendedFriendsPage() {
   };
 
   const getActionButtons = (user: User & { mutualFriendsCount: number; score: number; }) => {
-    const isProcessing = actionInProgress === user._id;
+    const isSending = actionInProgress?.userId === user._id && actionInProgress?.action === 'send';
+    const isWithdrawing = actionInProgress?.userId === user._id && actionInProgress?.action === 'withdraw';
+    const isAccepting = actionInProgress?.userId === user._id && actionInProgress?.action === 'accept';
+    const isRejecting = actionInProgress?.userId === user._id && actionInProgress?.action === 'reject';
+    const isRemoving = actionInProgress?.userId === user._id && actionInProgress?.action === 'remove';
     const friendState = getFriendState(user._id);
 
     switch (friendState.status) {
@@ -330,10 +334,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.removeButton}`}
             onClick={() => handleRemoveFriend(user._id)}
-            disabled={isProcessing || loading.action}
+            disabled={isRemoving || loading.action}
           >
             <FiUserCheck />
-            {isProcessing || loading.action ? 'Removing...' : 'Friends'}
+            {isRemoving || loading.action ? 'Removing...' : 'Friends'}
           </button>
         );
 
@@ -343,18 +347,18 @@ export default function RecommendedFriendsPage() {
             <button
               className={`${styles.actionButton} ${styles.acceptButton}`}
               onClick={() => handleAcceptRequest(user._id)}
-              disabled={isProcessing || loading.action}
+              disabled={isAccepting || loading.action}
             >
               <FiUserCheck />
-              {isProcessing || loading.action ? 'Accepting...' : 'Accept'}
+              {isAccepting || loading.action ? 'Accepting...' : 'Accept'}
             </button>
             <button
               className={`${styles.actionButton} ${styles.rejectButton}`}
               onClick={() => handleRejectRequest(user._id)}
-              disabled={isProcessing || loading.action}
+              disabled={isRejecting || loading.action}
             >
               <FiUserX />
-              {isProcessing || loading.action ? 'Rejecting...' : 'Reject'}
+              {isRejecting || loading.action ? 'Rejecting...' : 'Reject'}
             </button>
           </div>
         );
@@ -364,10 +368,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.withdrawButton}`}
             onClick={() => handleWithdrawRequest(user._id)}
-            disabled={isProcessing || loading.action}
+            disabled={isWithdrawing || loading.action}
           >
             <FiUserPlus />
-            {isProcessing || loading.action ? 'Withdrawing...' : 'Request Sent'}
+            {isWithdrawing || loading.action ? 'Withdrawing...' : 'Request Sent'}
           </button>
         );
 
@@ -386,10 +390,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.addButton}`}
             onClick={() => handleSendRequest(user._id)}
-            disabled={isProcessing || loading.action}
+            disabled={isSending || loading.action}
           >
             <FiUserPlus />
-            {isProcessing || loading.action ? 'Sending...' : 'Send Request'}
+            {isSending || loading.action ? 'Sending...' : 'Send Request'}
           </button>
         );
     }

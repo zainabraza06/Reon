@@ -408,13 +408,12 @@ const handleVideoCall = useCallback(async (userId: string) => {
       const userFromParam = users.find((user) => user._id === userIdParam);
       
       if (userFromParam) {
-        // User found in list
+        // User found in chat list
         setSelectedUser(userFromParam);
         shouldLoadMessagesRef.current = true;
         initialLoad.current = false;
-      } else if (users.length > 0) {
-        // Users list is loaded but user not found - might not be in contacts
-        // Try to fetch user details from API
+      } else if (users.length > 0 || initialLoad.current) {
+        // Users list loaded or still loading - try to fetch user details from API
         api.get(`/auth/details/${userIdParam}`)
           .then(res => {
             if (res.data.data) {
