@@ -4,6 +4,7 @@ import styles from './OnboardPage.module.css';
 import { useRouter } from 'next/navigation';
 import { AxiosError } from "axios";
 import { api } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 interface FlashMessage {
   type: 'success' | 'error';
@@ -12,6 +13,7 @@ interface FlashMessage {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Step and loading states
@@ -173,6 +175,11 @@ export default function OnboardingPage() {
       const data = response.data;
 
       showFlashMessage('success', data.message || 'Onboarding completed successfully!');
+      
+      // Refresh user data in AuthContext to update isOnboarded flag
+      await refreshUser();
+      
+      // Redirect after user data is refreshed
       setTimeout(() => router.push('/recommendations'), 1500);
 
     } catch (err: unknown) {
