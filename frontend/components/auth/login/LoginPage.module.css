@@ -664,6 +664,350 @@
   }
 }
 
+/* Responsive Design Improvements */
+@media (max-width: 1280px) {
+  .fullPage {
+    padding: 1rem;
+  }
+
+  .container {
+    max-width: 500px;
+  }
+
+  .heading {
+    font-size: 2rem;
+  }
+
+  .description {
+    font-size: 0.95rem;
+  }
+
+  .glassInput,
+  .glassButton {
+    padding: 0.875rem 1.25rem;
+    font-size: 0.95rem;
+  }
+
+  .forgotPassword {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .blob {
+    width: 20rem;
+    height: 20rem;
+    filter: blur(80px);
+    opacity: 0.3;
+  }
+
+  .blobPurple {
+    top: -6rem;
+    right: -6rem;
+  }
+
+  .blobBlue {
+    bottom: -6rem;
+    left: -6rem;
+  }
+
+  .blobTeal {
+    top: 40%;
+    left: 50%;
+  }
+
+  .container {
+    max-width: 450px;
+  }
+
+  .heading {
+    font-size: 1.75rem;
+  }
+
+  .description {
+    font-size: 0.9rem;
+  }
+
+  .glassInput,
+  .glassButton {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .loginForm {
+    gap: 1rem;
+  }
+
+  .formGroup {
+    gap: 0.5rem;
+  }
+
+  .label {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .fullPage {
+    min-height: 100dvh;
+    padding: 0.75rem;
+  }
+
+  .blob {
+    width: 16rem;
+    height: 16rem;
+    filter: blur(60px);
+    opacity: 0.25;
+  }
+
+  .blobPurple {
+    top: -4rem;
+    right: -4rem;
+  }
+
+  .blobBlue {
+    bottom: -4rem;
+    left: -4rem;
+  }
+
+  .blobTeal {
+    width: 14rem;
+    height: 14rem;
+  }
+
+  .container {
+    max-width: 100%;
+    width: 100%;
+    max-width: none;
+    padding: 1.25rem;
+  }
+
+  .heading {
+    font-size: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .description {
+    font-size: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .loginForm {
+    gap: 0.875rem;
+  }
+
+  .formGroup {
+    gap: 0.375rem;
+  }
+
+  .label {
+    font-size: 0.8rem;
+  }
+
+  .glassInput {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.85rem;
+    border-radius: 0.625rem;
+  }
+
+  .glassButton {
+    padding: 0.7rem 1rem;
+    font-size: 0.85rem;
+    border-radius: 0.625rem;
+  }
+
+  .forgotPassword {
+    font-size: 0.75rem;
+    padding: 0.25rem;
+  }
+
+  .togglePassword {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .togglePassword svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .alternativeLogin {
+    gap: 0.75rem;
+  }
+
+  .alternativeLoginText {
+    font-size: 0.8rem;
+  }
+
+  .socialButton {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .socialButton svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .signupLink {
+    font-size: 0.8rem;
+  }
+
+  .flashMessage {
+    max-width: 100%;
+  }
+
+  .particlesContainer {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .fullPage {
+    min-height: 100dvh;
+    padding: 0.5rem;
+  }
+
+  .blob {
+    width: 12rem;
+    height: 12rem;
+    filter: blur(40px);
+    opacity: 0.2;
+  }
+
+  .blobPurple {
+    top: -3rem;
+    right: -3rem;
+  }
+
+  .blobBlue {
+    bottom: -3rem;
+    left: -3rem;
+  }
+
+  .blobTeal {
+    width: 10rem;
+    height: 10rem;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  .heading {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .description {
+    font-size: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .loginForm {
+    gap: 0.75rem;
+  }
+
+  .formGroup {
+    gap: 0.3rem;
+  }
+
+  .label {
+    font-size: 0.75rem;
+  }
+
+  .glassInput {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 0.5rem;
+    min-height: 44px;
+  }
+
+  .glassButton {
+    padding: 0.65rem 1rem;
+    font-size: 0.8rem;
+    border-radius: 0.5rem;
+    min-height: 44px;
+  }
+
+  .forgotPassword {
+    font-size: 0.7rem;
+  }
+
+  .togglePassword {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .togglePassword svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .alternativeLogin {
+    gap: 0.625rem;
+  }
+
+  .alternativeLoginText {
+    font-size: 0.75rem;
+  }
+
+  .socialButton {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .socialButton svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .signupLink {
+    font-size: 0.75rem;
+  }
+
+  .flashMessage {
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .container {
+    padding: 0.875rem;
+  }
+
+  .heading {
+    font-size: 1.1rem;
+  }
+
+  .description {
+    font-size: 0.7rem;
+  }
+
+  .glassInput,
+  .glassButton {
+    padding: 0.5rem 0.625rem;
+    font-size: 0.75rem;
+  }
+
+  .socialButton {
+    width: 36px;
+    height: 36px;
+  }
+
+  .alternativeLogin {
+    gap: 0.5rem;
+  }
+}
 
 /* Add to LoginPage.module.css */
 .loadingLink {

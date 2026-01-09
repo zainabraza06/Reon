@@ -522,3 +522,313 @@
   transform: translateY(0);
   -webkit-transform: translateY(0);
 }
+
+/* Responsive Design - Mobile & Tablet */
+@media (max-width: 1280px) {
+  .main {
+    padding: 1.5rem;
+    gap: 2.5rem;
+  }
+
+  .content {
+    max-width: 100%;
+  }
+
+  .title {
+    font-size: 3rem;
+  }
+
+  .subtitle {
+    font-size: 1.1rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .fullPage {
+    height: 100dvh;
+  }
+
+  .main {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    gap: 2rem;
+  }
+
+  .blob {
+    width: 20rem;
+    height: 20rem;
+    filter: blur(5rem);
+    opacity: 0.5;
+  }
+
+  .blobPurple {
+    top: -8rem;
+    right: -8rem;
+  }
+
+  .blobBlue {
+    bottom: -8rem;
+    left: -8rem;
+  }
+
+  .blobTeal {
+    width: 16rem;
+    height: 16rem;
+  }
+
+  .content {
+    text-align: center;
+    max-width: 100%;
+  }
+
+  .title {
+    font-size: 2.5rem;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
+
+  .stats {
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .statNumber {
+    font-size: 1.75rem;
+  }
+
+  .statLabel {
+    font-size: 0.75rem;
+  }
+
+  .ctaContainer {
+    flex-direction: column;
+    width: 100%;
+    max-width: 300px;
+    gap: 0.75rem;
+  }
+
+  .ctaButton {
+    padding: 0.875rem 1.5rem;
+    font-size: 0.95rem;
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .fullPage {
+    height: 100dvh;
+  }
+
+  .main {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+
+  .blob {
+    width: 16rem;
+    height: 16rem;
+    filter: blur(4rem);
+    opacity: 0.4;
+  }
+
+  .blobPurple {
+    top: -6rem;
+    right: -6rem;
+  }
+
+  .blobBlue {
+    bottom: -6rem;
+    left: -6rem;
+  }
+
+  .blobTeal {
+    width: 14rem;
+    height: 14rem;
+  }
+
+  .content {
+    width: 100%;
+    padding: 0 0.5rem;
+  }
+
+  .title {
+    font-size: 2rem;
+    line-height: 1.2;
+    margin-bottom: 0.75rem;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin-bottom: 1.5rem;
+  }
+
+  .stats {
+    gap: 1.25rem;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .stat {
+    flex: 0 1 calc(33.33% - 0.85rem);
+    min-width: 70px;
+  }
+
+  .statNumber {
+    font-size: 1.5rem;
+  }
+
+  .statLabel {
+    font-size: 0.7rem;
+  }
+
+  .ctaContainer {
+    flex-direction: column;
+    width: 100%;
+    max-width: 280px;
+    gap: 0.625rem;
+  }
+
+  .ctaButton {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+    width: 100%;
+    border-radius: 0.625rem;
+  }
+
+  .illustration {
+    max-width: 100%;
+    height: auto;
+    max-height: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .fullPage {
+    height: 100dvh;
+  }
+
+  .main {
+    padding: 0.75rem;
+    gap: 1.25rem;
+    justify-content: flex-start;
+    padding-top: 1rem;
+  }
+
+  .blob {
+    width: 12rem;
+    height: 12rem;
+    filter: blur(3rem);
+    opacity: 0.3;
+  }
+
+  .blobPurple {
+    top: -4rem;
+    right: -4rem;
+  }
+
+  .blobBlue {
+    bottom: -4rem;
+    left: -4rem;
+  }
+
+  .blobTeal {
+    width: 10rem;
+    height: 10rem;
+  }
+
+  .content {
+    width: 100%;
+    padding: 0;
+  }
+
+  .title {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+  }
+
+  .subtitle {
+    font-size: 0.8rem;
+    line-height: 1.35;
+    margin-bottom: 1rem;
+  }
+
+  .stats {
+    gap: 0.75rem;
+    margin-top: 0.875rem;
+  }
+
+  .stat {
+    flex: 0 1 calc(33.33% - 0.5rem);
+  }
+
+  .statNumber {
+    font-size: 1.25rem;
+  }
+
+  .statLabel {
+    font-size: 0.6rem;
+    margin-top: 0.125rem;
+  }
+
+  .ctaContainer {
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    gap: 0.5rem;
+  }
+
+  .ctaButton {
+    padding: 0.65rem 1rem;
+    font-size: 0.8rem;
+    width: 100%;
+    min-height: 44px;
+    border-radius: 0.5rem;
+  }
+
+  .illustration {
+    max-width: 100%;
+    height: auto;
+    max-height: 150px;
+  }
+}
+
+@media (max-width: 360px) {
+  .main {
+    padding: 0.625rem;
+    gap: 1rem;
+  }
+
+  .title {
+    font-size: 1.25rem;
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+  }
+
+  .stats {
+    gap: 0.5rem;
+  }
+
+  .statNumber {
+    font-size: 1rem;
+  }
+
+  .statLabel {
+    font-size: 0.55rem;
+  }
+
+  .ctaButton {
+    padding: 0.6rem 0.875rem;
+    font-size: 0.75rem;
+  }
+}
