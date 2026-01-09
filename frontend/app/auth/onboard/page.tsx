@@ -1,12 +1,10 @@
-
-
 'use client';
 import OnboardingPage from "@/components/auth/settings/OnBoardPage";
-import ProtectedRoute from "@/components/ProtectedRoute";
+import OnboardingRoute from "@/components/OnboardingRoute";
 
 
 export default function OnBoardingPage(){
-  return (<ProtectedRoute>
+  return (<OnboardingRoute>
    <OnboardingPage/>;
-  </ProtectedRoute>);
+  </OnboardingRoute>);
 }
