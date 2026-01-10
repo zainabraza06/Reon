@@ -93,15 +93,19 @@ export const serveMediaFile = async (req, res) => {
     }
     
     const file = files[0];
+    const fileSize = file.length || 0;
     
     // Set CORS headers for media display
     res.setHeader('Access-Control-Allow-Origin', 'https://reon-tau.vercel.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, X-Encryption-IV, X-File-Name');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Range, Accept-Ranges, ETag, X-Encryption-IV, X-File-Name');
     
     // Determine content type
     let contentType = 'application/octet-stream';
     const originalName = file.metadata?.originalName || '';
+    const isVideo = file.metadata?.type === 'video';
+    const isAudio = file.metadata?.type === 'audio';
+    const isImage = file.metadata?.type === 'image';
     
     // Get extension from metadata or original filename
     let extension = '';
@@ -154,13 +158,83 @@ export const serveMediaFile = async (req, res) => {
         contentType = 'application/octet-stream';
     }
     
+    // Generate ETag for caching (using file ID and upload date)
+    const etag = `"${fileId}-${file.uploadDate?.getTime() || file._id}"`;
+    res.setHeader('ETag', etag);
+    
+    // Check if client has cached version
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end(); // Not Modified
+    }
+    
+    // Set caching headers (7 days for images, 1 day for videos/audio, no cache for encrypted files by default)
+    if (isImage) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable'); // 7 days
+    } else if (isVideo || isAudio) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour for documents
+    }
+    
+    // Support range requests for video/audio (essential for seeking and performance)
+    if ((isVideo || isAudio) && fileSize > 0) {
+      res.setHeader('Accept-Ranges', 'bytes');
+      
+      const range = req.headers.range;
+      if (range) {
+        // Parse range header (e.g., "bytes=0-1023")
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = (end - start) + 1;
+        
+        if (start >= fileSize || end >= fileSize || start > end) {
+          res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+          return res.end();
+        }
+        
+        res.status(206); // Partial Content
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.setHeader('Content-Length', chunksize);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(originalName)}"`);
+        
+        // Add encryption IV header if available
+        if (file.metadata?.encryptionIV) {
+          res.setHeader('X-Encryption-IV', file.metadata.encryptionIV);
+        }
+        
+        // Add original filename header
+        if (originalName) {
+          res.setHeader('X-File-Name', encodeURIComponent(originalName));
+        }
+        
+        const downloadStream = bucket.openDownloadStream(new mongoose.Types.ObjectId(fileId), {
+          start: start,
+          end: end
+        });
+        
+        downloadStream.pipe(res);
+        
+        downloadStream.on('error', (error) => {
+          console.error('Error streaming media range:', error);
+          if (!res.headersSent) {
+            res.status(500).json({ message: 'Error streaming media' });
+          }
+        });
+        
+        return; // Early return for range requests
+      }
+    }
+    
+    // Standard full file response
     res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', fileSize);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(originalName)}"`);
     
     // Add encryption IV header if available
     if (file.metadata?.encryptionIV) {
       res.setHeader('X-Encryption-IV', file.metadata.encryptionIV);
-      console.log(`🔐 Serving file with IV header: ${fileId}`);
     }
     
     // Add original filename header
@@ -173,12 +247,16 @@ export const serveMediaFile = async (req, res) => {
     
     downloadStream.on('error', (error) => {
       console.error('Error streaming media:', error);
-      res.status(500).json({ message: 'Error streaming media' });
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Error streaming media' });
+      }
     });
     
   } catch (error) {
     console.error('Media serve error:', error);
-    res.status(500).json({ message: 'Server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Server error' });
+    }
   }
 };
 

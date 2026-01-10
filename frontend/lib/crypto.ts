@@ -217,11 +217,19 @@ export async function decryptFile(
     fullUrl = `${backendUrl}/api/messages/media/${encryptedFileUrl}`;
   }
 
-  // 3. Fetch file
-  const response = await fetch(fullUrl, { credentials: 'include' });
+  // 3. Fetch file with cache support (browser will use cached encrypted file if available)
+  const response = await fetch(fullUrl, { 
+    credentials: 'include',
+    cache: 'default' // Use browser cache for encrypted files
+  });
   
   if (!response.ok) {
+    if (response.status === 304) {
+      // Not Modified - should use cached version
+      throw new Error('Cached file expired, please refresh');
+    }
     if (response.status === 404) throw new Error('File not found');
+    if (response.status === 416) throw new Error('Range request failed');
     throw new Error(`Failed to fetch file: HTTP ${response.status}`);
   }
 

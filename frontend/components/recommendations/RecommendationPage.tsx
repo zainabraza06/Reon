@@ -334,10 +334,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.removeButton}`}
             onClick={() => handleRemoveFriend(user._id)}
-            disabled={isRemoving || loading.action}
+            disabled={isRemoving}
           >
             <FiUserCheck />
-            {isRemoving || loading.action ? 'Accepting...' : 'Friends'}
+            {isRemoving ? 'Removing...' : 'Friends'}
           </button>
         );
 
@@ -347,18 +347,18 @@ export default function RecommendedFriendsPage() {
             <button
               className={`${styles.actionButton} ${styles.acceptButton}`}
               onClick={() => handleAcceptRequest(user._id)}
-              disabled={isAccepting || loading.action}
+              disabled={isAccepting}
             >
               <FiUserCheck />
-              {isAccepting || loading.action ? 'Accepting...' : 'Accept'}
+              {isAccepting ? 'Accepting...' : 'Accept'}
             </button>
             <button
               className={`${styles.actionButton} ${styles.rejectButton}`}
               onClick={() => handleRejectRequest(user._id)}
-              disabled={isRejecting || loading.action}
+              disabled={isRejecting}
             >
               <FiUserX />
-              {isRejecting || loading.action ? 'Rejecting...' : 'Reject'}
+              {isRejecting ? 'Rejecting...' : 'Reject'}
             </button>
           </div>
         );
@@ -368,10 +368,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.withdrawButton}`}
             onClick={() => handleWithdrawRequest(user._id)}
-            disabled={isWithdrawing || loading.action}
+            disabled={isWithdrawing}
           >
             <FiUserPlus />
-            {isWithdrawing || loading.action ? 'Sending...' : 'Request Sent'}
+            {isWithdrawing ? 'Withdrawing...' : 'Request Sent'}
           </button>
         );
 
@@ -390,10 +390,10 @@ export default function RecommendedFriendsPage() {
           <button
             className={`${styles.actionButton} ${styles.addButton}`}
             onClick={() => handleSendRequest(user._id)}
-            disabled={isSending || loading.action}
+            disabled={isSending}
           >
             <FiUserPlus />
-            {isSending || loading.action ? 'Sending...' : 'Send Request'}
+            {isSending ? 'Sending...' : 'Send Request'}
           </button>
         );
     }
