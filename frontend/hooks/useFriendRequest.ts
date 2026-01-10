@@ -227,36 +227,69 @@ export function useFriendRequests(currentUserId: string | null) {
         total: data.total
       });
       
-      // First, load sent requests to get requestIds
+      // Load sent and received requests to get requestIds
       let sentRequestsMap = new Map<string, string>();
+      let receivedRequestsMap = new Map<string, string>();
+      
       try {
-        const sentResponse = await api.get<FriendRequestsResponse>('/users/friend-requests/sent');
+        const [sentResponse, receivedResponse] = await Promise.all([
+          api.get<FriendRequestsResponse>('/users/friend-requests/sent'),
+          api.get<FriendRequestsResponse>('/users/friend-requests/received')
+        ]);
+        
         sentResponse.data.requests.forEach((request: FriendRequest) => {
           sentRequestsMap.set(request.receiver._id, request._id);
         });
+        
+        receivedResponse.data.requests.forEach((request: FriendRequest) => {
+          receivedRequestsMap.set(request.sender._id, request._id);
+        });
       } catch (err) {
-        console.warn('Failed to load sent requests for syncing:', err);
+        console.warn('Failed to load requests for syncing:', err);
       }
       
-      data.recommended.forEach((friend: RecommendedFriend) => {
-        let status: FriendStatus = 'none';
-        let requestId: string | undefined = undefined;
+      // Update friend states with proper priority
+      setFriendStates(prev => {
+        const newMap = new Map(prev);
         
-        if (friend.isFriend) {
-          status = 'friends';
-        } else if (friend.friendRequestSent) {
-          status = 'pending-sent';
-          // Get requestId from sent requests map
-          requestId = sentRequestsMap.get(friend._id);
-        } else if (friend.friendRequestReceived) {
-          status = 'pending-received';
-        }
+        data.recommended.forEach((friend: RecommendedFriend) => {
+          const currentState = prev.get(friend._id);
+          let status: FriendStatus = 'none';
+          let requestId: string | undefined = undefined;
+          
+          // Priority: received > sent > friends > none
+          // If user received a request from this friend, show Accept/Reject
+          if (friend.friendRequestReceived) {
+            status = 'pending-received';
+            requestId = receivedRequestsMap.get(friend._id) || currentState?.requestId;
+          }
+          // If user sent a request to this friend, show Request Sent/Withdraw (only if not received)
+          else if (friend.friendRequestSent && currentState?.status !== 'pending-received') {
+            status = 'pending-sent';
+            requestId = sentRequestsMap.get(friend._id) || currentState?.requestId;
+          }
+          // If already friends (preserve if already set)
+          else if (friend.isFriend || currentState?.status === 'friends') {
+            status = 'friends';
+          }
+          // Preserve existing status if it's a valid state and higher priority
+          else if (currentState?.status && currentState.status !== 'none') {
+            status = currentState.status;
+            requestId = currentState.requestId;
+          }
+          // Otherwise, show Send Request
+          else {
+            status = 'none';
+          }
 
-        updateFriendState(friend._id, {
-          userId: friend._id,
-          status,
-          requestId
+          newMap.set(friend._id, {
+            userId: friend._id,
+            status,
+            requestId
+          });
         });
+        
+        return newMap;
       });
       
       return { success: true, data };
@@ -577,6 +610,7 @@ export function useFriendRequests(currentUserId: string | null) {
     initializeData();
 
     const handleFriendRequestReceived = (data: SocketFriendRequestReceivedData) => {
+      // Always set to pending-received when a request is received (highest priority)
       updateFriendState(data.sender._id, {
         userId: data.sender._id,
         status: 'pending-received',
@@ -584,17 +618,26 @@ export function useFriendRequests(currentUserId: string | null) {
       });
       setPendingCount(prev => prev + 1);
       // Mark recommended entry as having a received request (keep visible)
-      setRecommendedFriends(prev => prev.map(f => f._id === data.sender._id ? ({ ...f, friendRequestReceived: true }) : f));
+      setRecommendedFriends(prev => prev.map(f => f._id === data.sender._id ? ({ ...f, friendRequestReceived: true, friendRequestSent: false }) : f));
     };
 
     const handleFriendRequestSent = (data: SocketFriendRequestSentData) => {
-      updateFriendState(data.receiverId, {
-        userId: data.receiverId,
-        status: 'pending-sent',
-        requestId: data.requestId
+      // Only set to pending-sent if not already pending-received (received has priority)
+      setFriendStates(prev => {
+        const currentState = prev.get(data.receiverId);
+        if (currentState?.status !== 'pending-received' && currentState?.status !== 'friends') {
+          const newMap = new Map(prev);
+          newMap.set(data.receiverId, {
+            userId: data.receiverId,
+            status: 'pending-sent',
+            requestId: data.requestId
+          });
+          return newMap;
+        }
+        return prev;
       });
       // Mark recommended entry as sent (do not remove it)
-      setRecommendedFriends(prev => prev.map(f => f._id === data.receiverId ? ({ ...f, friendRequestSent: true }) : f));
+      setRecommendedFriends(prev => prev.map(f => f._id === data.receiverId ? ({ ...f, friendRequestSent: true, friendRequestReceived: false }) : f));
     };
 
     const handleFriendRequestAccepted = (data: SocketFriendRequestAcceptedData) => {

@@ -16,11 +16,25 @@ export const getRecommendedFriends = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const currentUser = await User.findById(userId)
-      .select("friends location nativeLanguage sentFriendRequests receivedFriendRequests");
+      .select("friends location nativeLanguage");
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    // Get all pending friend requests to determine status
+    const sentRequests = await FriendRequest.find({
+      sender: userId,
+      status: 'pending'
+    }).select('receiver').lean();
+    
+    const receivedRequests = await FriendRequest.find({
+      receiver: userId,
+      status: 'pending'
+    }).select('sender').lean();
+
+    const sentRequestUserIds = new Set(sentRequests.map(req => req.receiver.toString()));
+    const receivedRequestUserIds = new Set(receivedRequests.map(req => req.sender.toString()));
 
     const totalCount = await User.countDocuments({
       _id: { $ne: userId },
@@ -48,6 +62,7 @@ export const getRecommendedFriends = async (req, res) => {
   },
   {
     $project: {
+      _id: 1,
       fullName: 1,
       username: 1,
       profilePic: 1,
@@ -56,16 +71,11 @@ export const getRecommendedFriends = async (req, res) => {
       friends: 1,
       isOnline: 1,
       lastSeen: 1,
+      createdAt: 1,
       mutualFriendsCount: {
         $size: {
           $setIntersection: ["$friends", currentUser.friends || []]
         }
-      },
-      friendRequestSent: {
-        $in: ["$_id", currentUser.sentFriendRequests || []]
-      },
-      friendRequestReceived: {
-        $in: ["$_id", currentUser.receivedFriendRequests || []]
       },
       isFriend: {
         $in: ["$_id", currentUser.friends || []]
@@ -102,13 +112,22 @@ export const getRecommendedFriends = async (req, res) => {
   { $limit: limit }
 ]);
 
+    // Add friend request status based on actual FriendRequest collection
+    const recommendedWithStatus = recommended.map(user => {
+      const userIdStr = user._id.toString();
+      return {
+        ...user,
+        friendRequestReceived: receivedRequestUserIds.has(userIdStr),
+        friendRequestSent: sentRequestUserIds.has(userIdStr)
+      };
+    });
 
     res.status(200).json({
       success: true,
       page,
       limit,
       total: totalCount,
-      recommended
+      recommended: recommendedWithStatus
     });
   } catch (err) {
     console.error("❌ Get recommended friends error:", err);

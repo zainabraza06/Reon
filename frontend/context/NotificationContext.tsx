@@ -102,12 +102,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // 🔔 Friend request withdrawn
       const handleFriendRequestWithdrawn = () => {
-        addNotification({
-          type: 'info',
-          title: 'Friend Request Withdrawn',
-          message: 'A friend request has been withdrawn',
-          duration: 3000
-        });
+      
       };
 
       // Register listeners

@@ -22,29 +22,29 @@ export async function signup(req, res) {
         return res.status(400).json({ message: "Email already in use" });
       }
 
-      // User exists but not verified → update password + new token
-      const verificationToken = crypto.randomBytes(32).toString("hex");
+      // // User exists but not verified → update password + new token
+      // const verificationToken = crypto.randomBytes(32).toString("hex");
 
-      existing.password = password; // 🔥 update password
-      existing.markModified("password"); 
-      existing.verificationToken = verificationToken;
-      existing.verificationTokenExpires = new Date(Date.now() + 15 * 60 * 1000);
+      // existing.password = password; // 🔥 update password
+      // existing.markModified("password"); 
+      // existing.verificationToken = verificationToken;
+      // existing.verificationTokenExpires = new Date(Date.now() + 15 * 60 * 1000);
 
-      await existing.save();
+      // await existing.save();
 
-      const verifyUrl = `${FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
-      await sendEmail({
-        to: existing.email,
-        subject: "Verify Your Account Again",
-        title: "Email Verification",
-        body: `<p>Hi ${existing.fullName}, click below to verify your email again.</p>`,
-        buttonText: "Verify Email",
-        buttonLink: verifyUrl,
-      });
+      // const verifyUrl = `${FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
+      // await sendEmail({
+      //   to: existing.email,
+      //   subject: "Verify Your Account Again",
+      //   title: "Email Verification",
+      //   body: `<p>Hi ${existing.fullName}, click below to verify your email again.</p>`,
+      //   buttonText: "Verify Email",
+      //   buttonLink: verifyUrl,
+      // });
 
-      return res.status(200).json({
-        message: "New verification email sent. Your password has been updated.",
-      });
+      // return res.status(200).json({
+      //   message: "New verification email sent. Your password has been updated.",
+      // });
     }
 
     // -------------------------
