@@ -274,6 +274,12 @@ export const acceptFriendRequest = async (req, res) => {
       requestId: request._id.toString(),
       senderId: sender._id.toString(),
       receiverId: receiver._id.toString(),
+      sender: {
+        _id: sender._id.toString(),
+        fullName: sender.fullName,
+        username: sender.username,
+        profilePic: sender.profilePic
+      },
       receiver: {
         _id: receiver._id.toString(),
         fullName: receiver.fullName,
@@ -283,16 +289,22 @@ export const acceptFriendRequest = async (req, res) => {
       timestamp: new Date().toISOString()
     });
     
-    // Notify Receiver (current user) to ensure UI consistency
+    // Notify Receiver (acceptor) that they are now friends
     emitToUser(receiver._id.toString(), 'friend-request-accepted-realtime', {
       requestId: request._id.toString(),
       senderId: sender._id.toString(),
       receiverId: receiver._id.toString(),
+      sender: {
+        _id: sender._id.toString(),
+        fullName: sender.fullName,
+        username: sender.username,
+        profilePic: sender.profilePic
+      },
       receiver: {
-         _id: receiver._id.toString(),
-         fullName: receiver.fullName,
-         username: receiver.username,
-         profilePic: receiver.profilePic
+        _id: receiver._id.toString(),
+        fullName: receiver.fullName,
+        username: receiver.username,
+        profilePic: receiver.profilePic
       },
       timestamp: new Date().toISOString()
     });
@@ -304,12 +316,22 @@ export const acceptFriendRequest = async (req, res) => {
     emitToUser(sender._id.toString(), 'pending-requests-count-updated', { count: senderPendingCount });
     emitToUser(receiver._id.toString(), 'pending-requests-count-updated', { count: receiverPendingCount });
 
+    // Create notification for Sender: "X accepted your friend request"
     await Notification.create({
       user: sender._id,
       sender: receiver._id,
       type: "friend_accept",
       message: `${receiver.fullName} accepted your friend request`,
       link: `/user/${receiver._id}`
+    });
+
+    // Create notification for Receiver (acceptor): "You are now friends with X"
+    await Notification.create({
+      user: receiver._id,
+      sender: sender._id,
+      type: "friend_accept",
+      message: `You are now friends with ${sender.fullName}`,
+      link: `/user/${sender._id}`
     });
 
     res.status(200).json({ message: "Friend request accepted" });

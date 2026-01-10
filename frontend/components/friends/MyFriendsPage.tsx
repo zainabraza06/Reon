@@ -174,6 +174,7 @@ export default function MyFriendsPage() {
     } catch (err) {
       console.error('Error sending request from friends page:', err);
       addNotification({ type: 'error', title: 'Error', message: 'Failed to send friend request' });
+      setActionInProgress(null);
     } finally {
       setActionInProgress(null);
     }
@@ -373,10 +374,10 @@ export default function MyFriendsPage() {
                             <button
                               className={`${styles.actionButton} ${styles.sendButton}`}
                               onClick={() => handleSendRequest(friend._id)}
-                              disabled={isProcessing || loading.action}
+                              disabled={isProcessing}
                             >
                               <FiUserCheck />
-                              {isProcessing || loading.action ? 'Sending...' : 'Send Request'}
+                              {isProcessing ? 'Sending...' : 'Send Request'}
                             </button>
                           </>
                         ) : (
@@ -384,10 +385,10 @@ export default function MyFriendsPage() {
                             <button
                               className={`${styles.actionButton} ${styles.removeButton}`}
                               onClick={() => handleRemoveFriend(friend._id)}
-                              disabled={isProcessing || loading.action}
+                              disabled={isProcessing}
                             >
                               <FiUserMinus />
-                              {isProcessing || loading.action ? 'Removing...' : 'Remove Friend'}
+                              {isProcessing ? 'Removing...' : 'Remove Friend'}
                             </button>
 
                             <button

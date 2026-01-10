@@ -227,12 +227,27 @@ export function useFriendRequests(currentUserId: string | null) {
         total: data.total
       });
       
+      // First, load sent requests to get requestIds
+      let sentRequestsMap = new Map<string, string>();
+      try {
+        const sentResponse = await api.get<FriendRequestsResponse>('/users/friend-requests/sent');
+        sentResponse.data.requests.forEach((request: FriendRequest) => {
+          sentRequestsMap.set(request.receiver._id, request._id);
+        });
+      } catch (err) {
+        console.warn('Failed to load sent requests for syncing:', err);
+      }
+      
       data.recommended.forEach((friend: RecommendedFriend) => {
         let status: FriendStatus = 'none';
+        let requestId: string | undefined = undefined;
+        
         if (friend.isFriend) {
           status = 'friends';
         } else if (friend.friendRequestSent) {
           status = 'pending-sent';
+          // Get requestId from sent requests map
+          requestId = sentRequestsMap.get(friend._id);
         } else if (friend.friendRequestReceived) {
           status = 'pending-received';
         }
@@ -240,7 +255,7 @@ export function useFriendRequests(currentUserId: string | null) {
         updateFriendState(friend._id, {
           userId: friend._id,
           status,
-          requestId: undefined
+          requestId
         });
       });
       

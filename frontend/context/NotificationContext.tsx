@@ -5,8 +5,10 @@ import { socketService } from '@/lib/socket';
 import { User } from '@/types';
 
 interface FriendRequestEvent {
-  sender?: { fullName?: string };
-  receiver?: { fullName?: string };
+  sender?: { _id?: string; fullName?: string };
+  receiver?: { _id?: string; fullName?: string };
+  senderId?: string;
+  receiverId?: string;
 }
 
 interface Notification {
@@ -72,13 +74,30 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // 🔔 Friend request accepted
       const handleFriendRequestAccepted = (data: FriendRequestEvent) => {
-        const receiverName = data?.receiver?.fullName || 'Someone';
-        addNotification({
-          type: 'success',
-          title: 'Friend Request Accepted',
-          message: `${receiverName} accepted your friend request!`,
-          duration: 5000
-        });
+        const currentUserId = user._id;
+        const senderId = data?.senderId || data?.sender?._id;
+        const receiverId = data?.receiverId || data?.receiver?._id;
+        
+        // If current user is the sender, show "X accepted your request"
+        if (currentUserId === senderId) {
+          const receiverName = data?.receiver?.fullName || 'Someone';
+          addNotification({
+            type: 'success',
+            title: 'Friend Request Accepted',
+            message: `${receiverName} accepted your friend request!`,
+            duration: 5000
+          });
+        } 
+        // If current user is the receiver (acceptor), show "You are now friends with X"
+        else if (currentUserId === receiverId) {
+          const senderName = data?.sender?.fullName || 'Someone';
+          addNotification({
+            type: 'success',
+            title: 'You are now friends!',
+            message: `You are now friends with ${senderName}`,
+            duration: 5000
+          });
+        }
       };
 
       // 🔔 Friend request withdrawn
