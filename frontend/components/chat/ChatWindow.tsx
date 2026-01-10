@@ -44,6 +44,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const loadingOlderRef = useRef(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const scrollRestoreRef = useRef<{ messageId: string; scrollTop: number; scrollHeight: number } | null>(null);
   
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,34 +72,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [selectedUser?._id]);
 
-  // Handle initial scroll to bottom when loading a new chat
+  // Handle initial scroll to bottom only on first load or user change
   useEffect(() => {
-    if (!containerRef.current || messages.length === 0 || !initialLoadRef.current) return;
-
+    if (!containerRef.current || messages.length === 0 || !initialLoadRef.current) {
+      // Reset initial load flag if we switch to a user with no messages yet
+      if (selectedUser && messages.length === 0) {
+        initialLoadRef.current = true;
+        prevMessagesLengthRef.current = 0;
+      }
+      return;
+    }
+    
+    // Only scroll on initial load, not when loading older messages or restoring scroll
+    if (loadingOlder || scrollRestoreRef.current) return;
+    
+    // Only scroll on initial load, not when loading older messages
     const scrollToBottom = () => {
-      if (bottomRef.current) {
-        bottomRef.current.scrollIntoView({ behavior: "auto" });
+      if (containerRef.current && bottomRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight;
       }
     };
 
-    const rafId = requestAnimationFrame(() => {
-      scrollToBottom();
-      
-      setTimeout(() => {
-        setShowSkeleton(false);
-        initialLoadRef.current = false;
-        prevMessagesLengthRef.current = messages.length;
+    // Use double RAF to ensure DOM is ready
+    const rafId1 = requestAnimationFrame(() => {
+      const rafId2 = requestAnimationFrame(() => {
+        scrollToBottom();
         
         setTimeout(() => {
+          setShowSkeleton(false);
+          initialLoadRef.current = false;
+          prevMessagesLengthRef.current = messages.length;
           setIsUserScrolling(false);
-        }, 100);
-      }, 500);
+        }, 300);
+      });
+      
+      return () => cancelAnimationFrame(rafId2);
     });
 
     return () => {
-      cancelAnimationFrame(rafId);
+      cancelAnimationFrame(rafId1);
     };
-  }, [messages]);
+  }, [selectedUser?._id, messages.length, loadingOlder]); // Trigger on user change or when messages first load
 
   const handleScroll = useCallback(() => {
     if (scrollTimeoutRef.current) {
@@ -113,47 +127,121 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }, 150);
   }, []);
 
-  // Trigger load more when user scrolls near top
+  // Trigger load more when user scrolls near top (WhatsApp-like behavior)
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !onLoadMore) return;
+    if (!container || !onLoadMore || initialLoadRef.current) return;
 
     let ticking = false;
+    let lastScrollTop = container.scrollTop;
 
     const onScroll = async () => {
       if (ticking) return;
       ticking = true;
+      
       requestAnimationFrame(async () => {
         try {
-          if (container.scrollTop < 120 && !loadingOlderRef.current) {
-            if (!onLoadMore) return;
+          const scrollTop = container.scrollTop;
+          const scrollThreshold = 200; // Load when within 200px of top
+          
+          // Only load if scrolling up (not down) and near top
+          if (scrollTop < scrollThreshold && scrollTop < lastScrollTop && !loadingOlderRef.current && messages.length > 0) {
             loadingOlderRef.current = true;
             setLoadingOlder(true);
+            
+            // Find the first visible message element
+            const messageElements = Array.from(container.querySelectorAll('[data-message-id]')) as HTMLElement[];
+            let firstVisibleMessage: HTMLElement | null = null;
+            let firstVisibleMessageId: string | null = null;
+            
+            for (const el of messageElements) {
+              const rect = el.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+              if (rect.top >= containerRect.top && rect.top <= containerRect.bottom) {
+                firstVisibleMessage = el;
+                firstVisibleMessageId = el.getAttribute('data-message-id');
+                break;
+              }
+            }
+            
+            // Save current state for scroll restoration
             const prevScrollHeight = container.scrollHeight;
-            const prevScrollTop = container.scrollTop;
+            const prevScrollTop = scrollTop;
+            
+            // Store reference for scroll restoration
+            if (firstVisibleMessageId) {
+              scrollRestoreRef.current = {
+                messageId: firstVisibleMessageId,
+                scrollTop: prevScrollTop,
+                scrollHeight: prevScrollHeight
+              };
+            }
+            
             try {
               await onLoadMore();
-              // Wait for DOM to update then restore position
-              requestAnimationFrame(() => {
-                const newScrollHeight = container.scrollHeight;
-                container.scrollTop = newScrollHeight - prevScrollHeight + prevScrollTop;
-              });
+              // Scroll restoration will happen in the useEffect below
             } catch (err) {
               console.error('onLoadMore error', err);
-            } finally {
               loadingOlderRef.current = false;
               setLoadingOlder(false);
+              scrollRestoreRef.current = null;
             }
           }
+          
+          lastScrollTop = scrollTop;
         } finally {
           ticking = false;
         }
       });
     };
 
-    container.addEventListener('scroll', onScroll);
+    container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
-  }, [onLoadMore]);
+  }, [onLoadMore, selectedUser?._id, initialLoadRef, messages.length]);
+  
+  // Restore scroll position after older messages are loaded
+  useEffect(() => {
+    const container = containerRef.current;
+    const restoreData = scrollRestoreRef.current;
+    
+    if (!container || !restoreData || !loadingOlder || messages.length === 0) return;
+    
+    // Wait for DOM to update with new messages
+    const restoreScroll = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          // Find the message element we saved
+          const targetElement = container.querySelector(`[data-message-id="${restoreData.messageId}"]`) as HTMLElement;
+          
+          if (targetElement && container) {
+            const newScrollHeight = container.scrollHeight;
+            const heightDifference = newScrollHeight - restoreData.scrollHeight;
+            
+            // Calculate new scroll position to maintain visual position
+            if (heightDifference > 0) {
+              const elementOffset = targetElement.offsetTop;
+              const newScrollTop = restoreData.scrollTop + heightDifference;
+              
+              // Set scroll position to maintain the same visual position
+              container.scrollTop = newScrollTop;
+            }
+          }
+          
+          // Clean up
+          loadingOlderRef.current = false;
+          setLoadingOlder(false);
+          scrollRestoreRef.current = null;
+        });
+      });
+    };
+    
+    // Small delay to ensure React has finished rendering
+    const timeoutId = setTimeout(restoreScroll, 100);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [messages, loadingOlder]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -169,28 +257,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [handleScroll]);
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive (only if user is near bottom or sent message)
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || messages.length === 0 || isUserScrolling) return;
+    if (!container || messages.length === 0) {
+      prevMessagesLengthRef.current = messages.length;
+      return;
+    }
+
+    // Don't auto-scroll on initial load or when restoring scroll position
+    if (initialLoadRef.current || loadingOlder || scrollRestoreRef.current) {
+      prevMessagesLengthRef.current = messages.length;
+      return;
+    }
+
+    // Don't auto-scroll if user is actively scrolling up
+    if (isUserScrolling) {
+      prevMessagesLengthRef.current = messages.length;
+      return;
+    }
 
     const hasNewMessages = messages.length > prevMessagesLengthRef.current;
     const lastMessage = messages[messages.length - 1];
     
     if (hasNewMessages && lastMessage) {
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      // Check if user is near bottom (within 150px)
+      const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const isNearBottom = scrollBottom < 150;
       
+      // Auto-scroll if: user is near bottom OR user sent the message
       if (isNearBottom || lastMessage.sender === currentUserId) {
-        const scrollTimer = setTimeout(() => {
-          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-        
-        return () => clearTimeout(scrollTimer);
+        // Use scrollTop instead of scrollIntoView for better control
+        requestAnimationFrame(() => {
+          if (container && bottomRef.current) {
+            container.scrollTop = container.scrollHeight;
+          }
+        });
       }
     }
     
     prevMessagesLengthRef.current = messages.length;
-  }, [messages, currentUserId, isUserScrolling]);
+  }, [messages, currentUserId, isUserScrolling, initialLoadRef, loadingOlder]);
 
   // Smooth scroll when typing indicator appears
   useEffect(() => {
@@ -353,6 +460,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ref={containerRef} 
         className={cn(styles.messagesContainer, "custom-scrollbar")}
       >
+        {/* Loading older messages indicator */}
+        {loadingOlder && (
+          <div className={styles.loadingOlderMessages}>
+            <div className={styles.loadingSpinner}></div>
+            <span>Loading older messages...</span>
+          </div>
+        )}
+
         {/* Encryption notice at top */}
         <div className={styles.encryptionNotice}>
           <span className={styles.encryptionBadge}>
@@ -374,15 +489,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               const mediaForThisMessage = decryptedMedia[messageId] || [];
 
               return (
-                <MessageBubble
-                  key={messageId || `msg-${index}`}
-                  message={msg}
-                  isMe={isMe}
-                  currentUserId={currentUserId}
-                  // ✅ UPDATED: Only pass decrypted data, not decrypt functions
-                  decryptedText={decryptedMessages[messageId]}
-                  decryptedMedia={mediaForThisMessage}
-                />
+                <div key={messageId || `msg-${index}`} data-message-id={messageId || `msg-${index}`}>
+                  <MessageBubble
+                    message={msg}
+                    isMe={isMe}
+                    currentUserId={currentUserId}
+                    // ✅ UPDATED: Only pass decrypted data, not decrypt functions
+                    decryptedText={decryptedMessages[messageId]}
+                    decryptedMedia={mediaForThisMessage}
+                  />
+                </div>
               );
             })}
 
