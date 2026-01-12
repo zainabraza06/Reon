@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import User from "../models/User.js";
-import { isUserOnline } from "./socket.js";
+import { isUserOnline } from "./lib/socket.js";
 import { 
   createSession, 
   getSession, 
