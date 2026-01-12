@@ -1,28 +1,23 @@
 import { Server } from "socket.io";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
-import FriendRequest from "../models/FriendRequest.js";
 import * as messageController from "../controllers/message.controller.js";
-import * as friendController from "../controllers/friend.controller.js";
 
 let io;
 const onlineUsers = new Map(); // userId → socketId (primary socket)
 const userSockets = new Map(); // userId → Set(socketIds) for multiple devices
-const typingUsers = new Map(); // Map of userId → { typingTo: userId, timestamp }
 const heartbeatMap = new Map(); // userId → lastHeartbeat timestamp
 const disconnectedDueToHeartbeat = new Set(); // Track users disconnected due to heartbeat timeout
-const activeCalls = new Map(); // roomName → { participants: [userId1, userId2], callType, startTime }
-const callRooms = new Map(); // userId → roomName (for quick lookup)
-
-const HEARTBEAT_TIMEOUT = 15000; // 15 seconds (WhatsApp-like)
-const HEARTBEAT_CHECK_INTERVAL = 5000; // Check every 5 seconds
 
 // Track which messages have been processed for delivery during this session
 const processedMessageDeliveries = new Map(); // userId → Set(messageIds)
 
-// -------------------- TYPING INDICATORS --------------------
+// TYPING INDICATORS 
 // Store typing status: userId → { typingTo: receiverId, timestamp: Date.now() }
 const typingStatus = new Map(); // userId → typing data
+
+const HEARTBEAT_TIMEOUT = 15000; // 15 seconds 
+const HEARTBEAT_CHECK_INTERVAL = 5000; // Check every 5 seconds
 
 // Clear typing status
 const clearTypingStatus = (userId) => {
@@ -41,14 +36,11 @@ const clearTypingStatus = (userId) => {
         timestamp: new Date().toISOString()
       });
     }
-    
- 
   }
 };
 
 // Handle typing start
 const handleTypingStart = (senderId, receiverId, socketId) => {
-  
   // Set typing status
   typingStatus.set(senderId, {
     typingTo: receiverId,
@@ -67,7 +59,6 @@ const handleTypingStart = (senderId, receiverId, socketId) => {
 
 // Handle typing stop
 const handleTypingStop = (senderId, receiverId) => {
-  
   // Clear typing status
   clearTypingStatus(senderId);
   
@@ -95,7 +86,6 @@ const cleanupUserTyping = (userId) => {
   clearTypingStatus(userId);
 };
 
-// -------------------- EXISTING HELPER FUNCTIONS --------------------
 // Helper function to simulate HTTP request/response pattern
 const createSocketRequest = (socket, data) => {
   const user = socket.user || { _id: data?.sender || data?.userId };
@@ -124,8 +114,6 @@ const createSocketResponse = (socket, callback) => {
 // Function to mark messages as delivered and notify senders
 const deliverPendingMessages = async (receiverId, socket = null) => {
   try {
-    console.log(`📨 Processing pending messages for user ${receiverId}`);
-    
     // Initialize processed messages set for this user if not exists
     if (!processedMessageDeliveries.has(receiverId)) {
       processedMessageDeliveries.set(receiverId, new Set());
@@ -134,14 +122,13 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
     // Find all messages sent to this user that are NOT delivered yet
     const pendingMessages = await Message.find({
       receiver: receiverId,
-      delivered: false, // Changed from status field
+      delivered: false,
       sentAt: { $ne: null }
     })
     .populate('sender', '_id username')
     .sort({ createdAt: 1 });
     
     if (pendingMessages.length === 0) {
-      console.log(`📭 No pending messages for user ${receiverId}`);
       return { deliveredCount: 0, messagesBySender: {} };
     }
     
@@ -152,11 +139,8 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
     );
     
     if (newPendingMessages.length === 0) {
-      console.log(`📭 All ${pendingMessages.length} messages already processed for user ${receiverId}`);
       return { deliveredCount: 0, messagesBySender: {} };
     }
-    
-    console.log(`📨 Found ${newPendingMessages.length} new pending messages out of ${pendingMessages.length} total`);
     
     // Group messages by sender
     const messagesBySender = {};
@@ -186,14 +170,12 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
       { _id: { $in: messageIdsToUpdate } },
       {
         $set: {
-          delivered: true, // Changed from status field
+          delivered: true,
           deliveredAt: new Date(),
           updatedAt: new Date()
         }
       }
     );
-    
-   
     
     // Notify each sender about their delivered messages
     for (const [senderId, messages] of Object.entries(messagesBySender)) {
@@ -213,8 +195,6 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
           deliveredAt: message.deliveredAt.toISOString()
         });
       });
-      
-
     }
     
     // Notify the receiver (if socket provided)
@@ -240,8 +220,6 @@ const deliverPendingMessages = async (receiverId, socket = null) => {
 const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
   if (!userId) return;
   
-
-  
   // Clean up heartbeat
   heartbeatMap.delete(userId);
   
@@ -262,7 +240,6 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
       // Track if disconnected due to heartbeat
       if (reason === 'heartbeat_timeout') {
         disconnectedDueToHeartbeat.add(userId);
-    
       }
       
       // Broadcast offline status
@@ -272,8 +249,6 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
         reason,
         timestamp: new Date().toISOString()
       });
-      
-
     } 
   } else if (reason === 'heartbeat_timeout') {
     // User was in heartbeatMap but not in userSockets (edge case)
@@ -286,25 +261,17 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
       reason,
       timestamp: new Date().toISOString()
     });
-    
- 
   }
-  
-  // Remove from typing tracking
-  typingUsers.delete(userId);
 };
 
 // Function to mark user as online (when first socket connects OR reconnection)
 const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
-
-  
   // Check if this is a reconnection after heartbeat timeout
   const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
   
   // Remove from disconnected due to heartbeat set if present
   if (wasDisconnectedDueToTimeout) {
     disconnectedDueToHeartbeat.delete(userId);
-   
   }
   
   // Clean up any previous heartbeat
@@ -324,8 +291,6 @@ const markUserAsOnline = async (userId, socketId, isReconnection = false) => {
       wasDisconnectedDueToTimeout,
       timestamp: new Date().toISOString()
     });
-    
-
   }
   
   // Add socket to user's socket set
@@ -344,8 +309,6 @@ const startHeartbeatWatcher = () => {
     
     for (const [userId, lastBeat] of heartbeatMap.entries()) {
       if (now - lastBeat > HEARTBEAT_TIMEOUT) {
-       
-        
         // Find the primary socket ID for this user
         const socketId = onlineUsers.get(userId);
         
@@ -362,8 +325,6 @@ const startHeartbeatWatcher = () => {
 // Function to handle user reconnection after heartbeat timeout
 const handleUserReconnection = async (userId, socket) => {
   try {
-
-    
     // Mark user as online again
     const wasDisconnectedDueToTimeout = await markUserAsOnline(userId, socket.id, true);
     
@@ -393,7 +354,6 @@ const handleUserReconnection = async (userId, socket) => {
         timestamp: new Date().toISOString()
       });
     });
-   
   } catch (error) {
     console.error(`❌ Error handling reconnection for user ${userId}:`, error);
   }
@@ -413,8 +373,6 @@ export const initSocket = (server) => {
   startHeartbeatWatcher();
 
   io.on("connection", (socket) => {
-
-
     // Clear processed messages when user disconnects completely
     socket.on("disconnect", () => {
       const userId = socket.userId;
@@ -422,12 +380,11 @@ export const initSocket = (server) => {
         // Only clear if user is completely offline
         if (!userSockets.has(userId) || userSockets.get(userId).size === 0) {
           processedMessageDeliveries.delete(userId);
-        
         }
       }
     });
 
-    // ---- AUTHENTICATION & JOIN USER ROOM ----
+    // AUTHENTICATION & JOIN USER ROOM
     socket.on("authenticate", async (userId) => {
       if (!userId) {
         socket.emit("authentication-error", { message: "User ID required" });
@@ -449,7 +406,6 @@ export const initSocket = (server) => {
       // Deliver pending messages if this is the first socket connection
       if (isReconnection || userSockets.get(userId).size === 1) {
         const deliveryResult = await deliverPendingMessages(userId, socket);
-    
       }
       
       // Notify user of successful authentication with online friends
@@ -460,10 +416,9 @@ export const initSocket = (server) => {
         wasDisconnectedDueToTimeout,
         timestamp: new Date().toISOString()
       });
-    
     });
 
-    // ---- HEARTBEAT ----
+    // HEARTBEAT
     socket.on("heartbeat", async () => {
       const userId = socket.userId;
       if (!userId) return;
@@ -477,12 +432,11 @@ export const initSocket = (server) => {
       
       // If user was marked offline due to timeout, handle reconnection
       if (wasOfflineDueToTimeout) {
-      
         await handleUserReconnection(userId, socket);
       } 
     });
 
-    // ---- TYPING INDICATORS ----
+    // TYPING INDICATORS
     socket.on("start-typing", (data) => {
       const { senderId, receiverId, isTyping, timestamp } = data;
       
@@ -527,7 +481,7 @@ export const initSocket = (server) => {
       handleTypingStop(senderId, receiverId);
     });
 
-    // ---- REQUEST ONLINE FRIENDS ----
+    // REQUEST ONLINE FRIENDS
     socket.on("request-online-friends", async () => {
       const userId = socket.userId;
       if (!userId) {
@@ -542,8 +496,6 @@ export const initSocket = (server) => {
           onlineFriends,
           timestamp: new Date().toISOString()
         });
-        
-      
       } catch (error) {
         console.error("Error getting online friends:", error);
         socket.emit("online-friends-response", {
@@ -553,7 +505,7 @@ export const initSocket = (server) => {
       }
     });
 
-    // ---- REQUEST ONLINE USERS ----
+    // REQUEST ONLINE USERS 
     socket.on("request-online-users", () => {
       const online = Array.from(userSockets.keys());
       socket.emit("online-users-response", {
@@ -563,7 +515,7 @@ export const initSocket = (server) => {
       });
     });
 
-    // ---- TYPING INDICATORS (Legacy support - can remove if not used) ----
+    // TYPING INDICATORS (Legacy support - can remove if not used)
     socket.on("typing-start", async (data) => {
       const { receiverId, senderId = socket.userId } = data;
       
@@ -575,6 +527,7 @@ export const initSocket = (server) => {
       }
       
       // Store typing status
+      const typingUsers = new Map(); // Local variable for legacy support
       typingUsers.set(senderId, {
         typingTo: receiverId,
         timestamp: Date.now(),
@@ -588,8 +541,6 @@ export const initSocket = (server) => {
         isTyping: true,
         timestamp: new Date().toISOString()
       });
-      
-    
     });
 
     socket.on("typing-stop", async (data) => {
@@ -603,6 +554,7 @@ export const initSocket = (server) => {
       }
       
       // Remove typing status
+      const typingUsers = new Map(); // Local variable for legacy support
       typingUsers.delete(senderId);
       
       // Notify receiver
@@ -612,10 +564,9 @@ export const initSocket = (server) => {
         isTyping: false,
         timestamp: new Date().toISOString()
       });
-
     });
 
-    // ---- NEW MESSAGE HANDLER ----
+    // NEW MESSAGE HANDLER
     socket.on("new-message", async (data) => {
       try {
         const req = createSocketRequest(socket, data);
@@ -633,7 +584,7 @@ export const initSocket = (server) => {
             if (isReceiverOnline) {
               // If receiver is online, mark as delivered immediately
               await Message.findByIdAndUpdate(message._id, {
-                delivered: true, // Changed from status field
+                delivered: true,
                 deliveredAt: new Date()
               });
               
@@ -649,16 +600,12 @@ export const initSocket = (server) => {
                 receiverId,
                 deliveredAt: new Date().toISOString()
               });
-              
-             
             } else {
               // If receiver is offline, mark as sent only (delivered: false)
               emitToUser(receiverId, "new-message", {
                 ...message,
                 delivered: false // Still not delivered
               });
-              
-             
             }
           }
         });
@@ -669,7 +616,7 @@ export const initSocket = (server) => {
       }
     });
 
-    // ---- MESSAGE DELIVERY CONFIRMATION ----
+    // MESSAGE DELIVERY CONFIRMATION
     socket.on("confirm-message-delivery", async (data) => {
       try {
         const { messageId, receiverId, senderId } = data;
@@ -685,22 +632,17 @@ export const initSocket = (server) => {
         const updatedMessage = await Message.findByIdAndUpdate(
           messageId,
           {
-            delivered: true, // Changed from status field
+            delivered: true,
             deliveredAt: new Date()
           },
           { new: true }
         );
-        
-        if (updatedMessage) {
-      
-        }
-        
       } catch (error) {
         console.error("Error confirming message delivery:", error);
       }
     });
 
-    // ---- MANUAL MESSAGE DELIVERY UPDATE ----
+    // MANUAL MESSAGE DELIVERY UPDATE
     socket.on("update-undelivered-messages", async () => {
       try {
         const userId = socket.userId;
@@ -708,8 +650,6 @@ export const initSocket = (server) => {
           socket.emit("error", { message: "Not authenticated" });
           return;
         }
-        
-        
         
         const result = await deliverPendingMessages(userId, socket);
         
@@ -719,7 +659,6 @@ export const initSocket = (server) => {
           timestamp: new Date().toISOString(),
           message: `Delivered ${result.deliveredCount} pending messages`
         });
-        
       } catch (error) {
         console.error("Error updating undelivered messages:", error);
         socket.emit("messages-updated-response", {
@@ -729,7 +668,7 @@ export const initSocket = (server) => {
       }
     });
 
-    // ---- CHECK PENDING MESSAGES ----
+    // CHECK PENDING MESSAGES
     socket.on("check-pending-messages", async () => {
       try {
         const userId = socket.userId;
@@ -741,7 +680,7 @@ export const initSocket = (server) => {
         // Count pending undelivered messages
         const pendingCount = await Message.countDocuments({
           receiver: userId,
-          delivered: false, // Changed from status field
+          delivered: false,
           sentAt: { $ne: null }
         });
         
@@ -750,9 +689,6 @@ export const initSocket = (server) => {
           hasPending: pendingCount > 0,
           timestamp: new Date().toISOString()
         });
-        
-     
-        
       } catch (error) {
         console.error("Error checking pending messages:", error);
         socket.emit("pending-messages-response", {
@@ -763,35 +699,14 @@ export const initSocket = (server) => {
       }
     });
 
-    // ---- DISCONNECT HANDLER ----
+    // DISCONNECT HANDLER
     socket.on("disconnect", () => {
- 
-      
       const userId = socket.userId;
       if (userId) {
         // Clean up typing status
         cleanupUserTyping(userId);
         
-       
-        
         markUserAsOffline(userId, socket.id, 'disconnect');
-      }
-      
-      // Clean up typing indicators for this socket only
-      for (const [typingUserId, typingData] of typingUsers.entries()) {
-        if (typingData.socketId === socket.id) {
-          typingUsers.delete(typingUserId);
-          
-          // Notify the other user that typing stopped
-          if (typingData.typingTo) {
-            emitToUser(typingData.typingTo, "user-typing", {
-              senderId: typingUserId,
-              isTyping: false,
-              timestamp: new Date().toISOString()
-            });
-          }
-          break;
-        }
       }
     });
 
@@ -843,8 +758,6 @@ export const emitToUser = (userId, event, data) => {
   }
 };
 
-
-
 export const getOnlineUsers = () => Array.from(userSockets.keys());
 export const isUserOnline = (userId) => onlineUsers.has(userId);
 export const getUserSockets = (userId) => userSockets.get(userId) || new Set();
@@ -852,14 +765,11 @@ export const getUserSockets = (userId) => userSockets.get(userId) || new Set();
 export const getUserStatus = (userId) => {
   const isOnline = isUserOnline(userId);
   const typingData = typingStatus.get(userId);
-  const callInfo = getUserCallInfo(userId);
   
   return {
     isOnline,
     isTyping: !!typingData,
     typingTo: typingData?.typingTo,
-    isInCall: !!callInfo,
-    callType: callInfo?.callType,
     lastHeartbeat: heartbeatMap.get(userId) || null,
     socketCount: userSockets.get(userId)?.size || 0,
     wasDisconnectedDueToTimeout: disconnectedDueToHeartbeat.has(userId)

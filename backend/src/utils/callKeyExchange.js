@@ -1,28 +1,18 @@
-// Helpers for relaying encrypted key blobs. The server must NOT inspect keys.
+// Simple key envelope validation
+export const validateKeyEnvelope = (payload) => {
+  return payload && 
+         typeof payload === 'object' &&
+         payload.callId && 
+         payload.publicKey &&
+         typeof payload.publicKey === 'string' &&
+         payload.publicKey.length > 0;
+};
 
-export const createKeyEnvelope = ({ callId, senderId, recipientId, encryptedKeyBlob }) => {
-  if (!callId || !senderId || !recipientId || !encryptedKeyBlob) {
-    throw new Error("Missing fields for key exchange envelope");
-  }
-
+// Generate encryption keys (simplified)
+export const generateKeyPair = async () => {
+  // In a real implementation, you'd use Web Crypto API
   return {
-    callId,
-    senderId: senderId.toString(),
-    recipientId: recipientId.toString(),
-    encryptedKeyBlob
+    publicKey: crypto.randomBytes(32).toString('base64'),
+    privateKey: crypto.randomBytes(32).toString('base64')
   };
 };
-
-export const validateKeyEnvelope = (envelope) => {
-  if (
-    !envelope ||
-    typeof envelope.callId !== "string" ||
-    typeof envelope.senderId !== "string" ||
-    typeof envelope.recipientId !== "string" ||
-    typeof envelope.encryptedKeyBlob !== "string"
-  ) {
-    return false;
-  }
-  return true;
-};
-

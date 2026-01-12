@@ -1,127 +1,121 @@
-// Lightweight in-memory call session store.
-// In production, move this to a durable store (Redis/DB) with eviction.
-const CALL_TTL_MS = 20 * 60 * 1000; // 20 minutes
+import crypto from "crypto";
 
-const callSessions = new Map(); // callId -> session
+// Simple in-memory call store (replace with Redis/database for production)
+const callSessions = new Map(); // callId → session data
+const userCalls = new Map(); // userId → Set(callIds)
 
-const cleanup = () => {
-  const now = Date.now();
-  for (const [callId, session] of callSessions.entries()) {
-    if (session.expiresAt <= now) {
-      console.log(`🧹 Cleaning up expired call session: ${callId}`);
-      callSessions.delete(callId);
-    }
-  }
-};
-
-setInterval(cleanup, 60 * 1000).unref();
-
-export const createSession = ({
-  callId,
-  fromUserId,
-  toUserId,
-  type = "audio",
-  icePolicy = "all"
-}) => {
-  const now = Date.now();
+// Call session management
+export const createSession = ({ callId, fromUserId, toUserId, type = "audio", icePolicy = "all" }) => {
   const session = {
     callId,
     fromUserId: fromUserId.toString(),
     toUserId: toUserId.toString(),
     type,
-    status: "initiated",
-    createdAt: now,
-    updatedAt: now,
-    expiresAt: now + CALL_TTL_MS,
     icePolicy,
-    iceRestartCount: 0
+    status: "created",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes
   };
+  
   callSessions.set(callId, session);
-  console.log(`✅ Created session: ${callId}, from: ${fromUserId}, to: ${toUserId}`);
+  
+  // Track user's active calls
+  [fromUserId, toUserId].forEach(userId => {
+    const strId = userId.toString();
+    if (!userCalls.has(strId)) {
+      userCalls.set(strId, new Set());
+    }
+    userCalls.get(strId).add(callId);
+  });
+  
+  console.log(`📞 Call ${callId} created: ${fromUserId} → ${toUserId} (${type})`);
   return session;
 };
 
-export const getSession = (callId) => callSessions.get(callId);
+export const getSession = (callId) => {
+  return callSessions.get(callId);
+};
 
 export const updateStatus = (callId, status) => {
   const session = callSessions.get(callId);
-  if (!session) {
-    console.log(`❌ Cannot update status: session ${callId} not found`);
-    return null;
+  if (session) {
+    session.status = status;
+    session.updatedAt = Date.now();
+    console.log(`📞 Call ${callId} status: ${status}`);
+    return true;
   }
-  console.log(`📞 Call ${callId} status: ${session.status} -> ${status}`);
-  session.status = status;
-  session.updatedAt = Date.now();
-  session.expiresAt = Date.now() + CALL_TTL_MS;
-  return session;
-};
-
-export const touchSession = (callId) => {
-  const session = callSessions.get(callId);
-  if (!session) return null;
-  session.updatedAt = Date.now();
-  session.expiresAt = Date.now() + CALL_TTL_MS;
-  return session;
-};
-
-export const incrementIceRestart = (callId) => {
-  const session = callSessions.get(callId);
-  if (!session) return null;
-  session.iceRestartCount = (session.iceRestartCount || 0) + 1;
-  session.updatedAt = Date.now();
-  session.expiresAt = Date.now() + CALL_TTL_MS;
-  return session;
+  return false;
 };
 
 export const assertParticipant = (callId, userId) => {
   const session = callSessions.get(callId);
-  if (!session) {
-    console.log(`❌ Assert participant failed: session ${callId} not found`);
-    return false;
+  if (!session) return false;
+  
+  const strUserId = userId.toString();
+  return session.fromUserId === strUserId || session.toUserId === strUserId;
+};
+
+export const touchSession = (callId) => {
+  const session = callSessions.get(callId);
+  if (session) {
+    session.updatedAt = Date.now();
   }
-  const uid = userId.toString();
-  const isParticipant = session.fromUserId === uid || session.toUserId === uid;
-  if (!isParticipant) {
-    console.log(`❌ User ${uid} is not a participant of call ${callId}`);
-  }
-  return isParticipant;
 };
 
 export const endSession = (callId, reason = "ended") => {
   const session = callSessions.get(callId);
-  if (!session) {
-    console.log(`❌ Cannot end session: ${callId} not found`);
-    return null;
+  if (session) {
+    // Remove from user tracking
+    [session.fromUserId, session.toUserId].forEach(userId => {
+      const userCallSet = userCalls.get(userId);
+      if (userCallSet) {
+        userCallSet.delete(callId);
+        if (userCallSet.size === 0) {
+          userCalls.delete(userId);
+        }
+      }
+    });
+    
+    // Remove session
+    callSessions.delete(callId);
+    console.log(`🗑️ Call ${callId} ended: ${reason}`);
+    return true;
   }
-  console.log(`📞 Ending session ${callId}, reason: ${reason}`);
-  session.status = reason;
-  session.updatedAt = Date.now();
-  callSessions.delete(callId);
-  return session;
+  return false;
 };
 
-// NEW: Clean up sessions for disconnected user
-export const cleanupUserSessions = (userId) => {
-  const uid = userId.toString();
-  let cleanedCount = 0;
+export const getUserActiveCalls = (userId) => {
+  const userCallSet = userCalls.get(userId.toString());
+  return userCallSet ? Array.from(userCallSet).map(callId => getSession(callId)).filter(Boolean) : [];
+};
+
+export const isUserInCall = (userId) => {
+  const strUserId = userId.toString();
   
-  for (const [callId, session] of callSessions.entries()) {
-    if ((session.fromUserId === uid || session.toUserId === uid) && 
-        session.status !== 'ended' && 
-        session.status !== 'rejected' &&
-        session.status !== 'busy') {
-      console.log(`🧹 Cleaning up call ${callId} for disconnected user ${uid}, status was: ${session.status}`);
-      endSession(callId, 'user-disconnected');
-      cleanedCount++;
+  for (const session of callSessions.values()) {
+    if ((session.fromUserId === strUserId || session.toUserId === strUserId) && 
+        session.status === "connected") {
+      return session.callId;
     }
   }
-  
-  if (cleanedCount > 0) {
-    console.log(`🧹 Cleaned up ${cleanedCount} call sessions for user ${uid}`);
-  }
+  return null;
 };
 
-// Optional: Get all sessions for debugging
-export const getAllSessions = () => {
-  return Array.from(callSessions.values());
+// Clean up expired sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [callId, session] of callSessions.entries()) {
+    if (now > session.expiresAt) {
+      endSession(callId, "expired");
+    }
+  }
+}, 5 * 60 * 1000); // Check every 5 minutes
+
+// Cleanup function for graceful shutdown
+export const cleanupAllCalls = () => {
+  for (const [callId] of callSessions.entries()) {
+    endSession(callId, "server-shutdown");
+  }
+  console.log("🧹 All call sessions cleaned up");
 };

@@ -67,11 +67,11 @@ initCallNamespace(getIO());
 // Start server and connect to database
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, async () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(` Server is running on port ${PORT}`);
   try {
     await connectDB();
-    console.log("✅ Database connected successfully");
+    console.log("Database connected successfully");
   } catch (err) {
-    console.error("❌ Database connection failed:", err);
+    console.error("Database connection failed:", err);
   }
 });
