@@ -2,57 +2,8 @@
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 
-export interface IncomingCallData {
-  callId: string;
-  fromUserId: string;
-  fromUserName: string;
-  fromUserAvatar?: string;
-  type: "audio" | "video";
-}
+import { IncomingCallData, ActiveCallData, CallState, CallContextType, CallViewMode } from "@/types";
 
-export type CallState = 'idle' | 'initiating' | 'dialing' | 'ringing' | 'connecting' | 'connected' | 'ended' | 'failed';
-
-export interface ActiveCallData {
-  callId: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  type: "audio" | "video";
-  localStream?: MediaStream;
-  remoteStream?: MediaStream;
-  startTime: number;
-  callState?: CallState;
-}
-
-export type CallViewMode = 'full' | 'mini';
-
-export interface CallContextType {
-  // Incoming calls
-  incomingCall: IncomingCallData | null;
-  showIncomingCall: (data: IncomingCallData) => void;
-  dismissIncomingCall: () => void;
-  
-  // Active calls
-  activeCall: ActiveCallData | null;
-  startCall: (data: ActiveCallData) => void;
-  updateCallStreams: (local?: MediaStream, remote?: MediaStream) => void;
-  updateCallState: (state: CallState) => void;
-  endCall: () => void;
-  
-  // Call view mode
-  callViewMode: CallViewMode;
-  setCallViewMode: (mode: CallViewMode) => void;
-  
-  // Call state
-  isCallActive: boolean;
-  setIsCallActive: (active: boolean) => void;
-  
-  // Call controls
-  isMicEnabled: boolean;
-  setIsMicEnabled: (enabled: boolean) => void;
-  isCameraEnabled: boolean;
-  setIsCameraEnabled: (enabled: boolean) => void;
-}
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
