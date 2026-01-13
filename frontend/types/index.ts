@@ -114,8 +114,9 @@ export interface IncomingCallData {
   type: "audio" | "video";
 }
 
-export type CallState = 'idle' | 'initiating' | 'dialing' | 'ringing' | 'connecting' | 'connected' | 'ended' | 'failed';
 
+export type CallState = 'idle' | 'initiating' | 'ringing' | 'connecting' | 'connected' | 
+'ended' | 'failed' | 'rejected' | 'busy';
 export interface ActiveCallData {
   callId: string;
   userId: string;
