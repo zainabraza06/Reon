@@ -67,39 +67,107 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   }, [callState, onCallStateChange]);
 
   // Get local media stream
-  const getLocalStream = useCallback(async (callType: CallType) => {
+const getLocalStream = useCallback(async (callType: CallType) => {
+  try {
+    // Check if mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    console.log(`📱 Device detected as: ${isMobile ? 'Mobile' : 'Desktop'}`);
+    
+    const constraints: MediaStreamConstraints = {
+      audio: {
+        // Use standard WebRTC echo cancellation
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+        
+        // Better echo handling with browser-specific constraints
+        // These work across browsers
+        ...(isMobile ? {
+          sampleRate: 16000,
+          sampleSize: 16,
+          // Mobile-specific optimizations
+          latency: 0.02,
+          // Try disabling autoGainControl if echo persists
+          autoGainControl: false
+        } : {
+          // Desktop settings
+          sampleRate: 48000,
+          sampleSize: 24,
+          latency: 0.01
+        })
+      },
+      video: callType === 'video' ? {
+        // Mobile-friendly resolution
+        width: isMobile ? { ideal: 480, max: 640 } : { ideal: 1280, max: 1920 },
+        height: isMobile ? { ideal: 360, max: 480 } : { ideal: 720, max: 1080 },
+        frameRate: isMobile ? { ideal: 15, max: 24 } : { ideal: 30, max: 60 },
+        facingMode: 'user',
+        // Add for better mobile performance
+        ...(isMobile && {
+          aspectRatio: 1.777777778 // 16:9
+        })
+      } : false
+    };
+
+    console.log('🎥 Requesting media with constraints:', constraints);
+    
+    // Try with exact constraints first
+    let stream: MediaStream;
     try {
-      const constraints: MediaStreamConstraints = {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.warn('⚠️ First constraint attempt failed, trying relaxed constraints:', err);
+      // Fallback to simpler constraints
+      const fallbackConstraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
           channelCount: 1
         },
         video: callType === 'video' ? {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 },
-          facingMode: 'user'
+          facingMode: 'user',
+          width: isMobile ? 640 : 1280,
+          height: isMobile ? 480 : 720
         } : false
       };
-
-      console.log('🎥 Requesting media with constraints:', constraints);
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      
-      const audioTracks = stream.getAudioTracks();
-      const videoTracks = stream.getVideoTracks();
-      console.log(`✅ Got stream: ${audioTracks.length} audio, ${videoTracks.length} video tracks`);
-      
-      localStreamRef.current = stream;
-      return stream;
-    } catch (error) {
-      const errorMsg = `Failed to get ${callType} stream: ${error instanceof Error ? error.message : String(error)}`;
-      console.error(errorMsg);
-      onError?.(errorMsg);
-      throw error;
+      stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
     }
-  }, [onError]);
+    
+    // Verify audio settings
+    const audioTrack = stream.getAudioTracks()[0];
+    if (audioTrack) {
+      const settings = audioTrack.getSettings();
+      console.log('🎵 Audio settings applied:', {
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        autoGainControl: settings.autoGainControl,
+        deviceId: settings.deviceId,
+        sampleRate: settings.sampleRate,
+        channelCount: settings.channelCount,
+        // Log if we're using Chrome for debugging
+        userAgent: navigator.userAgent
+      });
+      
+      // ✅ CRITICAL: Add event listeners to detect echo
+      audioTrack.onended = () => console.log('🎤 Audio track ended');
+      audioTrack.onmute = () => console.log('🎤 Audio track muted');
+      audioTrack.onunmute = () => console.log('🎤 Audio track unmuted');
+    }
+    
+    const audioTracks = stream.getAudioTracks();
+    const videoTracks = stream.getVideoTracks();
+    console.log(`✅ Got stream: ${audioTracks.length} audio, ${videoTracks.length} video tracks`);
+    
+    localStreamRef.current = stream;
+    return stream;
+  } catch (error) {
+    const errorMsg = `Failed to get ${callType} stream: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(errorMsg);
+    onError?.(errorMsg);
+    throw error;
+  }
+}, [onError]);
 
   // Check if connection is fully established
   const checkConnectionEstablished = useCallback((session: CallSession) => {
@@ -262,236 +330,183 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
     });
   }, [updateCallState, onIncomingCall, rejectCall]);
 
-  // Initiate call
-  const initiateCall = useCallback(async (peerId: string, peerName: string, callType: CallType) => {
-    try {
-      console.log(`📞 Initiating ${callType} call to ${peerName} (${peerId})`);
-      
-      // Reset state
-      iceConnectedRef.current = false;
-      remoteTracksReceivedRef.current = false;
-      callConnectedTimeRef.current = null;
-      isCallerRef.current = true;
-      updateCallState('initiating');
+ const initiateCall = useCallback(async (peerId: string, peerName: string, callType: CallType) => {
+  try {
+    console.log(`📞 Initiating ${callType} call to ${peerName} (${peerId})`);
+    
+    // Reset state
+    iceConnectedRef.current = false;
+    remoteTracksReceivedRef.current = false;
+    callConnectedTimeRef.current = null;
+    isCallerRef.current = true;
+    updateCallState('initiating');
 
-      // 1. Create call session via REST API
-      const response = await api.post('/calls', {
-        toUserId: peerId,
-        type: callType
-      });
+    // 1. Create call session via REST API
+    const response = await api.post('/calls', {
+      toUserId: peerId,
+      type: callType
+    });
 
-      const { callId, iceServers, calleeStatus } = response.data;
-      console.log(`✅ Call session created: ${callId}`, {
-        iceServers: iceServers?.length || 0,
-        calleeStatus
-      });
+    const { callId, iceServers, calleeStatus } = response.data;
+    console.log(`✅ Call session created: ${callId}`, {
+      iceServers: iceServers?.length || 0,
+      calleeStatus
+    });
 
-      // 2. Get local stream
-      const localStream = await getLocalStream(callType);
+    // 2. Get local stream
+    const localStream = await getLocalStream(callType);
 
-      // 3. Create session object
-      const session: CallSession = {
-        callId,
-        peerId,
-        peerName,
-        callType,
-        state: 'initiating',
-        localStream,
-        iceServers
-      };
+    // 3. Create session object
+    const session: CallSession = {
+      callId,
+      peerId,
+      peerName,
+      callType,
+      state: 'initiating',
+      localStream,
+      iceServers
+    };
 
-      // 4. Create peer connection
-      peerRef.current = new Peer(
-        {
-          iceServers: iceServers || [],
-          iceTransportPolicy: 'all'
+    // 4. Create peer connection
+    peerRef.current = new Peer(
+      {
+        iceServers: iceServers || [],
+        iceTransportPolicy: 'all'
+      },
+      {
+        onIceCandidate: (candidate) => {
+          console.log('❄️ ICE candidate generated');
+          socketService.emit('call:candidate', {
+            callId,
+            candidate
+          });
         },
-        {
-          onIceCandidate: (candidate) => {
-            console.log('❄️ ICE candidate generated');
-            socketService.emit('call:candidate', {
-              callId,
-              candidate
-            });
-          },
-          onNegotiationNeeded: async () => {
-            if (negotiationInProgressRef.current) {
-              console.warn('⚠️ Negotiation already in progress');
-              return;
-            }
-
-            const pc = peerRef.current?.connection;
-            if (!pc) {
-              console.error('❌ No peer connection available');
-              return;
-            }
-
-            console.log(`📞 onNegotiationNeeded fired, signalingState: "${pc.signalingState}"`);
-
-            if (callState === 'connected' || iceConnectedRef.current) {
-              console.warn('⚠️ Call already connected, skipping renegotiation');
-              return;
-            }
-
-            try {
-              negotiationInProgressRef.current = true;
-              console.log('📞 Creating offer in onNegotiationNeeded handler...');
-              
-              const offer = await peerRef.current!.createOffer();
-              
-              if (!offer.sdp) {
-                throw new Error('Offer SDP is empty');
-              }
-              
-              console.log(`✅ Offer created via onNegotiationNeeded, SDP length: ${offer.sdp.length}`);
-              
-              // Send offer via socket
-              socketService.emit('call:offer', {
-                callId,
-                offer: offer.sdp,
-                type: callType
-              });
-              
-              console.log('✅ Offer sent to callee via onNegotiationNeeded');
-              updateCallState('connecting', session);
-            } catch (error) {
-              console.error('❌ Failed to create offer in onNegotiationNeeded:', error);
-              onError?.(`Failed to negotiate call: ${error instanceof Error ? error.message : String(error)}`);
-              updateCallState('failed', session);
-            } finally {
-              setTimeout(() => {
-                negotiationInProgressRef.current = false;
-              }, 100);
-            }
-          },
-          onTrack: (event) => {
-            console.log('📡 Remote track received');
-            const remoteStream = event.streams[0];
-            if (remoteStream) {
-              session.remoteStream = remoteStream;
-              remoteTracksReceivedRef.current = true;
-              const updatedSession = { ...session };
-              setCallSession(updatedSession);
-              callSessionRef.current = updatedSession;
-              onRemoteStream?.(remoteStream);
-              checkConnectionEstablished(updatedSession);
-            }
-          },
-          onIceConnectionStateChange: (state) => {
-            console.log('❄️ ICE connection state:', state);
-            if (state === 'connected' || state === 'completed') {
-              iceConnectedRef.current = true;
-              if (session) {
-                checkConnectionEstablished(session);
-              }
-            } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-              iceConnectedRef.current = false;
-              updateCallState('ended', session);
-            }
-          },
-          onConnectionStateChange: (state) => {
-            console.log('🔗 Connection state:', state);
-            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-              iceConnectedRef.current = false;
-              remoteTracksReceivedRef.current = false;
-              updateCallState('ended', session);
-            }
-          }
-        }
-      );
-
-      // Add local tracks immediately after peer connection is created
-      if (localStream && peerRef.current) {
-        console.log('📞 Adding local tracks to peer connection');
-        peerRef.current.addLocalTracks(localStream);
-      }
-      
-      // ✅ CRITICAL FIX: Manually create and send offer since onNegotiationNeeded may not fire
-      // Create offer immediately after adding tracks - don't wait
-      console.log('⏱️ Attempting immediate manual offer creation...');
-      
-      // Use a small delay to let peer connection fully initialize
-      const offerCreationAttempt = async () => {
-        try {
-          if (!peerRef.current) {
-            console.error('❌ Peer connection was destroyed');
+        onNegotiationNeeded: async () => {
+          if (negotiationInProgressRef.current) {
+            console.warn('⚠️ Negotiation already in progress');
             return;
           }
-          
-          const pc = peerRef.current.connection;
-          console.log(`🔍 Offer check - signalingState: "${pc.signalingState}", iceConnected: ${iceConnectedRef.current}, negotiationInProgress: ${negotiationInProgressRef.current}`);
-          
-          // Create offer if not already in progress and not connected
-          if (!iceConnectedRef.current && !negotiationInProgressRef.current) {
-            console.log('⏱️ Creating manual offer...');
-            negotiationInProgressRef.current = true;
-            
-            try {
-              const offer = await peerRef.current.createOffer();
-              
-              if (!offer.sdp) {
-                throw new Error('Offer SDP is empty');
-              }
-              
-              console.log(`✅ Manual offer created, SDP length: ${offer.sdp.length}`);
-              
-              socketService.emit('call:offer', {
-                callId,
-                offer: offer.sdp,
-                type: callType
-              });
-              
-              console.log('✅ Manual offer sent to callee');
-              updateCallState('connecting', session);
-            } finally {
-              negotiationInProgressRef.current = false;
-            }
-          } else if (iceConnectedRef.current) {
-            console.log('ℹ️ Already connected, skipping offer');
+
+          const pc = peerRef.current?.connection;
+          if (!pc) {
+            console.error('❌ No peer connection available');
+            return;
           }
-        } catch (error) {
-          console.error('❌ Manual offer error:', error);
-          negotiationInProgressRef.current = false;
+
+          console.log(`📞 onNegotiationNeeded fired, signalingState: "${pc.signalingState}"`);
+
+          // ✅ IMPORTANT: Only create offer if in "stable" state
+          if (pc.signalingState !== 'stable') {
+            console.warn(`⚠️ Signaling state is "${pc.signalingState}", not "stable" - SKIPPING`);
+            return;
+          }
+
+          if (callState === 'connected' || iceConnectedRef.current) {
+            console.warn('⚠️ Call already connected, skipping renegotiation');
+            return;
+          }
+
+          try {
+            negotiationInProgressRef.current = true;
+            console.log('📞 Creating offer...');
+            
+            const offer = await peerRef.current!.createOffer();
+            
+            if (!offer.sdp) {
+              throw new Error('Offer SDP is empty');
+            }
+            
+            console.log(`✅ Offer created, SDP length: ${offer.sdp.length}`);
+            
+            // Send offer via socket
+            socketService.emit('call:offer', {
+              callId,
+              offer: offer.sdp,
+              type: callType
+            });
+            
+            console.log('✅ Offer sent to callee');
+            updateCallState('connecting', session);
+          } catch (error) {
+            console.error('❌ Failed to create offer:', error);
+            onError?.(`Failed to negotiate call: ${error instanceof Error ? error.message : String(error)}`);
+            updateCallState('failed', session);
+          } finally {
+            setTimeout(() => {
+              negotiationInProgressRef.current = false;
+            }, 100);
+          }
+        },
+        onTrack: (event) => {
+          console.log('📡 Remote track received');
+          const remoteStream = event.streams[0];
+          if (remoteStream) {
+            session.remoteStream = remoteStream;
+            remoteTracksReceivedRef.current = true;
+            const updatedSession = { ...session };
+            setCallSession(updatedSession);
+            callSessionRef.current = updatedSession;
+            onRemoteStream?.(remoteStream);
+            checkConnectionEstablished(updatedSession);
+          }
+        },
+        onIceConnectionStateChange: (state) => {
+          console.log('❄️ ICE connection state:', state);
+          if (state === 'connected' || state === 'completed') {
+            iceConnectedRef.current = true;
+            if (session) {
+              checkConnectionEstablished(session);
+            }
+          } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+            iceConnectedRef.current = false;
+            updateCallState('ended', session);
+          }
+        },
+        onConnectionStateChange: (state) => {
+          console.log('🔗 Connection state:', state);
+          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+            iceConnectedRef.current = false;
+            remoteTracksReceivedRef.current = false;
+            updateCallState('ended', session);
+          }
         }
-      };
-      
-      // Try immediately
-      await offerCreationAttempt();
-      
-      // If that didn't work, try again after 200ms
-      setTimeout(offerCreationAttempt, 200);
-      
-      // Last resort: try after 500ms
-      setTimeout(offerCreationAttempt, 500);
+      }
+    );
 
-      // Store session
-      setCallSession(session);
-      callSessionRef.current = session;
-
-      // Set state based on callee status
-      const nextState = calleeStatus === 'offline' ? 'ringing' : 'ringing';
-      updateCallState(nextState, session);
-      console.log(`📞 Callee is ${calleeStatus === 'offline' ? 'offline' : 'online'}, call is ringing`);
-
-      // Set timeout for unanswered call
-      callTimeoutRef.current = setTimeout(async () => {
-        const currentSession = callSessionRef.current;
-        const currentState = callSessionRef.current?.state;
-        if (currentSession && currentSession.callId === callId && 
-            (currentState === 'ringing' || currentState === 'connecting')) {
-          console.log('⏰ Call timeout - not answered');
-          await endCall('missed');
-          onError?.('Call not answered');
-        }
-      }, CALL_TIMEOUT_MS);
-
-    } catch (error) {
-      const errorMsg = `Failed to initiate call: ${error instanceof Error ? error.message : String(error)}`;
-      console.error(errorMsg);
-      onError?.(errorMsg);
-      updateCallState('failed');
+    // ✅ SIMPLIFIED: Just add local tracks and wait for onNegotiationNeeded
+    if (localStream && peerRef.current) {
+      console.log('📞 Adding local tracks to peer connection');
+      peerRef.current.addLocalTracks(localStream);
     }
-  }, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished, endCall]);
+
+    // Store session
+    setCallSession(session);
+    callSessionRef.current = session;
+
+    // Set state based on callee status
+    const nextState = calleeStatus === 'offline' ? 'ringing' : 'ringing';
+    updateCallState(nextState, session);
+    console.log(`📞 Callee is ${calleeStatus === 'offline' ? 'offline' : 'online'}, call is ringing`);
+
+    // Set timeout for unanswered call
+    callTimeoutRef.current = setTimeout(async () => {
+      const currentSession = callSessionRef.current;
+      const currentState = callSessionRef.current?.state;
+      if (currentSession && currentSession.callId === callId && 
+          (currentState === 'ringing' || currentState === 'connecting')) {
+        console.log('⏰ Call timeout - not answered');
+        await endCall('missed');
+        onError?.('Call not answered');
+      }
+    }, CALL_TIMEOUT_MS);
+
+  } catch (error) {
+    const errorMsg = `Failed to initiate call: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(errorMsg);
+    onError?.(errorMsg);
+    updateCallState('failed');
+  }
+}, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished, endCall]);
 
   // Answer incoming call
   const answerCall = useCallback(async (callId: string) => {
