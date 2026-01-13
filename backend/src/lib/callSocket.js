@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+  import { getUserActiveCalls } from "../utils/callStore.js";
 import { 
   getSession, 
   updateStatus, 
@@ -290,7 +291,8 @@ export const initCallNamespace = (io) => {
       console.log(`👤 User ${userId} disconnected from calls socket`);
       
       // Find any active call this user is in and notify the other participant
-      const userCalls = require("../utils/callStore.js").getUserActiveCalls(userId);
+
+const userCalls = getUserActiveCalls(userId);
       
       userCalls.forEach(session => {
         if (session && session.status === "connected") {
