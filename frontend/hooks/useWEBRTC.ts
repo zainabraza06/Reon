@@ -222,6 +222,14 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       fromUserId: data.fromUserId
     };
 
+    console.log('✅ Offer stored in pendingOfferRef, ready for answering');
+
+    // If we're already in ringing state (waiting for user to accept), don't call onIncomingCall again
+    if (callSessionRef.current?.state === 'ringing') {
+      console.log('ℹ️ Already in ringing state, skipping notification');
+      return;
+    }
+
     // Create session for incoming call
     const session: CallSession = {
       callId: data.callId,
@@ -252,7 +260,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       fromUserId: data.fromUserId,
       type: data.type
     });
-  }, [updateCallState, onIncomingCall, rejectCall]); // FIXED: Added rejectCall dependency
+  }, [updateCallState, onIncomingCall, rejectCall]);
 
   // Initiate call
   const initiateCall = useCallback(async (peerId: string, peerName: string, callType: CallType) => {
@@ -435,15 +443,40 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       callConnectedTimeRef.current = null;
       isCallerRef.current = false;
 
-      // Get stored offer
-      const stored = pendingOfferRef.current;
-      if (!stored || stored.callId !== callId) {
-        console.error('No offer found for call:', callId);
-        onError?.('Call offer not found');
-        return;
-      }
-
       updateCallState('connecting');
+
+      // ✅ FIXED: Wait for offer to arrive if not already received (timeout after 10 seconds)
+      let stored = pendingOfferRef.current;
+      if (!stored || stored.callId !== callId) {
+        console.log('⏳ Waiting for offer to arrive...');
+        
+        // Wait up to 10 seconds for the offer
+        const offerWaitTimeout: Promise<{ callId: string; offer: string; callType: CallType; fromUserId: string } | null> = new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            console.error('❌ Offer wait timeout after 10 seconds');
+            resolve(null);
+          }, 10000);
+          
+          const checkInterval = setInterval(() => {
+            stored = pendingOfferRef.current;
+            if (stored && stored.callId === callId) {
+              clearTimeout(timeout);
+              clearInterval(checkInterval);
+              console.log('✅ Offer arrived!');
+              resolve(stored);
+            }
+          }, 100); // Check every 100ms
+        });
+        
+        stored = await offerWaitTimeout;
+        
+        if (!stored || stored.callId !== callId) {
+          console.error('❌ No offer found for call after waiting:', callId);
+          onError?.('Call offer not found - remote user may have hung up');
+          updateCallState('failed');
+          return;
+        }
+      }
 
       // 1. Get ICE servers from backend for this call
       const iceResponse = await api.get(`/calls/${callId}`);
@@ -521,6 +554,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       // 6. Send answer via socket
       socketService.emit('call:answer', {
         callId,
+        answer: answer.sdp,
         sdp: answer.sdp
       });
 
@@ -643,7 +677,12 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       
       'call:answer': (data: any) => {
         console.log('📞 Answer received');
-        handleRemoteAnswer(data.answer || data.sdp);
+        const answerSdp = data.answer || data.sdp;
+        if (answerSdp) {
+          handleRemoteAnswer(answerSdp);
+        } else {
+          console.error('❌ No answer SDP in received data:', data);
+        }
       },
       
       'call:candidate': (data: any) => {
