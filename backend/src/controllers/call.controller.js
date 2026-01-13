@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import User from "../models/User.js";
-import { isUserOnline } from "../lib/socket.js";
+import { isUserOnline, getIO } from "../lib/socket.js";
 import { 
   createSession, 
   getSession, 
@@ -60,8 +60,10 @@ export const createCallSession = async (req, res) => {
     console.log(`📞 Call session created: ${callId}, from: ${fromUserId}, to: ${toUserId}, type: ${type}`);
 
     // ✅ FIXED: Notify the callee via socket that an incoming call is coming
-    if (req.app.locals.io) {
-      const callNamespace = req.app.locals.io.of("/calls");
+    try {
+      const io = getIO();
+      const callNamespace = io.of("/calls");
+      
       callNamespace.to(toUserId.toString()).emit("call:initiate", {
         callId,
         fromUserId: fromUserId.toString(),
@@ -69,7 +71,10 @@ export const createCallSession = async (req, res) => {
         type,
         timestamp: Date.now()
       });
-      console.log(`📤 Sent call:initiate notification to ${toUserId.toString()}`);
+      console.log(`📤 [CALL-INITIATE] Sent to ${toUserId.toString()}: callId=${callId}, caller=${caller.fullName}`);
+    } catch (socketErr) {
+      console.error(`❌ Failed to emit call:initiate to callee:`, socketErr.message);
+      // Don't fail the request, caller still gets the callId
     }
 
     return res.status(201).json({
