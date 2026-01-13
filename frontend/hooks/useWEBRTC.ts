@@ -267,7 +267,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       updateCallState('initiating');
 
       // 1. Create call session via REST API
-      const response = await api.post('/api/calls', {
+      const response = await api.post('/calls', {
         toUserId: peerId,
         type: callType
       });
@@ -446,7 +446,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       updateCallState('connecting');
 
       // 1. Get ICE servers from backend for this call
-      const iceResponse = await api.get(`/api/calls/${callId}`);
+      const iceResponse = await api.get(`/calls/${callId}`);
       const iceServers = iceResponse.data.iceServers || [];
       console.log(`✅ Got ICE servers: ${iceServers.length} servers`);
 
