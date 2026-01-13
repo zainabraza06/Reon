@@ -57,9 +57,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
   // ✅ SIMPLIFIED: Direct computed values
   const isTempMessage = message.status === 'none' || !message._id || message._id.startsWith('temp_');
-  console.log("istemp", isTempMessage);
-
-  // ✅ Process media directly without useEffect
+     // ✅ Process media directly without useEffect
   const processedMedia = useMemo(() => {
     if (!message.media || message.media.length === 0) {
       return [];
@@ -264,9 +262,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       
       // Handle relative paths
       const backendUrl = 'https://reon-4g0b.onrender.com';
-      console.log("backendUrl", backendUrl);
-      
-      if (strUrl.includes('/messages/media/')) {
+         if (strUrl.includes('/messages/media/')) {
         return `${backendUrl}${strUrl}`;
       }
       
@@ -348,18 +344,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     
     // Set audio source if different
     if (audio.src !== audioUrl) {
-      console.log('Setting new audio source');
-      audio.src = audioUrl;
+         audio.src = audioUrl;
     }
     
     if (audio.paused) {
-      console.log('Playing audio...');
-      audio.play().catch(error => {
+         audio.play().catch(error => {
         console.error('Failed to play audio:', error);
       });
     } else {
-      console.log('Pausing audio...');
-      audio.pause();
+         audio.pause();
     }
   }, [processedMedia, getMediaDisplayUrl, audioInitialized]);
 
@@ -516,8 +509,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     className={`${styles.playButton} ${isDecrypted ? '' : styles.disabled}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      console.log('Play button clicked for index:', index, 'isDecrypted:', isDecrypted);
-                      if (isDecrypted) {
+                         if (isDecrypted) {
                         toggleAudioPlay(index);
                       }
                     }}
@@ -533,8 +525,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                   <audio 
                     ref={el => { 
                       if (el && !audioRefs.current[index]) {
-                        console.log('Audio ref set for index:', index);
-                        audioRefs.current[index] = el;
+                           audioRefs.current[index] = el;
                       }
                     }}
                     className={styles.audioPlayer}
