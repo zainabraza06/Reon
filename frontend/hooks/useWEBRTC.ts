@@ -321,8 +321,16 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
             }
 
             const pc = peerRef.current?.connection;
-            if (!pc || pc.signalingState !== 'stable') {
-              console.warn(`⚠️ Signaling state is "${pc?.signalingState}", not "stable"`);
+            if (!pc) {
+              console.error('❌ No peer connection available');
+              return;
+            }
+
+            console.log(`📞 onNegotiationNeeded fired, signalingState: "${pc.signalingState}"`);
+
+            // Only create offer if in stable state
+            if (pc.signalingState !== 'stable') {
+              console.log(`⏳ Signaling state is "${pc.signalingState}", waiting for stable state...`);
               return;
             }
 
@@ -335,12 +343,17 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
               negotiationInProgressRef.current = true;
               console.log('📞 Creating offer...');
               
-              // Add local tracks first
-              if (localStream) {
-                peerRef.current?.addLocalTracks(localStream);
+              // Add local tracks first if not already added
+              if (localStream && peerRef.current) {
+                const existingTracks = peerRef.current.connection?.getSenders() || [];
+                if (existingTracks.length === 0) {
+                  console.log('Adding local tracks before creating offer');
+                  peerRef.current.addLocalTracks(localStream);
+                }
               }
               
               const offer = await peerRef.current!.createOffer();
+              console.log(`✅ Offer created, SDP length: ${offer.sdp.length}`);
               
               // Send offer via socket
               socketService.emit('call:offer', {
@@ -349,7 +362,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
                 type: callType
               });
               
-              console.log('✅ Offer created and sent');
+              console.log('✅ Offer sent to callee');
               updateCallState('connecting', session);
             } catch (error) {
               console.error('❌ Failed to create offer:', error);
@@ -396,6 +409,12 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
           }
         }
       );
+
+      // Add local tracks immediately after peer connection is created
+      if (localStream && peerRef.current) {
+        console.log('📞 Adding local tracks to peer connection');
+        peerRef.current.addLocalTracks(localStream);
+      }
 
       // Store session
       setCallSession(session);
@@ -451,24 +470,22 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
         console.log('⏳ Waiting for offer to arrive...');
         
         // Wait up to 10 seconds for the offer
-        const offerWaitTimeout: Promise<{ callId: string; offer: string; callType: CallType; fromUserId: string } | null> = new Promise((resolve) => {
+        stored = await new Promise<{ callId: string; offer: string; callType: CallType; fromUserId: string } | null>((resolve) => {
           const timeout = setTimeout(() => {
             console.error('❌ Offer wait timeout after 10 seconds');
             resolve(null);
           }, 10000);
           
           const checkInterval = setInterval(() => {
-            stored = pendingOfferRef.current;
-            if (stored && stored.callId === callId) {
+            const current = pendingOfferRef.current;
+            if (current && current.callId === callId) {
               clearTimeout(timeout);
               clearInterval(checkInterval);
               console.log('✅ Offer arrived!');
-              resolve(stored);
+              resolve(current);
             }
           }, 100); // Check every 100ms
         });
-        
-        stored = await offerWaitTimeout;
         
         if (!stored || stored.callId !== callId) {
           console.error('❌ No offer found for call after waiting:', callId);
