@@ -328,12 +328,6 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
 
             console.log(`📞 onNegotiationNeeded fired, signalingState: "${pc.signalingState}"`);
 
-            // Only create offer if in stable state
-            if (pc.signalingState !== 'stable') {
-              console.log(`⏳ Signaling state is "${pc.signalingState}", waiting for stable state...`);
-              return;
-            }
-
             if (callState === 'connected' || iceConnectedRef.current) {
               console.warn('⚠️ Call already connected, skipping renegotiation');
               return;
@@ -341,19 +335,15 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
 
             try {
               negotiationInProgressRef.current = true;
-              console.log('📞 Creating offer...');
-              
-              // Add local tracks first if not already added
-              if (localStream && peerRef.current) {
-                const existingTracks = peerRef.current.connection?.getSenders() || [];
-                if (existingTracks.length === 0) {
-                  console.log('Adding local tracks before creating offer');
-                  peerRef.current.addLocalTracks(localStream);
-                }
-              }
+              console.log('📞 Creating offer in onNegotiationNeeded handler...');
               
               const offer = await peerRef.current!.createOffer();
-              console.log(`✅ Offer created, SDP length: ${offer.sdp.length}`);
+              
+              if (!offer.sdp) {
+                throw new Error('Offer SDP is empty');
+              }
+              
+              console.log(`✅ Offer created via onNegotiationNeeded, SDP length: ${offer.sdp.length}`);
               
               // Send offer via socket
               socketService.emit('call:offer', {
@@ -362,10 +352,10 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
                 type: callType
               });
               
-              console.log('✅ Offer sent to callee');
+              console.log('✅ Offer sent to callee via onNegotiationNeeded');
               updateCallState('connecting', session);
             } catch (error) {
-              console.error('❌ Failed to create offer:', error);
+              console.error('❌ Failed to create offer in onNegotiationNeeded:', error);
               onError?.(`Failed to negotiate call: ${error instanceof Error ? error.message : String(error)}`);
               updateCallState('failed', session);
             } finally {
@@ -415,6 +405,64 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
         console.log('📞 Adding local tracks to peer connection');
         peerRef.current.addLocalTracks(localStream);
       }
+      
+      // ✅ CRITICAL FIX: Manually create and send offer since onNegotiationNeeded may not fire
+      // Create offer immediately after adding tracks - don't wait
+      console.log('⏱️ Attempting immediate manual offer creation...');
+      
+      // Use a small delay to let peer connection fully initialize
+      const offerCreationAttempt = async () => {
+        try {
+          if (!peerRef.current) {
+            console.error('❌ Peer connection was destroyed');
+            return;
+          }
+          
+          const pc = peerRef.current.connection;
+          console.log(`🔍 Offer check - signalingState: "${pc.signalingState}", iceConnected: ${iceConnectedRef.current}, negotiationInProgress: ${negotiationInProgressRef.current}`);
+          
+          // Create offer if not already in progress and not connected
+          if (!iceConnectedRef.current && !negotiationInProgressRef.current) {
+            console.log('⏱️ Creating manual offer...');
+            negotiationInProgressRef.current = true;
+            
+            try {
+              const offer = await peerRef.current.createOffer();
+              
+              if (!offer.sdp) {
+                throw new Error('Offer SDP is empty');
+              }
+              
+              console.log(`✅ Manual offer created, SDP length: ${offer.sdp.length}`);
+              
+              socketService.emit('call:offer', {
+                callId,
+                offer: offer.sdp,
+                type: callType
+              });
+              
+              console.log('✅ Manual offer sent to callee');
+              updateCallState('connecting', session);
+            } finally {
+              negotiationInProgressRef.current = false;
+            }
+          } else if (iceConnectedRef.current) {
+            console.log('ℹ️ Already connected, skipping offer');
+          }
+        } catch (error) {
+          console.error('❌ Manual offer error:', error);
+          negotiationInProgressRef.current = false;
+        }
+      };
+      
+      // Try immediately
+      await offerCreationAttempt();
+      
+      // If that didn't work, try again after 200ms
+      setTimeout(offerCreationAttempt, 200);
+      
+      // Last resort: try after 500ms
+      setTimeout(offerCreationAttempt, 500);
 
       // Store session
       setCallSession(session);
