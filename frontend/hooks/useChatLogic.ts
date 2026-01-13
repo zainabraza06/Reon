@@ -133,7 +133,7 @@ const decryptSingleMedia = useCallback(async (
 
     // ✅ SKIP TEMP MESSAGES
     if (message.isTemp) {
-      console.log(`⏭️ Skipping single media decryption for temp message ${messageId}`);
+    
       return undefined;
     }
 
@@ -330,7 +330,7 @@ const decryptMessage = useCallback(async (message: Message) => {
     
     // ✅ SKIP TEMP MESSAGES
     if (message.isTemp) {
-      console.log(`⏭️ Skipping decryption for temp message ${messageId}`);
+     
       return message.text || null;
     }
     
@@ -351,8 +351,7 @@ const decryptMessage = useCallback(async (message: Message) => {
     // 1. Decrypt TEXT message if it exists
     if (message.ciphertext && message.encryptedKey) {
       try {
-        console.log(`🔐 Attempting to decrypt text for ${messageId}`);
-        console.log(`🔐 encryptedKey length: ${message.encryptedKey.length}`);
+        
         
         // Check if encryptedKey is a valid hex string
         if (!message.encryptedKey || message.encryptedKey.length < 10) {
@@ -361,7 +360,7 @@ const decryptMessage = useCallback(async (message: Message) => {
         
         const aesKey = await decryptAESKey(userId, message.encryptedKey);
         decryptedText = await decryptWithAES(aesKey, message.ciphertext);
-        console.log(`✅ Decrypted text for ${messageId}: "${decryptedText}"`);
+   
       } catch (error) {
         console.error(`❌ Failed to decrypt text for ${messageId}:`, error);
         decryptedText = '🔒 Could not decrypt message';
@@ -373,7 +372,7 @@ const decryptMessage = useCallback(async (message: Message) => {
     
     // 3. AUTO-DECRYPT MEDIA FILES
     if (hasMedia && message.media) {
-      console.log(`🔐 Auto-decrypting ${message.media.length} media files for ${messageId}`);
+      
       
       const processedMedia: DecryptedMediaForUI[] = [];
       
@@ -464,7 +463,7 @@ const decryptMessageContent = useCallback(async (
   
   // ✅ CRITICAL: SKIP TEMP MESSAGES!
   if (message.isTemp) {
-    console.log(`⏭️ Skipping decryption for temp message ${messageId}`);
+    
     return message.text || ''; // Return the text we already have from temp message
   }
   
@@ -489,7 +488,7 @@ const decryptMessageContent = useCallback(async (
       try {
         const aesKey = await decryptAESKey(userId, message.encryptedKey);
         decryptedText = await decryptWithAES(aesKey, message.ciphertext);
-        console.log(`✅ Decrypted text for ${messageId}`);
+   
       } catch (error) {
         console.error(`🔓 Failed to decrypt text for ${messageId}:`, error);
       }
@@ -498,7 +497,7 @@ const decryptMessageContent = useCallback(async (
     // 2. Check if message has media
     hasMedia = (message.media ?? []).length > 0;
 
-    console.log("message Media", message.media);
+   
     
     // 3. Process and decrypt media files
     if (hasMedia && message.media) {
@@ -507,8 +506,8 @@ const decryptMessageContent = useCallback(async (
           try {
            
             const encryptedKey = media.encryptedKey;
-            console.log("enck",encryptedKey);
-            console.log("media", media.encryptionIV);
+          
+ 
             
             // ✅ Check if we have required encryption data
             if (!encryptedKey || !media.encryptionIV) {
@@ -530,7 +529,7 @@ const decryptMessageContent = useCallback(async (
             
             // If media.url is already a File/Blob (from temp message)
             if (media.url instanceof File || media.url instanceof Blob) {
-              console.log(`📝 Media ${index} is already a File/Blob, using as decrypted`);
+        
               
               const mediaForUI: DecryptedMediaForUI = {
                 url: media.url,
@@ -551,14 +550,14 @@ const decryptMessageContent = useCallback(async (
             // If media.url is a string URL (from backend)
             if (typeof media.url === 'string') {
               try {
-                console.log("Decrypting....")
+             
                 const decryptionResult = await decryptFile(
                   media.url,
                   encryptedKey,
                   userId
                 );
 
-                console.log("decryptionResulsts", decryptionResult);
+           
                 
                 const mediaForUI: DecryptedMediaForUI = {
                   url: decryptionResult.decryptedBlob,
@@ -588,7 +587,7 @@ const decryptMessageContent = useCallback(async (
                 }
                 
                 processedMedia.push(mediaForUI);
-                console.log(`✅ Decrypted media ${index} for ${messageId}`);
+             
                 
               } catch (decryptError) {
                 console.error(`🔓 Failed to decrypt media ${index}:`, decryptError);
@@ -696,8 +695,7 @@ const sendMessage = useCallback(
     const currentSelectedUser = selectedUserRef.current;
     
     if (!userId || !currentSelectedUser || !isMountedRef.current) {
-      console.log(`📤 [sendMessage] ❌ Validation failed`);
-      return;
+        return;
     }
 
     try {
@@ -739,9 +737,7 @@ const sendMessage = useCallback(
 
       // ✅ 4. SEND EACH MEDIA FILE AS SEPARATE MESSAGE
       if (messageData.media?.length) {
-        console.log(`📤 Starting to send ${messageData.media.length} media file(s) as separate messages...`);
-        
-        for (const mediaItem of messageData.media) {
+          for (const mediaItem of messageData.media) {
           // ✅ FIXED: Determine includeText as boolean
           let shouldIncludeText = false;
           
@@ -859,8 +855,7 @@ const sendTextMessage = async ({
     setMessages(prev => tempMessage ? [...prev, tempMessage] : prev);
 
     // ✅ Send text message via HTTP API
-    console.log("📤 Sending text message...");
-    const response = await api.post("/messages/send", formData, {
+      const response = await api.post("/messages/send", formData, {
       timeout: 60000,
       headers: {
         'Content-Type': 'multipart/form-data'
@@ -870,9 +865,7 @@ const sendTextMessage = async ({
     const responseData = response.data?.data || response.data;
     
     if (responseData?._id) {
-      console.log("✅ Text message sent successfully, ID:", responseData._id);
-      
-      // Replace temp with real message
+        // Replace temp with real message
       const backendMessage = responseData as BackendMessage;
       const uiMessage: Message = {
         ...backendMessage,
@@ -889,12 +882,9 @@ const sendTextMessage = async ({
       );
 
       // ✅ CRITICAL: DECRYPT THE REAL MESSAGE
-      console.log(`🔐 Calling decryptMessageContent for text message ${uiMessage._id}...`);
-      try {
+        try {
         const decryptedText = await decryptMessageContent(uiMessage);
-        console.log(`✅ Text message decrypted: ${decryptedText}`);
-        
-        // Store decrypted text
+          // Store decrypted text
         if (decryptedText) {
           setDecryptedMessages(prev => ({
             ...prev,
@@ -946,9 +936,7 @@ const sendMediaMessage = async ({
   let tempMessage: Message | null = null;
   
   try {
-    console.log(`🔐 Encrypting ${fileType} file: ${file.name}...`);
-    
-    // ✅ Encrypt the file
+      // ✅ Encrypt the file
     const { 
       encryptedBlob, 
       encryptedAESKeyForRecipient, 
@@ -1067,11 +1055,8 @@ const sendMediaMessage = async ({
     setMessages(prev => tempMessage ? [...prev, tempMessage] : prev);
 
     // ✅ Send media message via HTTP API
-    console.log(`📤 Sending ${fileType} file: ${file.name}...`);
-    
-    for (const [key, value] of formData.entries()) {
-      console.log(key, typeof value === 'string' ? value.substring(0, 100) + (value.length > 100 ? '...' : '') : value);
-    }
+      for (const [key, value] of formData.entries()) {
+      }
 
     const response = await api.post("/messages/send", formData, {
       timeout: 60000,
@@ -1083,13 +1068,9 @@ const sendMediaMessage = async ({
     const responseData = response.data?.data || response.data;
     
     if (responseData?._id) {
-      console.log(`✅ ${fileType} file sent successfully, ID:`, responseData._id);
-      
-      // Replace temp with real message
+        // Replace temp with real message
       const backendMessage = responseData as BackendMessage;
-      console.log("Backend response:", backendMessage);
-      
-      const uiMessage: Message = {
+        const uiMessage: Message = {
         ...backendMessage,
         text: messageText,
         isTemp: false,
@@ -1118,12 +1099,9 @@ const sendMediaMessage = async ({
       );
 
       // ✅ CRITICAL: DECRYPT THE REAL MEDIA MESSAGE
-      console.log(`🔐 Calling decryptMessageContent for media message ${uiMessage._id}...`);
-      try {
+        try {
         const decryptedText = await decryptMessageContent(uiMessage);
-        console.log(`✅ Media message decrypted: ${decryptedText}`);
-        
-        // Store decrypted text
+          // Store decrypted text
         if (decryptedText) {
           setDecryptedMessages(prev => ({
             ...prev,
@@ -1163,11 +1141,8 @@ const sendMediaMessage = async ({
 
 
 const loadMessages = useCallback(async (opts?: { limit?: number }) => {
-  console.log("Loading latest messages for selectedUser:", selectedUser);
-  
-  if (!userId || !selectedUser) {
-    console.log("❌ Cannot load: missing userId or selectedUser");
-    return;
+    if (!userId || !selectedUser) {
+      return;
   }
 
   const limit = opts?.limit ?? 50;
@@ -1198,10 +1173,7 @@ const loadMessages = useCallback(async (opts?: { limit?: number }) => {
           fileId: backendMedia.fileId,
         } as MediaForUI)) || []
       }));
-      
-      console.log(`📥 Loaded ${uiMessages.length} messages from backend`);
-      
-      // Set messages (uiMessages are ascending oldest->newest)
+        // Set messages (uiMessages are ascending oldest->newest)
       setMessages(uiMessages);
       
       // ✅ USE decryptMessageContent INSTEAD OF decryptMessage
@@ -1237,9 +1209,7 @@ const loadMessages = useCallback(async (opts?: { limit?: number }) => {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
-      
-      console.log(`📊 Decryption summary: ${successCount} successful, ${errorCount} failed`);
-    } else {
+      } else {
       console.error('❌ Invalid response format:', response?.data);
       onErrorRef.current?.('Invalid response from server');
     }
@@ -1559,9 +1529,7 @@ const handleNewMessage = useCallback(async (message: Message) => {
 }, [userId, decryptMessageContent]);
 
 const handleMessageDelivered = useCallback(async (data: MessageDeliveredData) => {
-  console.log(`✅ [SOCKET EVENT] Message delivered:`, data.messageId);
-
-  if (!isMountedRef.current) return;
+    if (!isMountedRef.current) return;
  
 
   // Update sidebar
@@ -1698,9 +1666,7 @@ const handleMessageRead = useCallback(async (data: {
 
 
 const handleMessageSent = useCallback(async (message: Message) => {
-  console.log(`📤 [SOCKET EVENT] Message sent:`, message._id, `Status: ${message.status}`);
-  
-  if (!isMountedRef.current) return;
+    if (!isMountedRef.current) return;
 
   const decryptedText = await decryptMessageContent(message);
   
@@ -2017,8 +1983,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
   // 🔥 CRITICAL: Also update selectedUser if it's the same user
   setSelectedUser(prev => {
     if (prev && prev._id === data.userId) {
-      console.log('🔄 Updating selectedUser status:', data.userId, data.isOnline);
-      return {
+        return {
         ...prev,
         isOnline: data.isOnline,
 
@@ -2087,8 +2052,7 @@ const handleMessageSent = useCallback(async (message: Message) => {
   }, []);
 
   const handleSocketDisconnect = useCallback(() => {
-    console.log(`❌ [SOCKET EVENT] handleSocketDisconnect received`);
-    setConnectionState('disconnected');
+      setConnectionState('disconnected');
   }, []);
 
   const handleSocketError = useCallback((error: { message: string }) => {

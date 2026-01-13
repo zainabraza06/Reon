@@ -322,7 +322,6 @@ private debugSocketEvents() {
     }
 
     if (this.socket && this.socket.connected) {
-      console.log(`📤 Emitting ${event}:`, data);
       this.socket.emit(event, data);
     } else {
       console.warn(`⚠️ Cannot emit ${event}: Socket not connected`);
