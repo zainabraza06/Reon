@@ -3,9 +3,10 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { socketService } from '@/lib/socket';
 import { api } from '@/lib/api';
 import { Peer } from '@/lib/webrtc/peer';
+import { CallState } from '@/types';
 
 export type CallType = 'audio' | 'video';
-export type CallState = 'idle' | 'initiating' | 'ringing' | 'connecting' | 'connected' | 'ended' | 'failed' | 'rejected' | 'busy';
+
 
 interface CallSession {
   callId: string;
