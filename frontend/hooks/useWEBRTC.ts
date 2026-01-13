@@ -73,28 +73,37 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     console.log(`📱 Device detected as: ${isMobile ? 'Mobile' : 'Desktop'}`);
     
+    // Browser detection for specific constraints
+    const isChrome = /Chrome/.test(navigator.userAgent);
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+    
     const constraints: MediaStreamConstraints = {
       audio: {
-        // Use standard WebRTC echo cancellation
+        // Standard WebRTC audio processing
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
         channelCount: 1,
         
-        // Better echo handling with browser-specific constraints
-        // These work across browsers
-        ...(isMobile ? {
+        // Browser-specific optimizations
+        ...(isChrome && {
+          // Chrome supports additional constraints
+          sampleRate: 48000,
+          latency: 0.01
+        }),
+        ...(isSafari && {
+          // Safari specific
+          sampleRate: 44100,
+          // Safari handles autoGainControl differently
+          autoGainControl: false
+        }),
+        ...(isMobile && {
+          // Mobile-specific optimizations
           sampleRate: 16000,
           sampleSize: 16,
-          // Mobile-specific optimizations
           latency: 0.02,
-          // Try disabling autoGainControl if echo persists
-          autoGainControl: false
-        } : {
-          // Desktop settings
-          sampleRate: 48000,
-          sampleSize: 24,
-          latency: 0.01
+          // On mobile, sometimes disabling autoGainControl helps with echo
+          ...(isChrome && { autoGainControl: false }) // Only for Chrome on mobile
         })
       },
       video: callType === 'video' ? {
@@ -145,11 +154,12 @@ const getLocalStream = useCallback(async (callType: CallType) => {
         deviceId: settings.deviceId,
         sampleRate: settings.sampleRate,
         channelCount: settings.channelCount,
-        // Log if we're using Chrome for debugging
-        userAgent: navigator.userAgent
+        // Log browser info for debugging
+        browser: isChrome ? 'Chrome' : isSafari ? 'Safari' : 'Other',
+        isMobile
       });
       
-      // ✅ CRITICAL: Add event listeners to detect echo
+      // Add event listeners
       audioTrack.onended = () => console.log('🎤 Audio track ended');
       audioTrack.onmute = () => console.log('🎤 Audio track muted');
       audioTrack.onunmute = () => console.log('🎤 Audio track unmuted');
