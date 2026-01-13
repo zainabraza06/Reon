@@ -554,8 +554,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       // 6. Send answer via socket
       socketService.emit('call:answer', {
         callId,
-        answer: answer.sdp,
-        sdp: answer.sdp
+        answer: answer.sdp
       });
 
       // Update session
@@ -587,15 +586,22 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   // Handle remote answer
   const handleRemoteAnswer = useCallback(async (answerSdp: string) => {
     try {
-      if (peerRef.current) {
-        const answer: RTCSessionDescriptionInit = {
-          type: 'answer',
-          sdp: answerSdp
-        };
-        await peerRef.current.acceptRemoteAnswer(answer);
+      console.log('📞 Processing remote answer, SDP length:', answerSdp.length);
+      if (!peerRef.current) {
+        console.error('❌ No peer connection available');
+        return;
       }
+      
+      const answer: RTCSessionDescriptionInit = {
+        type: 'answer',
+        sdp: answerSdp
+      };
+      
+      console.log('📞 Setting remote description...');
+      await peerRef.current.acceptRemoteAnswer(answer);
+      console.log('✅ Remote answer processed successfully');
     } catch (error) {
-      console.error('Failed to handle remote answer:', error);
+      console.error('❌ Failed to handle remote answer:', error);
       onError?.('Failed to establish connection');
     }
   }, [onError]);
@@ -676,9 +682,10 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       },
       
       'call:answer': (data: any) => {
-        console.log('📞 Answer received');
+        console.log('📞 Answer received:', data);
         const answerSdp = data.answer || data.sdp;
         if (answerSdp) {
+          console.log('✅ Answer SDP found, length:', answerSdp.length);
           handleRemoteAnswer(answerSdp);
         } else {
           console.error('❌ No answer SDP in received data:', data);

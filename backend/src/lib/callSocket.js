@@ -105,13 +105,20 @@ export const initCallNamespace = (io) => {
         return;
       }
       
+      console.log(`📞 [OFFER-IN] Received from ${userId}, offer length: ${offer ? offer.length : 0}, type: ${type}`);
+      
       updateStatus(callId, "connecting");
-      emitToPeer(nsp, callId, userId, "call:offer", { 
+      
+      const payload = {
         callId, 
         offer,
+        fromUserId: userId,
         type,
         timestamp: Date.now()
-      });
+      };
+      
+      console.log(`📤 [OFFER-OUT] Forwarding to peer, offer length: ${offer ? offer.length : 0}`);
+      emitToPeer(nsp, callId, userId, "call:offer", payload);
     });
 
     socket.on("call:answer", ({ callId, answer }) => {
@@ -123,12 +130,19 @@ export const initCallNamespace = (io) => {
         return;
       }
       
+      console.log(`📞 [ANSWER-IN] Received from ${userId}, answer length: ${answer ? answer.length : 0}`);
+      
       updateStatus(callId, "connected");
-      emitToPeer(nsp, callId, userId, "call:answer", { 
+      
+      const payload = { 
         callId, 
         answer,
+        fromUserId: userId,
         timestamp: Date.now()
-      });
+      };
+      
+      console.log(`📤 [ANSWER-OUT] Forwarding to peer, answer length: ${answer ? answer.length : 0}`);
+      emitToPeer(nsp, callId, userId, "call:answer", payload);
     });
 
     socket.on("call:candidate", ({ callId, candidate }) => {
