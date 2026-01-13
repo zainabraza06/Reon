@@ -33,9 +33,14 @@ export const createCallSession = async (req, res) => {
     }
 
     // Basic existence check for callee
-    const target = await User.findById(toUserId).select("_id");
+    const target = await User.findById(toUserId).select("_id fullName");
     if (!target) {
       return res.status(404).json({ message: "Recipient not found" });
+    }
+
+    const caller = await User.findById(fromUserId).select("_id fullName username");
+    if (!caller) {
+      return res.status(404).json({ message: "Caller not found" });
     }
 
     const callId = crypto.randomUUID();
@@ -53,6 +58,19 @@ export const createCallSession = async (req, res) => {
     const calleeIsOnline = isUserOnline(toUserId.toString());
 
     console.log(`📞 Call session created: ${callId}, from: ${fromUserId}, to: ${toUserId}, type: ${type}`);
+
+    // ✅ FIXED: Notify the callee via socket that an incoming call is coming
+    if (req.app.locals.io) {
+      const callNamespace = req.app.locals.io.of("/calls");
+      callNamespace.to(toUserId.toString()).emit("call:initiate", {
+        callId,
+        fromUserId: fromUserId.toString(),
+        fromUserName: caller.fullName || caller.username || "Unknown",
+        type,
+        timestamp: Date.now()
+      });
+      console.log(`📤 Sent call:initiate notification to ${toUserId.toString()}`);
+    }
 
     return res.status(201).json({
       callId,

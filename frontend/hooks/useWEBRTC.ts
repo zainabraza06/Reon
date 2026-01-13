@@ -621,22 +621,29 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   useEffect(() => {
     const socketListeners = {
       'call:initiate': (data: any) => {
-        console.log('📞 Incoming call notification:', data);
+        console.log('📞 Incoming call INITIATION notification:', data);
+        // Notify the app about the incoming call immediately when caller initiates
+        onIncomingCall?.({
+          callId: data.callId,
+          fromUserId: data.fromUserId,
+          type: data.type || 'audio',
+          fromUserName: data.fromUserName
+        });
       },
-      
+
       'call:offer': (data: any) => {
         console.log('📞 Offer received with SDP');
         handleIncomingOffer({
           callId: data.callId,
           fromUserId: data.fromUserId,
-          offer: data.sdp,
+          offer: data.offer || data.sdp,
           type: data.type || 'audio'
         });
       },
       
       'call:answer': (data: any) => {
         console.log('📞 Answer received');
-        handleRemoteAnswer(data.sdp);
+        handleRemoteAnswer(data.answer || data.sdp);
       },
       
       'call:candidate': (data: any) => {
@@ -687,7 +694,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
         socketService.off(event, handler);
       });
     };
-  }, [handleIncomingOffer, handleRemoteAnswer, addIceCandidate, updateCallState, endCall]);
+  }, [handleIncomingOffer, handleRemoteAnswer, addIceCandidate, updateCallState, endCall, onIncomingCall]);
 
   return {
     // State
