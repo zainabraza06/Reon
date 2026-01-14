@@ -1,7 +1,3 @@
-
-
-
-
 import mongoose from "mongoose";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
@@ -399,8 +395,8 @@ export const downloadEncryptedFile = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    console.log("📨 Received message request");
-    console.log("📁 Files received:", req.files?.length || 0);
+    console.log(" Received message request");
+    console.log("Files received:", req.files?.length || 0);
 
     // Get current user ID from auth middleware
     const currentUserId = req.user?._id?.toString();
@@ -412,16 +408,9 @@ export const sendMessage = async (req, res) => {
     let messageData = {};
     try {
       messageData = JSON.parse(req.body.data || '{}');
-      console.log("📊 Parsed message data:", {
-        sender: messageData.sender,
-        receiver: messageData.receiver,
-        contentType: messageData.contentType,
-        ciphertextLength: messageData.ciphertext?.length || 0,
-        hasEncryptedKey: !!messageData.encryptedKey,
-        hasSenderEncryptedKey: !!messageData.senderEncryptedKey
-      });
+
     } catch (parseError) {
-      console.error("❌ Failed to parse message data:", parseError);
+      console.error(" Failed to parse message data:", parseError);
       return res.status(400).json({ message: "Invalid message data format" });
     }
 
@@ -451,7 +440,7 @@ export const sendMessage = async (req, res) => {
     }
     
     if (missingFields.length > 0) {
-      console.error("❌ Missing required fields:", missingFields);
+      console.error(" Missing required fields:", missingFields);
       return res.status(400).json({ 
         message: `Missing required fields: ${missingFields.join(', ')}` 
       });
@@ -472,12 +461,12 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    console.log(`🔍 Message type: ${hasText ? 'TEXT' : ''}${hasMedia ? 'MEDIA' : ''}`);
+    console.log(` Message type: ${hasText ? 'TEXT' : ''}${hasMedia ? 'MEDIA' : ''}`);
 
     // Validate text messages
     if (hasText) {
       if (!encryptedKey || !senderEncryptedKey) {
-        console.error("❌ Text message missing encryption keys");
+        console.error(" Text message missing encryption keys");
         return res.status(400).json({ 
           message: "Text messages require both encryptedKey and senderEncryptedKey" 
         });
@@ -487,7 +476,7 @@ export const sendMessage = async (req, res) => {
     // Validate media messages
     if (hasMedia) {
       if (!req.body.mediaEncryptedKey || !req.body.mediaSenderEncryptedKey) {
-        console.error("❌ Media message missing encryption keys");
+        console.error(" Media message missing encryption keys");
         return res.status(400).json({ 
           message: "Media messages require both mediaEncryptedKey and mediaSenderEncryptedKey" 
         });
@@ -495,7 +484,7 @@ export const sendMessage = async (req, res) => {
       
       // Ensure only one file is sent
       if (req.files.length > 1) {
-        console.error("❌ Multiple files received in single request");
+        console.error("Multiple files received in single request");
         return res.status(400).json({ 
           message: "Only one media file allowed per message" 
         });
@@ -504,7 +493,7 @@ export const sendMessage = async (req, res) => {
 
     // Validate ObjectIds
     if (!mongoose.Types.ObjectId.isValid(sender) || !mongoose.Types.ObjectId.isValid(receiver)) {
-      console.error("❌ Invalid ObjectId:", { sender, receiver });
+      console.error(" Invalid ObjectId:", { sender, receiver });
       return res.status(400).json({ message: "Invalid user ID format" });
     }
 
@@ -512,7 +501,7 @@ export const sendMessage = async (req, res) => {
     const mediaArray = [];
     if (hasMedia) {
       const file = req.files[0]; // Only one file
-      console.log(`📦 Processing media file: ${file.originalname || 'unnamed'}, size: ${file.size} bytes`);
+      console.log(`Processing media file: ${file.originalname || 'unnamed'}, size: ${file.size} bytes`);
       
       try {
         // Get metadata from form data
@@ -522,10 +511,10 @@ export const sendMessage = async (req, res) => {
         const originalName = req.body.originalName || file.originalname || `file_${Date.now()}`;
         const encryptionIV = req.body.encryptionIV || null;
 
-        console.log(`📁 File details: ${originalName}, type: ${fileType}`);
+        console.log(`File details: ${originalName}, type: ${fileType}`);
         
         if (encryptionIV) {
-          console.log(`🔐 Has encryption IV: ${encryptionIV.substring(0, 20)}...`);
+          console.log(` Has encryption IV: ${encryptionIV.substring(0, 20)}...`);
         }
 
         // Save encrypted blob to GridFS
@@ -550,7 +539,7 @@ export const sendMessage = async (req, res) => {
           fileId: savedFile.fileId
         });
 
-        console.log(`✅ Media file saved to GridFS: ${savedFile.fileId}`);
+        console.log(`Media file saved to GridFS: ${savedFile.fileId}`);
 
       } catch (fileError) {
         console.error("❌ Error processing media file:", fileError);
@@ -593,10 +582,7 @@ export const sendMessage = async (req, res) => {
       media: mediaArray
     });
     
-    console.log(`✅ Private message created: ${msg._id}`);
-    console.log(`   Type: ${msg.contentType}`);
-    console.log(`   Has Text: ${msg.ciphertext ? 'Yes' : 'No'}`);
-    console.log(`   Media: ${msg.media.length > 0 ? 'Yes' : 'No'}`);
+
 
     // Helper function to get appropriate encrypted key
     const getEncryptedKeyForUser = (message, userId) => {
@@ -657,7 +643,7 @@ export const sendMessage = async (req, res) => {
     console.log(`🔑 Response key for user ${currentUserId} (isSender: ${isSender}):`, 
       responseData.encryptedKey?.substring(0, 64) + '...');
 
-    // ---- REAL-TIME EMISSIONS ----
+    // REAL-TIME EMISSIONS 
     const onlineUsers = getOnlineUsers();
     const isReceiverOnline = onlineUsers.includes(receiver.toString());
     
@@ -714,10 +700,9 @@ export const sendMessage = async (req, res) => {
           status: 'delivered'
         };
         
-        console.log(`📤 Emitting to receiver ${receiver}: "new-message"`);
+     
         emitToUser(receiver.toString(), "new-message", receiverPayload);
         
-        console.log(`📤 Emitting to sender ${sender}: "message-sent" (receiver online)`);
         // ALWAYS emit to sender, even if they're the current user
         emitToUser(sender.toString(), "message-sent", senderPayload);
         
@@ -741,17 +726,12 @@ export const sendMessage = async (req, res) => {
           status: 'sent'
         };
         
-        console.log(`📤 Emitting to sender ${sender}: "message-sent" (receiver offline)`);
+     
         // ALWAYS emit to sender
         emitToUser(sender.toString(), "message-sent", senderPayload);
     }
 
-    console.log("📤 Response data:", {
-      messageId: responseData._id,
-      userType: isSender ? 'sender' : 'receiver',
-      contentType: responseData.contentType
-    });
-
+  
     // Return response to the current user
     res.status(201).json({
       success: true,
@@ -789,6 +769,7 @@ export const sendMessage = async (req, res) => {
     });
   }
 };
+
 export const getMessages = async (req, res) => {
   try {
     const currentUserId = req.user._id;
@@ -834,7 +815,6 @@ export const getMessages = async (req, res) => {
     // Query returns newest-first due to sort({sentAt:-1}); normalize to ascending order
     messages = messages.reverse();
 
-    console.log(`📥 Found ${messages.length} messages between users (limit ${limit}${before ? ', before '+before : ''})`);
 
     // Normalize messages
     const normalizedMessages = messages.map(msg => {
@@ -886,14 +866,12 @@ export const getMessages = async (req, res) => {
             fileId: media.fileId
           };
         });
-        
-        console.log(`   📁 Message ${msg._id} has ${msg.media.length} media files`);
+
       }
-     console.log("response", response);
+
       return response;
     });
 
-    console.log(`✅ Successfully normalized ${normalizedMessages.length} messages`);
     
     return res.json({
       success: true,
@@ -989,8 +967,8 @@ export const getUserForSideBar = async (req, res) => {
           ciphertext: 1,
           media: 1,
           sentAt: 1,
-          delivered: 1, // use your boolean field
-          read: 1,      // use your boolean field
+          delivered: 1, // use  boolean field
+          read: 1,      // use boolean field
           encryptedKey: 1,
           senderEncryptedKey: 1,
           isFromOtherUser: {
@@ -1113,7 +1091,7 @@ export const searchUsers = async (req, res) => {
               },
             },
 
-            // ⭐ Last Message Lookup
+            //  Last Message Lookup
             {
               $lookup: {
                 from: "messages",
@@ -1158,7 +1136,7 @@ export const searchUsers = async (req, res) => {
               }
             },
 
-            // ⭐ Safe Media Type Extraction
+            // Safe Media Type Extraction
             {
               $addFields: {
                 lastMessageMediaType: {
@@ -1185,7 +1163,7 @@ export const searchUsers = async (req, res) => {
               }
             },
 
-            // ⭐ Unread Messages
+            //  Unread Messages
             {
               $lookup: {
                 from: "messages",
@@ -1208,7 +1186,7 @@ export const searchUsers = async (req, res) => {
               }
             },
 
-            // ⭐ Final Shape
+            //  Final Shape
             {
               $project: {
                 _id: 1,
@@ -1230,10 +1208,10 @@ export const searchUsers = async (req, res) => {
                 lastMessageDelivered: { $arrayElemAt: ["$lastMessage.delivered", 0] },
                 lastMessageRead: { $arrayElemAt: ["$lastMessage.read", 0] },
 
-                // ⭐ Derived sent field
+                //  Derived sent field
                 sent: { $cond: [{ $ne: [{ $arrayElemAt: ["$lastMessage.sentAt", 0] }, null] }, true, false] },
 
-                // ⭐ Frontend-friendly hasUnread
+                //  Frontend-friendly hasUnread
                 hasUnread: {
                   $gt: [{ $ifNull: [{ $arrayElemAt: ["$unreadMessages.count", 0] }, 0] }, 0]
                 }
@@ -1250,7 +1228,7 @@ export const searchUsers = async (req, res) => {
       { $replaceRoot: { newRoot: "$matches" } },
     ]);
 
-    // ⭐ Map encrypted keys correctly
+    //  Map encrypted keys correctly
     const results = friends.map(u => ({
       _id: u._id,
       name: u.fullName || u.username,
@@ -1275,7 +1253,7 @@ export const searchUsers = async (req, res) => {
       type: "user",
     }));
 
-    // ⭐ Sort by last message time
+    //  Sort by last message time
     results.sort((a, b) => {
       const tA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
       const tB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
@@ -1339,7 +1317,7 @@ export const markChatAsRead = async (req, res) => {
 
     console.log("All Messages Marked as Read");
 
-    // 🔥 Emit events ONCE
+    //  Emit events ONCE
     const payload = {
       messageIds,
       readerId: currentUserId.toString(),

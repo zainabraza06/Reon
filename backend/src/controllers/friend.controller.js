@@ -5,7 +5,7 @@ import Notification from "../models/Notification.js";
 import sendEmail from  "../utils/sendEmail.js"; 
 import { getIO, emitToUser } from "../lib/socket.js";
 
-// -------------------- GET RECOMMENDED FRIENDS --------------------
+//  GET RECOMMENDED FRIENDS 
 export const getRecommendedFriends = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -138,7 +138,7 @@ export const getRecommendedFriends = async (req, res) => {
   }
 };
 
-// -------------------- GET MY FRIENDS --------------------
+//  GET MY FRIENDS 
 export const getMyFriends = async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user._id);
@@ -185,7 +185,7 @@ export const getMyFriends = async (req, res) => {
   }
 };
 
-// -------------------- GET PENDING FRIEND REQUESTS COUNT --------------------
+// GET PENDING FRIEND REQUESTS COUNT
 export const getPendingFriendRequestsCount = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -197,7 +197,7 @@ export const getPendingFriendRequestsCount = async (req, res) => {
   }
 };
 
-// -------------------- SEND FRIEND REQUEST --------------------
+// SEND FRIEND REQUEST 
 export const sendFriendRequest = async (req, res) => {
   try {
     const senderId = req.user._id;
@@ -247,13 +247,6 @@ export const sendFriendRequest = async (req, res) => {
     const pendingCount = await FriendRequest.countDocuments({ receiver: receiverId, status: 'pending' });
     emitToUser(receiverId.toString(), 'pending-requests-count-updated', { count: pendingCount });
 
-    await Notification.create({
-      user: receiver._id,
-      sender: sender._id,
-      type: "friend_request",
-      message: `${sender.fullName} has sent you a friend request`,
-      link: `/user/${sender._id}`
-    });
 
     res.status(201).json({ 
       message: "Friend request sent successfully", 
@@ -265,7 +258,7 @@ export const sendFriendRequest = async (req, res) => {
   }
 };
 
-// -------------------- ACCEPT FRIEND REQUEST --------------------
+//  ACCEPT FRIEND REQUEST 
 export const acceptFriendRequest = async (req, res) => {
   try {
     const receiverId = req.user._id;
@@ -335,23 +328,7 @@ export const acceptFriendRequest = async (req, res) => {
     emitToUser(sender._id.toString(), 'pending-requests-count-updated', { count: senderPendingCount });
     emitToUser(receiver._id.toString(), 'pending-requests-count-updated', { count: receiverPendingCount });
 
-    // Create notification for Sender: "X accepted your friend request"
-    await Notification.create({
-      user: sender._id,
-      sender: receiver._id,
-      type: "friend_accept",
-      message: `${receiver.fullName} accepted your friend request`,
-      link: `/user/${receiver._id}`
-    });
-
-    // Create notification for Receiver (acceptor): "You are now friends with X"
-    await Notification.create({
-      user: receiver._id,
-      sender: sender._id,
-      type: "friend_accept",
-      message: `You are now friends with ${sender.fullName}`,
-      link: `/user/${sender._id}`
-    });
+   
 
     res.status(200).json({ message: "Friend request accepted" });
   } catch (err) {
@@ -360,7 +337,7 @@ export const acceptFriendRequest = async (req, res) => {
   }
 };
 
-// -------------------- WITHDRAW FRIEND REQUEST --------------------
+// WITHDRAW FRIEND REQUEST
 export const withdrawFriendRequest = async (req, res) => {
   try {
     const senderId = req.user._id;
@@ -398,7 +375,7 @@ export const withdrawFriendRequest = async (req, res) => {
   }
 };
 
-// -------------------- REJECT FRIEND REQUEST --------------------
+//  REJECT FRIEND REQUEST 
 export const rejectFriendRequest = async (req, res) => {
   try {
     const receiverId = req.user._id;
@@ -435,7 +412,7 @@ export const rejectFriendRequest = async (req, res) => {
   }
 };
 
-// -------------------- REMOVE FRIEND --------------------
+//  REMOVE FRIEND 
 export const removeFriend = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -480,7 +457,7 @@ export const removeFriend = async (req, res) => {
   }
 };
 
-// -------------------- GET RECEIVED FRIEND REQUESTS --------------------
+// GET RECEIVED FRIEND REQUESTS
 export const getReceivedRequests = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -496,7 +473,7 @@ export const getReceivedRequests = async (req, res) => {
   }
 };
 
-// -------------------- GET SENT FRIEND REQUESTS --------------------
+//  GET SENT FRIEND REQUESTS 
 export const getSentRequests = async (req, res) => {
   try {
     const userId = req.user._id;

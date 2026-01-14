@@ -155,21 +155,18 @@ export async function login(req, res) {
   try {
     const { email, password } = req.body;
 
-    console.log(" Login attempt:");
-    console.log("Email:", email);
-    console.log("Incoming password:", password); // ⚠️ Debug only
+    
 
     const user = await User.findOne({ email });
 
     if (!user) {
-      console.log("❌ User not found");
+      console.log("User not found");
       return res.status(400).json({ message: "User not found" });
     }
 
-    console.log("Stored password (hashed):", user.password); // ⚠️ Debug only
 
     if (!user.password) {
-      console.log("⚠️ Attempted password login on Google-account user");
+      console.log(" Attempted password login on Google-account user");
       return res.status(403).json({
         message: "This email is linked with Google. Please login with Google.",
       });
@@ -179,12 +176,12 @@ export async function login(req, res) {
     console.log("Password match result:", correct);
 
     if (!correct) {
-      console.log("❌ Invalid password");
+      console.log(" Invalid password");
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     if (!user.isVerified) {
-      console.log("⚠️ User email not verified");
+      console.log(" User email not verified");
       return res.status(403).json({ message: "Please verify your email first" });
     }
 
@@ -197,11 +194,11 @@ export async function login(req, res) {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    console.log("✅ Login successful");
+    console.log(" Login successful");
     return res.status(200).json({ message: "Login successful", user, token });
 
   } catch (error) {
-    console.error("💥 Login error:", error);
+    console.error(" Login error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 }
@@ -231,11 +228,7 @@ export async function googleCallback(req, res) {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
-
-
-  // -------------------------------
   // 5. REDIRECT LOGIC (same as frontend)
-  // -------------------------------
 
   const user = req.user;
   const hasFriends = Array.isArray(user.friends) && user.friends.length > 0;
