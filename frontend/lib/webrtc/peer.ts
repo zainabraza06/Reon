@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
+
 type IceServer = RTCIceServer;
 
 export type PeerCallbacks = {
@@ -13,6 +14,7 @@ export type PeerConfig = {
   iceServers: IceServer[];
   iceTransportPolicy?: RTCIceTransportPolicy;
   bundlePolicy?: RTCBundlePolicy;
+  encodedInsertableStreams?: boolean;
 };
 
 export class Peer {
@@ -72,6 +74,7 @@ export class Peer {
     return this.pc;
   }
 
+
   addLocalTracks(stream: MediaStream) {
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
@@ -123,6 +126,7 @@ export class Peer {
     this.verifyTrackSetup();
   }
 
+ 
   replaceTrack(kind: 'audio' | 'video', newTrack: MediaStreamTrack): boolean {
     const sender = kind === 'audio' ? this.audioSender : this.videoSender;
     
@@ -165,7 +169,7 @@ export class Peer {
     }
   }
 
-  async createOffer(options?: RTCOfferOptions) {
+  async createOffer() {
     // Verify signaling state
     if (this.pc.signalingState !== 'stable') {
       const error = `Cannot create offer: signaling state is "${this.pc.signalingState}"`;
@@ -175,11 +179,10 @@ export class Peer {
     
     this.verifyTrackSetup();
     
-    console.log('📤 Creating offer...');
     const offer = await this.pc.createOffer({
       offerToReceiveAudio: true,
       offerToReceiveVideo: true,
-      iceRestart: options?.iceRestart || false
+      iceRestart: false
     });
     
     // Log SDP details
@@ -192,7 +195,6 @@ export class Peer {
   async createAnswer() {
     this.verifyTrackSetup();
     
-    console.log('📤 Creating answer...');
     const answer = await this.pc.createAnswer();
     
     // Log SDP details
@@ -203,36 +205,21 @@ export class Peer {
   }
 
   async acceptRemoteOffer(offer: RTCSessionDescriptionInit) {
-    console.log('📥 Setting remote description (offer)...');
-    
     // Log incoming SDP
     this.logSdpDetails('Remote Offer', offer.sdp);
     
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
-    console.log('✅ Remote description set');
-    
     await this.flushBufferedCandidates();
     
     return this.createAnswer();
   }
 
   async acceptRemoteAnswer(answer: RTCSessionDescriptionInit) {
-    console.log('📥 Setting remote description (answer)...');
-    
     // Log incoming SDP
     this.logSdpDetails('Remote Answer', answer.sdp);
     
     await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-    console.log('✅ Remote answer processed');
-    
     await this.flushBufferedCandidates();
-  }
-
-  // NEW: Explicit setLocalDescription method
-  async setLocalDescription(description: RTCSessionDescriptionInit) {
-    console.log(`📝 Setting local description: ${description.type}`);
-    await this.pc.setLocalDescription(new RTCSessionDescription(description));
-    console.log('✅ Local description set');
   }
 
   async addCandidate(candidate: RTCIceCandidateInit) {
@@ -263,6 +250,7 @@ export class Peer {
     
     this.bufferedCandidates = [];
   }
+
   
   private logSdpDetails(type: string, sdp?: string) {
     if (!sdp) return;
@@ -275,8 +263,13 @@ export class Peer {
     console.log(`📋 ${type} SDP Analysis:`);
     console.log(`   Has audio: ${hasAudio}, Has video: ${hasVideo}`);
     console.log(`   Audio codecs: ${audioLines.length}, Video codecs: ${videoLines.length}`);
+    
+    if (!hasAudio) {
+      console.error(`❌ ${type} missing audio media line!`);
+    }
   }
 
+ 
   getTrackStatus() {
     const senders = this.pc.getSenders();
     const receivers = this.pc.getReceivers();
@@ -291,6 +284,7 @@ export class Peer {
     };
   }
 
+  
   close() {
     console.log('🔌 Closing peer connection');
     
