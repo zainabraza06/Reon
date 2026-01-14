@@ -130,6 +130,87 @@ export interface ActiveCallData {
 }
 
 
+
+export type EventCallback<T = unknown> = (data: T) => void;
+
+
+export interface UserStatusChangedData {
+  userId: string;
+  isOnline: boolean;
+  lastSeen: string;
+
+  
+}
+
+
+export interface OnlineFriendsResponseData {
+  success: boolean;
+  onlineFriends: string[]; // Array of friend IDs
+  timestamp: string;
+}
+export interface TypingStatusData {
+  senderId: string;
+  receiverId: string;
+  isTyping: boolean;
+  timestamp: string;
+}
+
+export interface MessageDeliveredData {
+  messageId: string;
+  receiverId: string;
+  deliveredAt: string;
+  status: string;
+}
+
+export interface MessageReadData {
+  messageIds: string[];
+  readerId: string;
+  senderId: string;
+  readAt: string;
+}
+
+export interface ConversationReadData {
+  senderId: string;
+  readerId: string;
+  readAt: string;
+  messageCount: number;
+}
+
+export interface OnlineStatusResponseData {
+  statuses: {
+    [userId: string]: {
+      isOnline: boolean;
+      lastSeen: number | null;
+    };
+  };
+}
+
+export interface TypingStatusResponseData {
+  senderId: string;
+  isTyping: boolean;
+  typingTo?: string;
+}
+
+export interface AuthenticatedData {
+  userId: string;
+  socketId: string;
+  onlineFriends?: string[];
+}
+
+export interface SendMessageData {
+  sender: string;
+  receiver: string;
+  ciphertext: string;
+  type: "preKey" | "ratcheted";
+  encryptedKey: string;
+  senderEncryptedKey: string;
+  isGroup?: boolean;
+  contentType?: string;
+  media?: MediaForBackend[];
+  messageType?: string;
+}
+
+
 export type CallViewMode = 'full' | 'mini';
 
 export interface CallContextType {
