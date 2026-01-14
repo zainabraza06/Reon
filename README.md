@@ -31,7 +31,7 @@ A full-stack real-time communication application with end-to-end encryption, voi
 
 ### Frontend
 - **Framework**: Next.js 14+ with TypeScript
-- **Styling**: Tailwind CSS with CSS Modules
+- **Styling**:  CSS Modules
 - **Real-time**: Socket.io client
 - **State Management**: React Context API
 - **WebRTC**: For voice and video calls
@@ -239,7 +239,6 @@ Socket.io enables real-time communication including live call notifications, typ
 - Send and receive friend requests
 - Accept or decline requests
 - View friend list and get recommendations
-- Block/unblock users
 
 ## API Endpoints
 
@@ -297,13 +296,7 @@ npm start
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## Security Notes
 
-- Always use HTTPS in production
-- Keep environment variables secure and never commit them
-- Regularly update dependencies
-- Enable CORS only for trusted domains
-- Implement rate limiting on API endpoints
 
 ## Performance Optimization
 

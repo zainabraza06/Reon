@@ -7,7 +7,6 @@ import { CallState } from '@/types';
 
 export type CallType = 'audio' | 'video';
 
-
 interface CallSession {
   callId: string;
   peerId: string;
@@ -51,8 +50,8 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const incomingCallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const negotiationInProgressRef = useRef<boolean>(false);
-  const CALL_TIMEOUT_MS = 30000; // 30 seconds for call to be answered
-  const INCOMING_CALL_TIMEOUT_MS = 45000; // 45 seconds to answer incoming call
+  const CALL_TIMEOUT_MS = 30000;
+  const INCOMING_CALL_TIMEOUT_MS = 45000;
 
   // Update call state
   const updateCallState = useCallback((newState: CallState, session: CallSession | null = null) => {
@@ -67,117 +66,51 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   }, [callState, onCallStateChange]);
 
   // Get local media stream
-const getLocalStream = useCallback(async (callType: CallType) => {
-  try {
-    // Check if mobile
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    console.log(`📱 Device detected as: ${isMobile ? 'Mobile' : 'Desktop'}`);
-    
-    // Browser detection for specific constraints
-    const isChrome = /Chrome/.test(navigator.userAgent);
-    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-    
-    const constraints: MediaStreamConstraints = {
-      audio: {
-        // Standard WebRTC audio processing
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1,
-        
-        // Browser-specific optimizations
-        ...(isChrome && {
-          // Chrome supports additional constraints
-          sampleRate: 48000,
-          latency: 0.01
-        }),
-        ...(isSafari && {
-          // Safari specific
-          sampleRate: 44100,
-          // Safari handles autoGainControl differently
-          autoGainControl: false
-        }),
-        ...(isMobile && {
-          // Mobile-specific optimizations
-          sampleRate: 16000,
-          sampleSize: 16,
-          latency: 0.02,
-          // On mobile, sometimes disabling autoGainControl helps with echo
-          ...(isChrome && { autoGainControl: false }) // Only for Chrome on mobile
-        })
-      },
-      video: callType === 'video' ? {
-        // Mobile-friendly resolution
-        width: isMobile ? { ideal: 480, max: 640 } : { ideal: 1280, max: 1920 },
-        height: isMobile ? { ideal: 360, max: 480 } : { ideal: 720, max: 1080 },
-        frameRate: isMobile ? { ideal: 15, max: 24 } : { ideal: 30, max: 60 },
-        facingMode: 'user',
-        // Add for better mobile performance
-        ...(isMobile && {
-          aspectRatio: 1.777777778 // 16:9
-        })
-      } : false
-    };
-
-    console.log('🎥 Requesting media with constraints:', constraints);
-    
-    // Try with exact constraints first
-    let stream: MediaStream;
+  const getLocalStream = useCallback(async (callType: CallType) => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err) {
-      console.warn('⚠️ First constraint attempt failed, trying relaxed constraints:', err);
-      // Fallback to simpler constraints
-      const fallbackConstraints: MediaStreamConstraints = {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          channelCount: 1
+          autoGainControl: true,
+          channelCount: 1,
         },
         video: callType === 'video' ? {
+          width: isMobile ? { ideal: 480 } : { ideal: 1280 },
+          height: isMobile ? { ideal: 360 } : { ideal: 720 },
+          frameRate: { ideal: 24 },
           facingMode: 'user',
-          width: isMobile ? 640 : 1280,
-          height: isMobile ? 480 : 720
         } : false
       };
-      stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-    }
-    
-    // Verify audio settings
-    const audioTrack = stream.getAudioTracks()[0];
-    if (audioTrack) {
-      const settings = audioTrack.getSettings();
-      console.log('🎵 Audio settings applied:', {
-        echoCancellation: settings.echoCancellation,
-        noiseSuppression: settings.noiseSuppression,
-        autoGainControl: settings.autoGainControl,
-        deviceId: settings.deviceId,
-        sampleRate: settings.sampleRate,
-        channelCount: settings.channelCount,
-        // Log browser info for debugging
-        browser: isChrome ? 'Chrome' : isSafari ? 'Safari' : 'Other',
-        isMobile
-      });
+
+      console.log('🎥 Requesting media with constraints:', constraints);
       
-      // Add event listeners
-      audioTrack.onended = () => console.log('🎤 Audio track ended');
-      audioTrack.onmute = () => console.log('🎤 Audio track muted');
-      audioTrack.onunmute = () => console.log('🎤 Audio track unmuted');
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      // Verify audio track
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        console.log('🎵 Audio track obtained:', {
+          id: audioTrack.id,
+          enabled: audioTrack.enabled,
+          muted: audioTrack.muted,
+          readyState: audioTrack.readyState
+        });
+      }
+      
+      console.log(`✅ Got stream: ${stream.getAudioTracks().length} audio, ${stream.getVideoTracks().length} video tracks`);
+      
+      localStreamRef.current = stream;
+      return stream;
+    } catch (error) {
+      const errorMsg = `Failed to get ${callType} stream: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(errorMsg);
+      onError?.(errorMsg);
+      throw error;
     }
-    
-    const audioTracks = stream.getAudioTracks();
-    const videoTracks = stream.getVideoTracks();
-    console.log(`✅ Got stream: ${audioTracks.length} audio, ${videoTracks.length} video tracks`);
-    
-    localStreamRef.current = stream;
-    return stream;
-  } catch (error) {
-    const errorMsg = `Failed to get ${callType} stream: ${error instanceof Error ? error.message : String(error)}`;
-    console.error(errorMsg);
-    onError?.(errorMsg);
-    throw error;
-  }
-}, [onError]);
+  }, [onError]);
 
   // Check if connection is fully established
   const checkConnectionEstablished = useCallback((session: CallSession) => {
@@ -245,7 +178,7 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     pendingOfferRef.current = null;
   }, [updateCallState]);
 
-  // Reject incoming call - MOVED BEFORE handleIncomingOffer
+  // Reject incoming call
   const rejectCall = useCallback(async (callId: string) => {
     console.log('📞 Rejecting call:', callId);
     
@@ -259,8 +192,7 @@ const getLocalStream = useCallback(async (callType: CallType) => {
       reason: 'user-rejected'
     });
 
-    const currentSession = callSessionRef.current;
-    updateCallState('rejected', currentSession);
+    updateCallState('rejected', callSessionRef.current);
     setCallSession(null);
     callSessionRef.current = null;
     pendingOfferRef.current = null;
@@ -279,9 +211,7 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     // Check if we're already in a call
     const currentState = callSessionRef.current?.state;
     const isCurrentlyInCall = currentState && 
-      currentState !== 'idle' && 
-      currentState !== 'ended' && 
-      currentState !== 'failed';
+      ['ringing', 'connecting', 'connected'].includes(currentState);
     
     if (isCurrentlyInCall) {
       console.log('⚠️ Already in a call, sending busy');
@@ -302,12 +232,6 @@ const getLocalStream = useCallback(async (callType: CallType) => {
 
     console.log('✅ Offer stored in pendingOfferRef, ready for answering');
 
-    // If we're already in ringing state (waiting for user to accept), don't call onIncomingCall again
-    if (callSessionRef.current?.state === 'ringing') {
-      console.log('ℹ️ Already in ringing state, skipping notification');
-      return;
-    }
-
     // Create session for incoming call
     const session: CallSession = {
       callId: data.callId,
@@ -321,10 +245,6 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     updateCallState('ringing', session);
 
     // Set timeout for auto-reject
-    if (incomingCallTimeoutRef.current) {
-      clearTimeout(incomingCallTimeoutRef.current);
-    }
-    
     incomingCallTimeoutRef.current = setTimeout(async () => {
       if (callSessionRef.current?.callId === data.callId && callSessionRef.current.state === 'ringing') {
         console.log('⏰ Incoming call timeout - auto rejecting');
@@ -340,183 +260,145 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     });
   }, [updateCallState, onIncomingCall, rejectCall]);
 
- const initiateCall = useCallback(async (peerId: string, peerName: string, callType: CallType) => {
-  try {
-    console.log(`📞 Initiating ${callType} call to ${peerName} (${peerId})`);
-    
-    // Reset state
-    iceConnectedRef.current = false;
-    remoteTracksReceivedRef.current = false;
-    callConnectedTimeRef.current = null;
-    isCallerRef.current = true;
-    updateCallState('initiating');
+  // Initiate outgoing call
+  const initiateCall = useCallback(async (peerId: string, peerName: string, callType: CallType) => {
+    try {
+      console.log(`📞 Initiating ${callType} call to ${peerName} (${peerId})`);
+      
+      // Reset state
+      iceConnectedRef.current = false;
+      remoteTracksReceivedRef.current = false;
+      callConnectedTimeRef.current = null;
+      isCallerRef.current = true;
+      updateCallState('initiating');
 
-    // 1. Create call session via REST API
-    const response = await api.post('/calls', {
-      toUserId: peerId,
-      type: callType
-    });
+      // 1. Create call session via REST API
+      const response = await api.post('/calls', {
+        toUserId: peerId,
+        type: callType
+      });
 
-    const { callId, iceServers, calleeStatus } = response.data;
-    console.log(`✅ Call session created: ${callId}`, {
-      iceServers: iceServers?.length || 0,
-      calleeStatus
-    });
+      const { callId, iceServers, calleeStatus } = response.data;
+      console.log(`✅ Call session created: ${callId}`, {
+        iceServers: iceServers?.length || 0,
+        calleeStatus
+      });
 
-    // 2. Get local stream
-    const localStream = await getLocalStream(callType);
+      // 2. Get local stream
+      const localStream = await getLocalStream(callType);
 
-    // 3. Create session object
-    const session: CallSession = {
-      callId,
-      peerId,
-      peerName,
-      callType,
-      state: 'initiating',
-      localStream,
-      iceServers
-    };
+      // 3. Create session object
+      const session: CallSession = {
+        callId,
+        peerId,
+        peerName,
+        callType,
+        state: 'initiating',
+        localStream,
+        iceServers
+      };
 
-    // 4. Create peer connection
-    peerRef.current = new Peer(
-      {
-        iceServers: iceServers || [],
-        iceTransportPolicy: 'all'
-      },
-      {
-        onIceCandidate: (candidate) => {
-          console.log('❄️ ICE candidate generated');
-          socketService.emit('call:candidate', {
-            callId,
-            candidate
-          });
+      // 4. Create peer connection
+      peerRef.current = new Peer(
+        {
+          iceServers: iceServers || [],
+          iceTransportPolicy: 'all'
         },
-        onNegotiationNeeded: async () => {
-          if (negotiationInProgressRef.current) {
-            console.warn('⚠️ Negotiation already in progress');
-            return;
-          }
-
-          const pc = peerRef.current?.connection;
-          if (!pc) {
-            console.error('❌ No peer connection available');
-            return;
-          }
-
-          console.log(`📞 onNegotiationNeeded fired, signalingState: "${pc.signalingState}"`);
-
-          // ✅ IMPORTANT: Only create offer if in "stable" state
-          if (pc.signalingState !== 'stable') {
-            console.warn(`⚠️ Signaling state is "${pc.signalingState}", not "stable" - SKIPPING`);
-            return;
-          }
-
-          if (callState === 'connected' || iceConnectedRef.current) {
-            console.warn('⚠️ Call already connected, skipping renegotiation');
-            return;
-          }
-
-          try {
-            negotiationInProgressRef.current = true;
-            console.log('📞 Creating offer...');
-            
-            const offer = await peerRef.current!.createOffer();
-            
-            if (!offer.sdp) {
-              throw new Error('Offer SDP is empty');
-            }
-            
-            console.log(`✅ Offer created, SDP length: ${offer.sdp.length}`);
-            
-            // Send offer via socket
-            socketService.emit('call:offer', {
+        {
+          onIceCandidate: (candidate) => {
+            console.log('❄️ ICE candidate generated');
+            socketService.emit('call:candidate', {
               callId,
-              offer: offer.sdp,
-              type: callType
+              candidate
             });
-            
-            console.log('✅ Offer sent to callee');
-            updateCallState('connecting', session);
-          } catch (error) {
-            console.error('❌ Failed to create offer:', error);
-            onError?.(`Failed to negotiate call: ${error instanceof Error ? error.message : String(error)}`);
-            updateCallState('failed', session);
-          } finally {
-            setTimeout(() => {
-              negotiationInProgressRef.current = false;
-            }, 100);
-          }
-        },
-        onTrack: (event) => {
-          console.log('📡 Remote track received');
-          const remoteStream = event.streams[0];
-          if (remoteStream) {
-            session.remoteStream = remoteStream;
-            remoteTracksReceivedRef.current = true;
-            const updatedSession = { ...session };
-            setCallSession(updatedSession);
-            callSessionRef.current = updatedSession;
-            onRemoteStream?.(remoteStream);
-            checkConnectionEstablished(updatedSession);
-          }
-        },
-        onIceConnectionStateChange: (state) => {
-          console.log('❄️ ICE connection state:', state);
-          if (state === 'connected' || state === 'completed') {
-            iceConnectedRef.current = true;
-            if (session) {
-              checkConnectionEstablished(session);
+          },
+          onTrack: (event) => {
+            console.log('📡 Remote track received');
+            const remoteStream = event.streams[0];
+            if (remoteStream) {
+              session.remoteStream = remoteStream;
+              remoteTracksReceivedRef.current = true;
+              const updatedSession = { ...session };
+              setCallSession(updatedSession);
+              callSessionRef.current = updatedSession;
+              onRemoteStream?.(remoteStream);
+              checkConnectionEstablished(updatedSession);
             }
-          } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            iceConnectedRef.current = false;
-            updateCallState('ended', session);
-          }
-        },
-        onConnectionStateChange: (state) => {
-          console.log('🔗 Connection state:', state);
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            iceConnectedRef.current = false;
-            remoteTracksReceivedRef.current = false;
-            updateCallState('ended', session);
+          },
+          onIceConnectionStateChange: (state) => {
+            console.log('❄️ ICE connection state:', state);
+            if (state === 'connected' || state === 'completed') {
+              iceConnectedRef.current = true;
+              if (session) {
+                checkConnectionEstablished(session);
+              }
+            } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+              iceConnectedRef.current = false;
+              updateCallState('ended', session);
+            }
+          },
+          onConnectionStateChange: (state) => {
+            console.log('🔗 Connection state:', state);
+            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+              iceConnectedRef.current = false;
+              remoteTracksReceivedRef.current = false;
+              updateCallState('ended', session);
+            }
+          },
+          // Only for renegotiation (adding video, restarting ICE)
+          onNegotiationNeeded: () => {
+            console.warn('⚠️ onNegotiationNeeded fired - this should only happen for renegotiation');
           }
         }
-      }
-    );
+      );
 
-    // ✅ SIMPLIFIED: Just add local tracks and wait for onNegotiationNeeded
-    if (localStream && peerRef.current) {
+      // 5. Add local tracks to peer connection
       console.log('📞 Adding local tracks to peer connection');
       peerRef.current.addLocalTracks(localStream);
-    }
 
-    // Store session
-    setCallSession(session);
-    callSessionRef.current = session;
-
-    // Set state based on callee status
-    const nextState = calleeStatus === 'offline' ? 'ringing' : 'ringing';
-    updateCallState(nextState, session);
-    console.log(`📞 Callee is ${calleeStatus === 'offline' ? 'offline' : 'online'}, call is ringing`);
-
-    // Set timeout for unanswered call
-    callTimeoutRef.current = setTimeout(async () => {
-      const currentSession = callSessionRef.current;
-      const currentState = callSessionRef.current?.state;
-      if (currentSession && currentSession.callId === callId && 
-          (currentState === 'ringing' || currentState === 'connecting')) {
-        console.log('⏰ Call timeout - not answered');
-        await endCall('missed');
-        onError?.('Call not answered');
+      // 6. Create and send offer
+      console.log('📞 Creating initial offer...');
+      const offer = await peerRef.current.createOffer();
+      
+      if (!offer.sdp) {
+        throw new Error('Offer SDP is empty');
       }
-    }, CALL_TIMEOUT_MS);
+      
+      console.log(`✅ Offer created, SDP length: ${offer.sdp.length}`);
+      
+      // Send offer via socket
+      socketService.emit('call:offer', {
+        callId,
+        offer: offer.sdp,
+        type: callType
+      });
+      
+      console.log('✅ Offer sent to callee');
 
-  } catch (error) {
-    const errorMsg = `Failed to initiate call: ${error instanceof Error ? error.message : String(error)}`;
-    console.error(errorMsg);
-    onError?.(errorMsg);
-    updateCallState('failed');
-  }
-}, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished, endCall]);
+      // Store session
+      setCallSession(session);
+      callSessionRef.current = session;
+      updateCallState('connecting', session);
+
+      // Set timeout for unanswered call
+      callTimeoutRef.current = setTimeout(async () => {
+        const currentSession = callSessionRef.current;
+        const currentState = callSessionRef.current?.state;
+        if (currentSession && currentSession.callId === callId && 
+            (currentState === 'ringing' || currentState === 'connecting')) {
+          console.log('⏰ Call timeout - not answered');
+          await endCall('missed');
+          onError?.('Call not answered');
+        }
+      }, CALL_TIMEOUT_MS);
+
+    } catch (error) {
+      const errorMsg = `Failed to initiate call: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(errorMsg);
+      onError?.(errorMsg);
+      updateCallState('failed');
+    }
+  }, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished, endCall]);
 
   // Answer incoming call
   const answerCall = useCallback(async (callId: string) => {
@@ -534,38 +416,15 @@ const getLocalStream = useCallback(async (callType: CallType) => {
       remoteTracksReceivedRef.current = false;
       callConnectedTimeRef.current = null;
       isCallerRef.current = false;
-
       updateCallState('connecting');
 
-      // ✅ FIXED: Wait for offer to arrive if not already received (timeout after 10 seconds)
-      let stored = pendingOfferRef.current;
+      // Get stored offer
+      const stored = pendingOfferRef.current;
       if (!stored || stored.callId !== callId) {
-        console.log('⏳ Waiting for offer to arrive...');
-        
-        // Wait up to 10 seconds for the offer
-        stored = await new Promise<{ callId: string; offer: string; callType: CallType; fromUserId: string } | null>((resolve) => {
-          const timeout = setTimeout(() => {
-            console.error('❌ Offer wait timeout after 10 seconds');
-            resolve(null);
-          }, 10000);
-          
-          const checkInterval = setInterval(() => {
-            const current = pendingOfferRef.current;
-            if (current && current.callId === callId) {
-              clearTimeout(timeout);
-              clearInterval(checkInterval);
-              console.log('✅ Offer arrived!');
-              resolve(current);
-            }
-          }, 100); // Check every 100ms
-        });
-        
-        if (!stored || stored.callId !== callId) {
-          console.error('❌ No offer found for call after waiting:', callId);
-          onError?.('Call offer not found - remote user may have hung up');
-          updateCallState('failed');
-          return;
-        }
+        console.error('❌ No offer found for call:', callId);
+        onError?.('Call offer not found - remote user may have hung up');
+        updateCallState('failed');
+        return;
       }
 
       // 1. Get ICE servers from backend for this call
@@ -576,17 +435,7 @@ const getLocalStream = useCallback(async (callType: CallType) => {
       // 2. Get local stream
       const localStream = await getLocalStream(stored.callType);
 
-      // 3. Create session object
-      const session: CallSession = {
-        callId,
-        peerId: stored.fromUserId,
-        callType: stored.callType,
-        state: 'connecting',
-        localStream,
-        iceServers
-      };
-
-      // 4. Create peer connection
+      // 3. Create peer connection
       peerRef.current = new Peer(
         {
           iceServers,
@@ -604,44 +453,59 @@ const getLocalStream = useCallback(async (callType: CallType) => {
             console.log('📡 Remote track received (answer)');
             const remoteStream = event.streams[0];
             if (remoteStream) {
-              session.remoteStream = remoteStream;
-              remoteTracksReceivedRef.current = true;
-              const updatedSession = { ...session };
-              setCallSession(updatedSession);
-              callSessionRef.current = updatedSession;
-              onRemoteStream?.(remoteStream);
-              checkConnectionEstablished(updatedSession);
+              const session = callSessionRef.current;
+              if (session) {
+                session.remoteStream = remoteStream;
+                remoteTracksReceivedRef.current = true;
+                const updatedSession = { ...session };
+                setCallSession(updatedSession);
+                callSessionRef.current = updatedSession;
+                onRemoteStream?.(remoteStream);
+                checkConnectionEstablished(updatedSession);
+              }
             }
           },
           onIceConnectionStateChange: (state) => {
             console.log('❄️ ICE connection state (answer):', state);
             if (state === 'connected' || state === 'completed') {
               iceConnectedRef.current = true;
+              const session = callSessionRef.current;
               if (session) {
                 checkConnectionEstablished(session);
               }
             } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
               iceConnectedRef.current = false;
-              updateCallState('ended', session);
+              updateCallState('ended', callSessionRef.current);
             }
           }
         }
       );
 
-      // Add local tracks
-      if (localStream) {
-        peerRef.current.addLocalTracks(localStream);
-      }
-
-      // 5. Create and set local description
+      // 4. Process remote offer FIRST
       const offer: RTCSessionDescriptionInit = {
         type: 'offer',
         sdp: stored.offer
       };
 
+      console.log('📞 Processing remote offer...');
       const answer = await peerRef.current.acceptRemoteOffer(offer);
-      
-      // 6. Send answer via socket
+
+      // 5. Add local tracks AFTER processing remote offer
+      console.log('📞 Adding local tracks...');
+      peerRef.current.addLocalTracks(localStream);
+
+      // 6. Create session object
+      const session: CallSession = {
+        callId,
+        peerId: stored.fromUserId,
+        callType: stored.callType,
+        state: 'connecting',
+        localStream,
+        iceServers,
+        remoteStream: undefined
+      };
+
+      // 7. Send answer via socket
       socketService.emit('call:answer', {
         callId,
         answer: answer.sdp
@@ -716,17 +580,6 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     }
   }, []);
 
-  const answerCallById = useCallback(async (callId: string) => {
-    const stored = pendingOfferRef.current;
-    if (stored && stored.callId === callId) {
-      // You already have an answerCall function, just call it
-      await answerCall(callId);
-    } else if (callSessionRef.current && callSessionRef.current.callId === callId) {
-      console.log('Waiting for offer to arrive...');
-      // Optionally, you could set up a promise to wait for the offer
-    }
-  }, [answerCall]);
-
   // Toggle camera
   const toggleCamera = useCallback((enabled: boolean) => {
     if (localStreamRef.current) {
@@ -747,20 +600,22 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     }
   }, []);
 
+  // Handle socket events for incoming calls
+  const handleIncomingCall = useCallback((data: any) => {
+    console.log('📞 Incoming call received:', data);
+    onIncomingCall?.({
+      callId: data.callId,
+      fromUserId: data.fromUserId,
+      type: data.type || 'audio',
+      fromUserName: data.fromUserName
+    });
+  }, [onIncomingCall]);
+
   // Setup socket listeners
   useEffect(() => {
     const socketListeners = {
-      'call:initiate': (data: any) => {
-        console.log('📞 Incoming call INITIATION notification:', data);
-        // Notify the app about the incoming call immediately when caller initiates
-        onIncomingCall?.({
-          callId: data.callId,
-          fromUserId: data.fromUserId,
-          type: data.type || 'audio',
-          fromUserName: data.fromUserName
-        });
-      },
-
+      'call:initiate': handleIncomingCall,
+      
       'call:offer': (data: any) => {
         console.log('📞 Offer received with SDP');
         handleIncomingOffer({
@@ -830,7 +685,14 @@ const getLocalStream = useCallback(async (callType: CallType) => {
         socketService.off(event, handler);
       });
     };
-  }, [handleIncomingOffer, handleRemoteAnswer, addIceCandidate, updateCallState, endCall, onIncomingCall]);
+  }, [
+    handleIncomingOffer, 
+    handleRemoteAnswer, 
+    addIceCandidate, 
+    updateCallState, 
+    endCall, 
+    handleIncomingCall
+  ]);
 
   return {
     // State
@@ -846,7 +708,6 @@ const getLocalStream = useCallback(async (callType: CallType) => {
     // Media control
     toggleMic,
     toggleCamera,
-    answerCallById,
     
     // Streams
     localStream: localStreamRef.current,

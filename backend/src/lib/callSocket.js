@@ -1,13 +1,12 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-  import { getUserActiveCalls } from "../utils/callStore.js";
+import { getUserActiveCalls } from "../utils/callStore.js";
 import { 
   getSession, 
   updateStatus, 
   assertParticipant, 
   endSession 
 } from "../utils/callStore.js";
-import { validateKeyEnvelope } from "../utils/callKeyExchange.js";
 
 // Token extraction helper
 const getToken = (socket) => {
@@ -172,22 +171,6 @@ export const initCallNamespace = (io) => {
       });
     });
 
-    socket.on("call:key-exchange", (payload) => {
-      if (!payload || !validateKeyEnvelope(payload)) {
-        console.error(`❌ Invalid key exchange payload from ${userId}`);
-        return;
-      }
-      
-      const auth = ensureAuthorized(payload.callId);
-      if (!auth.ok) {
-        socket.emit("call:error", { callId: payload.callId, reason: auth.status });
-        return;
-      }
-      
-      logCallEvent('call:key-exchange', payload, userId);
-      emitToPeer(nsp, payload.callId, userId, "call:key-exchange", payload);
-    });
-
     // --- CALL CONTROL EVENTS ---
 
     socket.on("call:reject", ({ callId, reason = "user-rejected" }) => {
@@ -272,21 +255,7 @@ export const initCallNamespace = (io) => {
       });
     });
 
-    socket.on("call:screenshare:update", ({ callId, isSharing }) => {
-      logCallEvent('call:screenshare:update', { callId, isSharing }, userId);
-      
-      const auth = ensureAuthorized(callId);
-      if (!auth.ok) {
-        socket.emit("call:error", { callId, reason: auth.status });
-        return;
-      }
-      
-      emitToPeer(nsp, callId, userId, "call:screenshare:update", { 
-        callId, 
-        isSharing,
-        timestamp: Date.now()
-      });
-    });
+   
 
     // Connection health check
     socket.on("call:ping", ({ callId }) => {
@@ -305,8 +274,7 @@ export const initCallNamespace = (io) => {
       console.log(`👤 User ${userId} disconnected from calls socket`);
       
       // Find any active call this user is in and notify the other participant
-
-const userCalls = getUserActiveCalls(userId);
+      const userCalls = getUserActiveCalls(userId);
       
       userCalls.forEach(session => {
         if (session && session.status === "connected") {

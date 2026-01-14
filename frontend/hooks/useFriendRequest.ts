@@ -228,8 +228,8 @@ export function useFriendRequests(currentUserId: string | null) {
       });
       
       // Load sent and received requests to get requestIds
-      let sentRequestsMap = new Map<string, string>();
-      let receivedRequestsMap = new Map<string, string>();
+      const sentRequestsMap = new Map<string, string>();
+      const receivedRequestsMap = new Map<string, string>();
       
       try {
         const [sentResponse, receivedResponse] = await Promise.all([
