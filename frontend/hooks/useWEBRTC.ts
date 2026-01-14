@@ -334,19 +334,27 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
               candidate
             });
           },
-          onTrack: (event) => {
-            console.log('📡 Remote track received');
-            const remoteStream = event.streams[0];
-            if (remoteStream) {
-              session.remoteStream = remoteStream;
-              remoteTracksReceivedRef.current = true;
-              const updatedSession = { ...session };
-              setCallSession(updatedSession);
-              callSessionRef.current = updatedSession;
-              onRemoteStream?.(remoteStream);
-              checkConnectionEstablished(updatedSession);
-            }
-          },
+         onTrack: (event) => {
+  console.log('📡 Remote track received');
+  const remoteStream = event.streams[0];
+  if (remoteStream) {
+    session.remoteStream = remoteStream;
+    remoteTracksReceivedRef.current = true;
+    const updatedSession = { ...session };
+    setCallSession(updatedSession);
+    callSessionRef.current = updatedSession;
+    onRemoteStream?.(remoteStream);
+    
+    // IMMEDIATELY transition to connected when tracks arrive
+    console.log('✅ Remote tracks received, marking as connected');
+    callConnectedTimeRef.current = Date.now();
+    if (callTimeoutRef.current) {
+      clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
+    }
+    updateCallState('connected', updatedSession);
+  }
+},
           onIceConnectionStateChange: (state) => {
             console.log('❄️ ICE connection state:', state);
             if (state === 'connected' || state === 'completed') {
