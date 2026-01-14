@@ -27,7 +27,7 @@ import type {
   UserStatusChangedData,
   AuthenticatedData,
   OnlineFriendsResponseData
-} from '@/lib/socket';
+} from '@/types';
 
 interface UseChatLogicOptions {
   userId: string;

@@ -1,5 +1,4 @@
-/* WebRTC Peer helper focused on resilience and low setup latency. */
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 type IceServer = RTCIceServer;
 
 export type PeerCallbacks = {
@@ -14,36 +13,59 @@ export type PeerConfig = {
   iceServers: IceServer[];
   iceTransportPolicy?: RTCIceTransportPolicy;
   bundlePolicy?: RTCBundlePolicy;
-  encodedInsertableStreams?: boolean;
 };
 
 export class Peer {
   private pc: RTCPeerConnection;
   private callbacks: PeerCallbacks;
   private bufferedCandidates: RTCIceCandidateInit[] = [];
-  private turnOnlyFallback = false;
+  
+  // Track senders for replacement
+  private audioSender: RTCRtpSender | null = null;
+  private videoSender: RTCRtpSender | null = null;
 
   constructor(config: PeerConfig, callbacks: PeerCallbacks = {}) {
     this.callbacks = callbacks;
     this.pc = new RTCPeerConnection({
       iceServers: config.iceServers,
       iceTransportPolicy: config.iceTransportPolicy || "all",
-      bundlePolicy: config.bundlePolicy || "balanced"
+      bundlePolicy: config.bundlePolicy || "balanced",
+      rtcpMuxPolicy: "require"
     });
 
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners() {
     this.pc.onicecandidate = (e) => {
       if (e.candidate && this.callbacks.onIceCandidate) {
         this.callbacks.onIceCandidate(e.candidate.toJSON());
       }
     };
 
-    this.pc.ontrack = (ev) => this.callbacks.onTrack?.(ev);
-    this.pc.oniceconnectionstatechange = () =>
+    this.pc.ontrack = (ev) => {
+      console.log(`📥 Received remote ${ev.track.kind} track`);
+      this.callbacks.onTrack?.(ev);
+    };
+    
+    this.pc.oniceconnectionstatechange = () => {
+      console.log(`❄️ ICE state: ${this.pc.iceConnectionState}`);
       this.callbacks.onIceConnectionStateChange?.(this.pc.iceConnectionState);
-    this.pc.onconnectionstatechange = () =>
+    };
+    
+    this.pc.onconnectionstatechange = () => {
+      console.log(`🔗 Connection state: ${this.pc.connectionState}`);
       this.callbacks.onConnectionStateChange?.(this.pc.connectionState);
-    this.pc.onnegotiationneeded = () =>
+    };
+    
+    this.pc.onnegotiationneeded = () => {
+      console.log('🔄 Negotiation needed');
       this.callbacks.onNegotiationNeeded?.();
+    };
+    
+    this.pc.onsignalingstatechange = () => {
+      console.log(`📡 Signaling state: ${this.pc.signalingState}`);
+    };
   }
 
   get connection() {
@@ -51,136 +73,166 @@ export class Peer {
   }
 
   addLocalTracks(stream: MediaStream) {
-    const tracks = stream.getTracks();
-    const audioTracks = tracks.filter(t => t.kind === 'audio');
-    const videoTracks = tracks.filter(t => t.kind === 'video');
+    const audioTracks = stream.getAudioTracks();
+    const videoTracks = stream.getVideoTracks();
     
-    console.log(`📡 Adding tracks: ${audioTracks.length} audio, ${videoTracks.length} video`);
+    console.log(`📡 Processing tracks: ${audioTracks.length} audio, ${videoTracks.length} video`);
     
-    // CRITICAL: Ensure all audio tracks are enabled and not muted before adding
-    audioTracks.forEach((track) => {
-      if (!track.enabled) {
-        console.warn(`⚠️ Audio track ${track.id} is disabled, enabling it`);
-        track.enabled = true;
-      }
-      if (track.muted) {
-        console.warn(`⚠️ Audio track ${track.id} is muted`);
-      }
-      console.log(`  Audio track state: id=${track.id}, enabled=${track.enabled}, muted=${track.muted}, readyState=${track.readyState}`);
-    });
-    
-    // CRITICAL: Lock track add order - audio FIRST, then video
-    // This ensures m-line order is consistent: m=audio, m=video
-    // Order must never change across call lifecycle
-    const orderedTracks = [...audioTracks, ...videoTracks];
-    
-    orderedTracks.forEach((t) => {
-      this.pc.addTrack(t, stream);
-      console.log(`  Added ${t.kind} track: id=${t.id}, enabled=${t.enabled}`);
-    });
-    
-    // Verify tracks were added and senders are configured
-    const senders = this.pc.getSenders();
-    const audioSenders = senders.filter(s => s.track && s.track.kind === 'audio');
-    const videoSenders = senders.filter(s => s.track && s.track.kind === 'video');
-    console.log(`✅ Senders after add: ${audioSenders.length} audio, ${videoSenders.length} video`);
-    
-    // CRITICAL: Verify audio senders have active tracks
-    audioSenders.forEach((sender, idx) => {
-      const track = sender.track;
-      if (track) {
-        console.log(`  Audio sender ${idx}: trackId=${track.id}, enabled=${track.enabled}, muted=${track.muted}, readyState=${track.readyState}`);
-        if (!track.enabled || track.muted || track.readyState !== 'live') {
-          console.error(`❌ Audio sender ${idx} has inactive track!`);
-        }
+    // Handle audio track
+    if (audioTracks.length > 0) {
+      const audioTrack = audioTracks[0];
+      console.log(`🔊 Audio track: id=${audioTrack.id}, enabled=${audioTrack.enabled}, muted=${audioTrack.muted}`);
+      
+      if (this.audioSender) {
+        // Replace existing audio track
+        console.log('🔄 Replacing existing audio track');
+        this.audioSender.replaceTrack(audioTrack);
       } else {
-        console.error(`❌ Audio sender ${idx} has no track!`);
+        // Add new audio track
+        console.log('➕ Adding new audio track');
+        this.audioSender = this.pc.addTrack(audioTrack, stream);
       }
-    });
+    } else if (this.audioSender) {
+      // Remove audio if no track provided
+      console.log('➖ Removing audio track');
+      this.pc.removeTrack(this.audioSender);
+      this.audioSender = null;
+    }
+    
+    // Handle video track
+    if (videoTracks.length > 0) {
+      const videoTrack = videoTracks[0];
+      console.log(`📹 Video track: id=${videoTrack.id}, enabled=${videoTrack.enabled}, muted=${videoTrack.muted}`);
+      
+      if (this.videoSender) {
+        // Replace existing video track
+        console.log('🔄 Replacing existing video track');
+        this.videoSender.replaceTrack(videoTrack);
+      } else {
+        // Add new video track
+        console.log('➕ Adding new video track');
+        this.videoSender = this.pc.addTrack(videoTrack, stream);
+      }
+    } else if (this.videoSender) {
+      // Remove video if no track provided
+      console.log('➖ Removing video track');
+      this.pc.removeTrack(this.videoSender);
+      this.videoSender = null;
+    }
+    
+    this.verifyTrackSetup();
   }
 
-  async createOffer() {
-    // CRITICAL: Hard fail safety guard - only create offer if signaling state is stable
-    if (this.pc.signalingState !== 'stable') {
-      const error = `Cannot create offer: signaling state is "${this.pc.signalingState}", not "stable"`;
-      console.error(`❌ [createOffer] ${error}`);
-      throw new Error(error);
+  replaceTrack(kind: 'audio' | 'video', newTrack: MediaStreamTrack): boolean {
+    const sender = kind === 'audio' ? this.audioSender : this.videoSender;
+    
+    if (!sender) {
+      console.error(`❌ No ${kind} sender to replace`);
+      return false;
     }
     
-    // CRITICAL: Safety check - ensure no null tracks
+    try {
+      console.log(`🔄 Replacing ${kind} track: ${sender.track?.id} → ${newTrack.id}`);
+      sender.replaceTrack(newTrack);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to replace ${kind} track:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Verify track setup is correct
+   */
+  private verifyTrackSetup() {
     const senders = this.pc.getSenders();
-    const hasNullTrack = senders.some(s => s.track === null);
-    if (hasNullTrack) {
-      const error = 'Cannot create offer: found sender with null track';
-      console.error(`❌ [createOffer] ${error}`);
+    const receivers = this.pc.getReceivers();
+    
+    console.log('🔍 Track verification:');
+    console.log(`   Senders: ${senders.length} (audio: ${senders.filter(s => s.track?.kind === 'audio').length}, video: ${senders.filter(s => s.track?.kind === 'video').length})`);
+    console.log(`   Receivers: ${receivers.length} (audio: ${receivers.filter(r => r.track?.kind === 'audio').length}, video: ${receivers.filter(r => r.track?.kind === 'video').length})`);
+    
+    // Check for duplicate track kinds (should never happen)
+    const audioSenders = senders.filter(s => s.track?.kind === 'audio');
+    const videoSenders = senders.filter(s => s.track?.kind === 'video');
+    
+    if (audioSenders.length > 1) {
+      console.error(`❌ ERROR: Found ${audioSenders.length} audio senders (should be 0 or 1)`);
+    }
+    
+    if (videoSenders.length > 1) {
+      console.error(`❌ ERROR: Found ${videoSenders.length} video senders (should be 0 or 1)`);
+    }
+  }
+
+  async createOffer(options?: RTCOfferOptions) {
+    // Verify signaling state
+    if (this.pc.signalingState !== 'stable') {
+      const error = `Cannot create offer: signaling state is "${this.pc.signalingState}"`;
+      console.error(`❌ ${error}`);
       throw new Error(error);
     }
     
-    const offer = await this.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+    this.verifyTrackSetup();
+    
+    console.log('📤 Creating offer...');
+    const offer = await this.pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+      iceRestart: options?.iceRestart || false
+    });
+    
+    // Log SDP details
+    this.logSdpDetails('Offer', offer.sdp);
+    
     await this.pc.setLocalDescription(offer);
     return offer;
   }
 
   async createAnswer() {
-    // Verify we have tracks before creating answer
-    const senders = this.pc.getSenders();
-    const audioSenders = senders.filter(s => s.track && s.track.kind === 'audio');
-    console.log('📤 Creating answer - audio senders:', audioSenders.length);
+    this.verifyTrackSetup();
     
+    console.log('📤 Creating answer...');
     const answer = await this.pc.createAnswer();
     
-    // Verify SDP includes audio
-    if (answer.sdp) {
-      const hasAudio = answer.sdp.includes('m=audio');
-      console.log('📋 Answer SDP has audio:', hasAudio);
-      if (!hasAudio) {
-        console.error('❌ Answer SDP missing audio media line!');
-      }
-    }
+    // Log SDP details
+    this.logSdpDetails('Answer', answer.sdp);
     
     await this.pc.setLocalDescription(answer);
     return answer;
   }
 
   async acceptRemoteOffer(offer: RTCSessionDescriptionInit) {
-    // CRITICAL: Verify offer SDP includes audio before accepting
-    if (offer.sdp) {
-      const hasAudio = offer.sdp.includes('m=audio');
-      console.log('📥 Accepting remote offer - SDP has audio:', hasAudio);
-      if (!hasAudio) {
-        console.error('❌ Remote offer SDP missing audio media line!');
-      }
-    }
+    console.log('📥 Setting remote description (offer)...');
+    
+    // Log incoming SDP
+    this.logSdpDetails('Remote Offer', offer.sdp);
     
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
-    
-    // Verify we have receivers after setting remote description
-    const receivers = this.pc.getReceivers();
-    const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio');
-    console.log('📥 After setting remote offer - audio receivers:', audioReceivers.length);
+    console.log('✅ Remote description set');
     
     await this.flushBufferedCandidates();
+    
     return this.createAnswer();
   }
 
   async acceptRemoteAnswer(answer: RTCSessionDescriptionInit) {
-    // CRITICAL: Verify answer SDP includes audio before accepting
-    if (answer.sdp) {
-      const hasAudio = answer.sdp.includes('m=audio');
-      console.log('📥 Accepting remote answer - SDP has audio:', hasAudio);
-      if (!hasAudio) {
-        console.error('❌ Remote answer SDP missing audio media line!');
-      }
-    }
+    console.log('📥 Setting remote description (answer)...');
+    
+    // Log incoming SDP
+    this.logSdpDetails('Remote Answer', answer.sdp);
     
     await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-    
-    // Verify we have receivers after setting remote description
-    const receivers = this.pc.getReceivers();
-    const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio');
-    console.log('📥 After setting remote answer - audio receivers:', audioReceivers.length);
+    console.log('✅ Remote answer processed');
     
     await this.flushBufferedCandidates();
+  }
+
+  // NEW: Explicit setLocalDescription method
+  async setLocalDescription(description: RTCSessionDescriptionInit) {
+    console.log(`📝 Setting local description: ${description.type}`);
+    await this.pc.setLocalDescription(new RTCSessionDescription(description));
+    console.log('✅ Local description set');
   }
 
   async addCandidate(candidate: RTCIceCandidateInit) {
@@ -188,6 +240,7 @@ export class Peer {
       this.bufferedCandidates.push(candidate);
       return;
     }
+    
     try {
       await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (err) {
@@ -197,39 +250,60 @@ export class Peer {
 
   private async flushBufferedCandidates() {
     if (!this.bufferedCandidates.length) return;
-    const queued = [...this.bufferedCandidates];
-    this.bufferedCandidates = [];
-    for (const cand of queued) {
+    
+    console.log(`📦 Flushing ${this.bufferedCandidates.length} buffered ICE candidates`);
+    
+    for (const cand of this.bufferedCandidates) {
       try {
         await this.pc.addIceCandidate(new RTCIceCandidate(cand));
       } catch (err) {
         console.warn("Buffered candidate add failed", err);
       }
     }
+    
+    this.bufferedCandidates = [];
+  }
+  
+  private logSdpDetails(type: string, sdp?: string) {
+    if (!sdp) return;
+    
+    const hasAudio = sdp.includes('m=audio');
+    const hasVideo = sdp.includes('m=video');
+    const audioLines = sdp.split('\n').filter(line => line.includes('a=rtpmap') && line.includes('audio'));
+    const videoLines = sdp.split('\n').filter(line => line.includes('a=rtpmap') && line.includes('video'));
+    
+    console.log(`📋 ${type} SDP Analysis:`);
+    console.log(`   Has audio: ${hasAudio}, Has video: ${hasVideo}`);
+    console.log(`   Audio codecs: ${audioLines.length}, Video codecs: ${videoLines.length}`);
   }
 
-  async restartIce(turnOnly = false) {
-    // CRITICAL: Block restartIce from creating new offers during active call
-    // This prevents SDP m-line ordering errors
-    console.warn('⚠️ [restartIce] BLOCKED: restartIce() should not be called during active call to prevent renegotiation');
-    throw new Error('restartIce() is blocked to prevent SDP m-line ordering errors');
-  }
-
-  // Prioritize audio by lowering video max bitrate if bandwidth drops.
-  async setMaxBitrate(track: MediaStreamTrack, maxBitrate: number) {
-    const sender = this.pc.getSenders().find((s) => s.track?.id === track.id);
-    if (!sender) return;
-    const params = sender.getParameters();
-    if (!params.encodings) params.encodings = [{}];
-    params.encodings[0].maxBitrate = maxBitrate;
-    await sender.setParameters(params);
+  getTrackStatus() {
+    const senders = this.pc.getSenders();
+    const receivers = this.pc.getReceivers();
+    
+    return {
+      localAudio: senders.find(s => s.track?.kind === 'audio')?.track,
+      localVideo: senders.find(s => s.track?.kind === 'video')?.track,
+      remoteAudio: receivers.find(r => r.track?.kind === 'audio')?.track,
+      remoteVideo: receivers.find(r => r.track?.kind === 'video')?.track,
+      senderCount: senders.length,
+      receiverCount: receivers.length
+    };
   }
 
   close() {
-    // CRITICAL: Do NOT stop tracks here - tracks are owned by useWebRTC
-    // Only close the peer connection. Track cleanup is handled by useWebRTC.endCall()
-    console.log('🔌 Closing peer connection (tracks preserved for cleanup by owner)');
-    this.pc.close();
+    console.log('🔌 Closing peer connection');
+    
+    // Clear senders
+    this.audioSender = null;
+    this.videoSender = null;
+    
+    // Clear buffers
+    this.bufferedCandidates = [];
+    
+    // Close connection
+    if (this.pc.signalingState !== 'closed') {
+      this.pc.close();
+    }
   }
 }
-
