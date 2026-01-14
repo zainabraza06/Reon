@@ -116,39 +116,21 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   }, [onError]);
 
   // Check if connection is fully established
- const checkConnectionEstablished = useCallback((session: CallSession) => {
-  const iceState = peerRef.current?.connection.iceConnectionState;
-  const connState = peerRef.current?.connection.connectionState;
-  
-  console.log('🔍 Connection check:', {
-    hasTracks: remoteTracksReceivedRef.current,
-    iceState,
-    connState
-  });
-  
-  // Primary: If we have tracks AND (ICE connected OR connection connected)
-  if (remoteTracksReceivedRef.current && 
-      (iceState === 'connected' || iceState === 'completed' || 
-       connState === 'connected')) {
-    callConnectedTimeRef.current = Date.now();
-    if (callTimeoutRef.current) {
-      clearTimeout(callTimeoutRef.current);
-      callTimeoutRef.current = null;
-    }
-    updateCallState('connected', session);
-  } 
-  // Fallback: If we have tracks for more than 2 seconds, assume connected
-  else if (remoteTracksReceivedRef.current) {
-    setTimeout(() => {
-      if (callSessionRef.current?.state === 'connecting' && 
-          remoteTracksReceivedRef.current) {
-        console.log('⏱️ Fallback: Marking as connected after receiving tracks');
-        callConnectedTimeRef.current = Date.now();
-        updateCallState('connected', session);
+  const checkConnectionEstablished = useCallback((session: CallSession) => {
+    if (iceConnectedRef.current && remoteTracksReceivedRef.current) {
+      callConnectedTimeRef.current = Date.now();
+      if (callTimeoutRef.current) {
+        clearTimeout(callTimeoutRef.current);
+        callTimeoutRef.current = null;
       }
-    }, 2000);
-  }
-}, [updateCallState]);
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+      updateCallState('connected', session);
+    }
+  }, [updateCallState]);
+
   // End call
   const endCall = useCallback(async (reason: 'user-ended' | 'missed' | 'declined' | 'peer-disconnected' = 'user-ended') => {
     console.log(`📞 Ending call: ${reason}`);
@@ -300,7 +282,6 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       });
 
       const { callId, iceServers, calleeStatus } = response.data;
-      console.log("Ice Servers from API:", iceServers);
       console.log(`✅ Call session created: ${callId}`, {
         iceServers: iceServers?.length || 0,
         calleeStatus
@@ -334,27 +315,19 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
               candidate
             });
           },
-         onTrack: (event) => {
-  console.log('📡 Remote track received');
-  const remoteStream = event.streams[0];
-  if (remoteStream) {
-    session.remoteStream = remoteStream;
-    remoteTracksReceivedRef.current = true;
-    const updatedSession = { ...session };
-    setCallSession(updatedSession);
-    callSessionRef.current = updatedSession;
-    onRemoteStream?.(remoteStream);
-    
-    // IMMEDIATELY transition to connected when tracks arrive
-    console.log('✅ Remote tracks received, marking as connected');
-    callConnectedTimeRef.current = Date.now();
-    if (callTimeoutRef.current) {
-      clearTimeout(callTimeoutRef.current);
-      callTimeoutRef.current = null;
-    }
-    updateCallState('connected', updatedSession);
-  }
-},
+          onTrack: (event) => {
+            console.log('📡 Remote track received');
+            const remoteStream = event.streams[0];
+            if (remoteStream) {
+              session.remoteStream = remoteStream;
+              remoteTracksReceivedRef.current = true;
+              const updatedSession = { ...session };
+              setCallSession(updatedSession);
+              callSessionRef.current = updatedSession;
+              onRemoteStream?.(remoteStream);
+              checkConnectionEstablished(updatedSession);
+            }
+          },
           onIceConnectionStateChange: (state) => {
             console.log('❄️ ICE connection state:', state);
             if (state === 'connected' || state === 'completed') {
@@ -431,137 +404,130 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   }, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished, endCall]);
 
   // Answer incoming call
-const answerCall = useCallback(async (callId: string) => {
-  try {
-    console.log(`📞 Answering call: ${callId}`);
+  const answerCall = useCallback(async (callId: string) => {
+    try {
+      console.log(`📞 Answering call: ${callId}`);
+      
+      // Clear incoming call timeout
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+      
+      // Reset state
+      iceConnectedRef.current = false;
+      remoteTracksReceivedRef.current = false;
+      callConnectedTimeRef.current = null;
+      isCallerRef.current = false;
+      updateCallState('connecting');
 
-    // Clear incoming call timeout
-    if (incomingCallTimeoutRef.current) {
-      clearTimeout(incomingCallTimeoutRef.current);
-      incomingCallTimeoutRef.current = null;
-    }
+      // Get stored offer
+      const stored = pendingOfferRef.current;
+      if (!stored || stored.callId !== callId) {
+        console.error('❌ No offer found for call:', callId);
+        onError?.('Call offer not found - remote user may have hung up');
+        updateCallState('failed');
+        return;
+      }
 
-    // Reset state
-    iceConnectedRef.current = false;
-    remoteTracksReceivedRef.current = false;
-    callConnectedTimeRef.current = null;
-    isCallerRef.current = false;
-    updateCallState('connecting');
+      // 1. Get ICE servers from backend for this call
+      const iceResponse = await api.get(`/calls/${callId}`);
+      const iceServers = iceResponse.data.iceServers || [];
+      console.log(`✅ Got ICE servers: ${iceServers.length} servers`);
 
-    // Get stored offer
-    const stored = pendingOfferRef.current;
-    if (!stored || stored.callId !== callId) {
-      console.error('❌ No offer found for call:', callId);
-      onError?.('Call offer not found - remote user may have hung up');
-      updateCallState('failed');
-      return;
-    }
+      // 2. Get local stream
+      const localStream = await getLocalStream(stored.callType);
 
-    // 1. Get ICE servers from backend for this call
-    const iceResponse = await api.get(`/calls/${callId}`);
-    const iceServers = iceResponse.data.iceServers || [];
-    console.log(`✅ Got ICE servers: ${iceServers.length} servers`);
-
-    // 2. Get local stream
-    const localStream = await getLocalStream(stored.callType);
-
-    // 3. Create peer connection
-    peerRef.current = new Peer(
-      {
-        iceServers,
-        iceTransportPolicy: 'all'
-      },
-      {
-        onIceCandidate: (candidate) => {
-          console.log('❄️ ICE candidate generated (answer)');
-          socketService.emit('call:candidate', {
-            callId,
-            candidate
-          });
+      // 3. Create peer connection
+      peerRef.current = new Peer(
+        {
+          iceServers,
+          iceTransportPolicy: 'all'
         },
-        onTrack: (event) => {
-          console.log('📡 Remote track received (answer)');
-          const remoteStream = event.streams[0];
-          if (remoteStream) {
-            const session = callSessionRef.current;
-            if (session) {
-              session.remoteStream = remoteStream;
-              remoteTracksReceivedRef.current = true;
-              const updatedSession = { ...session };
-              setCallSession(updatedSession);
-              callSessionRef.current = updatedSession;
-              onRemoteStream?.(remoteStream);
-              checkConnectionEstablished(updatedSession);
+        {
+          onIceCandidate: (candidate) => {
+            console.log('❄️ ICE candidate generated (answer)');
+            socketService.emit('call:candidate', {
+              callId,
+              candidate
+            });
+          },
+          onTrack: (event) => {
+            console.log('📡 Remote track received (answer)');
+            const remoteStream = event.streams[0];
+            if (remoteStream) {
+              const session = callSessionRef.current;
+              if (session) {
+                session.remoteStream = remoteStream;
+                remoteTracksReceivedRef.current = true;
+                const updatedSession = { ...session };
+                setCallSession(updatedSession);
+                callSessionRef.current = updatedSession;
+                onRemoteStream?.(remoteStream);
+                checkConnectionEstablished(updatedSession);
+              }
             }
-          }
-        },
-        onIceConnectionStateChange: (state) => {
-          console.log('❄️ ICE connection state (answer):', state);
-          if (state === 'connected' || state === 'completed') {
-            iceConnectedRef.current = true;
-            const session = callSessionRef.current;
-            if (session) {
-              checkConnectionEstablished(session);
+          },
+          onIceConnectionStateChange: (state) => {
+            console.log('❄️ ICE connection state (answer):', state);
+            if (state === 'connected' || state === 'completed') {
+              iceConnectedRef.current = true;
+              const session = callSessionRef.current;
+              if (session) {
+                checkConnectionEstablished(session);
+              }
+            } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+              iceConnectedRef.current = false;
+              updateCallState('ended', callSessionRef.current);
             }
-          } else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            iceConnectedRef.current = false;
-            updateCallState('ended', callSessionRef.current);
-          }
-        },
-        onConnectionStateChange: (state) => {
-          console.log('🔗 Connection state (answer):', state);
-          if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-            iceConnectedRef.current = false;
-            remoteTracksReceivedRef.current = false;
-            updateCallState('ended', callSessionRef.current);
           }
         }
-      }
-    );
+      );
 
-    // 4. Add local tracks BEFORE processing remote offer
-    console.log('📞 Adding local tracks...');
-    peerRef.current.addLocalTracks(localStream);
+      // 4. Process remote offer FIRST
+      const offer: RTCSessionDescriptionInit = {
+        type: 'offer',
+        sdp: stored.offer
+      };
 
-    // 5. Process remote offer
-    const offer: RTCSessionDescriptionInit = {
-      type: 'offer',
-      sdp: stored.offer
-    };
-    console.log('📞 Processing remote offer...');
-    const answer = await peerRef.current.acceptRemoteOffer(offer);
+      console.log('📞 Processing remote offer...');
+      const answer = await peerRef.current.acceptRemoteOffer(offer);
 
-    // 6. Create session object
-    const session: CallSession = {
-      callId,
-      peerId: stored.fromUserId,
-      callType: stored.callType,
-      state: 'connecting',
-      localStream,
-      iceServers,
-      remoteStream: undefined
-    };
+      // 5. Add local tracks AFTER processing remote offer
+      console.log('📞 Adding local tracks...');
+      peerRef.current.addLocalTracks(localStream);
 
-    // 7. Send answer via socket
-    socketService.emit('call:answer', {
-      callId,
-      answer: answer.sdp
-    });
+      // 6. Create session object
+      const session: CallSession = {
+        callId,
+        peerId: stored.fromUserId,
+        callType: stored.callType,
+        state: 'connecting',
+        localStream,
+        iceServers,
+        remoteStream: undefined
+      };
 
-    // Update session
-    setCallSession(session);
-    callSessionRef.current = session;
-    pendingOfferRef.current = null;
+      // 7. Send answer via socket
+      socketService.emit('call:answer', {
+        callId,
+        answer: answer.sdp
+      });
 
-    console.log('✅ Call answered, answer sent');
-  } catch (error) {
-    const errorMsg = `Failed to answer call: ${error instanceof Error ? error.message : String(error)}`;
-    console.error(errorMsg);
-    onError?.(errorMsg);
-    updateCallState('failed');
-  }
-}, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished]);
+      // Update session
+      setCallSession(session);
+      callSessionRef.current = session;
+      pendingOfferRef.current = null;
 
+      console.log('✅ Call answered, answer sent');
+
+    } catch (error) {
+      const errorMsg = `Failed to answer call: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(errorMsg);
+      onError?.(errorMsg);
+      updateCallState('failed');
+    }
+  }, [getLocalStream, updateCallState, onRemoteStream, onError, checkConnectionEstablished]);
 
   // Add ICE candidate
   const addIceCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
