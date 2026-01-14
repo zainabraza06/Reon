@@ -2,6 +2,7 @@
 export  const  buildIceServers = () => {
   const username = process.env.TURN_USERNAME;
   const credential = process.env.TURN_PASSWORD;
+  console.log("turn credentials",username,credential);
   
   if (!username || !credential) {
     console.warn('⚠️ TURN credentials missing. Using public STUN only.');
@@ -88,6 +89,6 @@ export const testIceServers = () => {
       (Array.isArray(s.urls) ? s.urls[0] : s.urls).includes('turns:')
     ).length,
     servers: serverTypes,
-    credentialsConfigured: !!(process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL)
+    credentialsConfigured: !!(process.env.TURN_USERNAME && process.env.TURN_PASSWORD)
   };
 };
