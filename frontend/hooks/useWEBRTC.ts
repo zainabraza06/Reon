@@ -53,6 +53,9 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   const CALL_TIMEOUT_MS = 30000;
   const INCOMING_CALL_TIMEOUT_MS = 45000;
 
+
+  
+
   // Update call state
   const updateCallState = useCallback((newState: CallState, session: CallSession | null = null) => {
     console.log(`📞 Call state change: ${callState} -> ${newState}`, session ? `callId: ${session.callId}` : '');
@@ -611,6 +614,61 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
     });
   }, [onIncomingCall]);
 
+  // In the useWebRTC hook, add this function:
+const answerCallById = useCallback(async (callId: string) => {
+  try {
+    console.log(`📞 Answering call by ID: ${callId}`);
+    
+    // Check if we have the offer stored
+    const stored = pendingOfferRef.current;
+    if (stored && stored.callId === callId) {
+      // We have the offer, answer normally
+      await answerCall(callId);
+      return true;
+    } else if (callSessionRef.current?.callId === callId) {
+      // We're already in this call, just return
+      console.log(`ℹ️ Already in call ${callId}`);
+      return true;
+    } else {
+      // No offer found, might be coming from a notification
+      console.log(`⏳ Offer not yet received for call ${callId}, waiting...`);
+      
+      // Wait for offer to arrive (max 10 seconds)
+      const waitForOffer = new Promise<boolean>((resolve) => {
+        const checkInterval = setInterval(() => {
+          const current = pendingOfferRef.current;
+          if (current && current.callId === callId) {
+            clearInterval(checkInterval);
+            console.log(`✅ Offer arrived for call ${callId}`);
+            resolve(true);
+          }
+        }, 100);
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          console.error(`❌ Offer never arrived for call ${callId}`);
+          resolve(false);
+        }, 10000);
+      });
+      
+      const hasOffer = await waitForOffer;
+      if (hasOffer) {
+        await answerCall(callId);
+        return true;
+      } else {
+        onError?.('Call expired or not found');
+        return false;
+      }
+    }
+  } catch (error) {
+    const errorMsg = `Failed to answer call by ID: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(errorMsg);
+    onError?.(errorMsg);
+    return false;
+  }
+}, [answerCall, onError]);
+
   // Setup socket listeners
   useEffect(() => {
     const socketListeners = {
@@ -704,6 +762,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
     answerCall,
     rejectCall,
     endCall,
+    answerCallById,
     
     // Media control
     toggleMic,
