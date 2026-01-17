@@ -484,7 +484,12 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
         }
       );
 
-      // 4. Process remote offer FIRST
+      // 4. Add local tracks BEFORE processing remote offer so
+      // the generated answer SDP includes our local tracks
+      console.log('📞 Adding local tracks (before processing offer)...');
+      peerRef.current.addLocalTracks(localStream);
+
+      // 5. Process remote offer
       const offer: RTCSessionDescriptionInit = {
         type: 'offer',
         sdp: stored.offer
@@ -492,10 +497,6 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
 
       console.log('📞 Processing remote offer...');
       const answer = await peerRef.current.acceptRemoteOffer(offer);
-
-      // 5. Add local tracks AFTER processing remote offer
-      console.log('📞 Adding local tracks...');
-      peerRef.current.addLocalTracks(localStream);
 
       // 6. Create session object
       const session: CallSession = {
