@@ -5,7 +5,6 @@ import { Message, User, DecryptedMediaForUI } from "@/types";
 import MessageBubble from "./MessageBubble";
 import { Phone, Video, X, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import styles from "./ChatWindow.module.css";
 
 interface ChatWindowProps {
   selectedUser: User | null;
@@ -332,28 +331,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   if (!selectedUser) {
     return (
-      <div className={styles.emptyState}>
-        <div className={styles.emptyStateIcon}>
-          <span className={styles.emptyStateEmoji}>💬</span>
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-slate-900 to-slate-800 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-[20%] w-64 h-64 bg-blue-400/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-[20%] right-[20%] w-64 h-64 bg-purple-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-[20%] right-[40%] w-48 h-48 bg-teal-400/10 rounded-full blur-3xl" />
         </div>
-        <h2 className={styles.emptyStateTitle}>Welcome to Reon</h2>
-        <p className={styles.emptyStateText}>
+        <div className="relative z-[1] w-[120px] h-[120px] rounded-full bg-gradient-to-br from-blue-400/15 to-purple-500/15 flex items-center justify-center mb-8 border-[3px] border-white/10 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)]">
+          <span className="text-[3.5rem] drop-shadow-[0_4px_8px_rgba(0,0,0,0.3)] animate-float-y">💬</span>
+        </div>
+        <h2 className="relative z-[1] text-4xl font-extrabold mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-green-400 bg-clip-text text-transparent tracking-tight sm:text-3xl">
+          Welcome to Reon
+        </h2>
+        <p className="relative z-[1] text-white/70 text-[1.1rem] max-w-[28rem] leading-relaxed mb-10 sm:text-base sm:px-4">
           Select a chat to start messaging securely with end-to-end encryption.
         </p>
-        
-        <div className={styles.emptyStateFeatures}>
-          <div className={styles.emptyStateFeature}>
-            <div className={styles.featureIcon}>🔒</div>
-            <span className={styles.featureText}>End-to-End Encryption</span>
-          </div>
-          <div className={styles.emptyStateFeature}>
-            <div className={styles.featureIcon}>🚀</div>
-            <span className={styles.featureText}>Instant Messages</span>
-          </div>
-          <div className={styles.emptyStateFeature}>
-            <div className={styles.featureIcon}>🖼️</div>
-            <span className={styles.featureText}>Secure Media</span>
-          </div>
+        <div className="relative z-[1] flex flex-wrap gap-6 justify-center max-w-[32rem] mt-8 sm:flex-col sm:items-center sm:gap-4 sm:px-4">
+          {[
+            { icon: '🔒', text: 'End-to-End Encryption' },
+            { icon: '🚀', text: 'Instant Messages' },
+            { icon: '🖼️', text: 'Secure Media' },
+          ].map(({ icon, text }) => (
+            <div key={text} className="flex flex-col items-center gap-3 p-5 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-xl min-w-[140px] hover:-translate-y-1 hover:bg-white/[0.08] hover:border-blue-400/30 hover:shadow-[0_8px_25px_rgba(0,0,0,0.2)] transition-all sm:w-full sm:max-w-[280px]">
+              <div className="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl text-xl">{icon}</div>
+              <span className="text-[0.9rem] text-white/90 font-medium text-center">{text}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -362,127 +365,123 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const renderSkeletonMessages = () => (
     <>
       {[...Array(3)].map((_, i) => (
-        <div key={`skeleton-outgoing-${i}`} className={styles.skeletonMessageOutgoing}>
-          <div className={styles.skeletonMessageContent}>
-            <div className={cn(styles.skeletonText, i === 2 && styles.skeletonTextShort)}></div>
-            <div className={styles.skeletonTime}></div>
+        <div key={`skeleton-outgoing-${i}`} className="flex justify-end mx-4 my-1 opacity-80 shrink-0">
+          <div className="max-w-[70%] flex flex-col gap-1.5">
+            <div className={cn("h-4 animate-shimmer rounded-lg", i === 2 ? "w-[120px]" : "w-[200px]")} />
+            <div className="h-3 animate-shimmer rounded-md w-[60px] self-end mt-1" />
           </div>
         </div>
       ))}
       {[...Array(5)].map((_, i) => (
-        <div key={`skeleton-incoming-${i}`} className={styles.skeletonMessageIncoming}>
-          <div className={styles.skeletonAvatar}></div>
-          <div className={styles.skeletonMessageContent}>
-            <div className={cn(styles.skeletonText, i === 3 && styles.skeletonTextShort)}></div>
+        <div key={`skeleton-incoming-${i}`} className="flex gap-2 mx-4 my-1 opacity-80 shrink-0">
+          <div className="w-8 h-8 rounded-full animate-shimmer shrink-0" />
+          <div className="max-w-[70%] flex flex-col gap-1.5">
+            <div className={cn("h-4 animate-shimmer rounded-lg", i === 3 ? "w-[120px]" : "w-[200px]")} />
             {i === 4 && (
-              <div className={styles.skeletonMedia}>
-                <div className={styles.skeletonImage}></div>
+              <div className="mt-1">
+                <div className="w-[180px] h-[120px] animate-shimmer rounded-lg" />
               </div>
             )}
-            <div className={styles.skeletonTime}></div>
+            <div className="h-3 animate-shimmer rounded-md w-[60px] self-end mt-1" />
           </div>
         </div>
       ))}
-      <div className={styles.encryptionNoticeSkeleton}>
-        <div className={styles.skeletonBadge}></div>
+      <div className="sticky top-0 z-10 flex justify-center py-2 bg-slate-900/95 backdrop-blur-xl mb-4 border-b border-white/10 shrink-0">
+        <div className="w-[250px] h-5 animate-shimmer rounded-[10px]" />
       </div>
     </>
   );
 
   return (
-    <div className={styles.chatWindow}>
+    <div className="flex flex-col h-full w-full overflow-hidden relative bg-gradient-to-br from-slate-900 to-slate-800 text-white">
       {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <div className={styles.avatarContainer}>
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/10 bg-slate-900/95 backdrop-blur-xl z-[100] shrink-0 h-16 min-h-16 shadow-[0_2px_8px_rgba(0,0,0,0.2)] sticky top-0 sm:px-3 sm:h-14 sm:min-h-14">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="relative shrink-0">
             <img
-              src={
-                chatImage ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(chatName)}&background=random`
-              }
+              src={chatImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(chatName)}&background=random`}
               alt={chatName}
-              className={styles.avatar}
+              className="w-10 h-10 rounded-full object-cover border-2 border-white/20 hover:border-blue-400/50 hover:scale-105 transition-all sm:w-9 sm:h-9"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                  chatName
-                )}&background=random`;
+                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(chatName)}&background=random`;
               }}
             />
-            {isOnline && <div className={styles.onlineIndicator}></div>}
+            {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-slate-900 shadow-[0_0_0_2px_rgba(34,197,94,0.3)] animate-pulse" />}
           </div>
-          <div className={styles.chatInfo}>
-            <h3 className={styles.chatName}>{chatName}</h3>
-            <p className={styles.chatStatus}>
+          <div className="flex flex-col min-w-0 flex-1">
+            <h3 className="font-semibold text-white leading-tight m-0 text-base whitespace-nowrap overflow-hidden text-ellipsis sm:text-[0.9375rem]">
+              {chatName}
+            </h3>
+            <p className="text-xs text-white/60 mt-0.5 m-0 flex items-center gap-1.5 sm:text-[0.7rem]">
               {isTyping ? (
-                <span className={styles.typingIndicator}>
+                <span className="text-green-400 font-medium flex items-center gap-1.5">
                   Typing
-                  <div className={styles.typingDots}>
-                    <div className={`${styles.typingDot} ${styles.typingDot1}`}></div>
-                    <div className={`${styles.typingDot} ${styles.typingDot2}`}></div>
-                    <div className={`${styles.typingDot} ${styles.typingDot3}`}></div>
-                  </div>
+                  <span className="flex items-center gap-0.5">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                  </span>
                 </span>
               ) : isOnline ? (
                 <span style={{ color: "#22c55e" }}>🟢 Online</span>
               ) : (
-                <span style={{ color: "rgba(255, 255, 255, 0.4)" }}>⚫ Offline</span>
+                <span style={{ color: "rgba(255,255,255,0.4)" }}>⚫ Offline</span>
               )}
             </p>
           </div>
         </div>
 
-        <div className={styles.headerActions}>
-          <button 
-            className={styles.actionButton} 
+        <div className="flex items-center gap-2 shrink-0 sm:gap-1.5">
+          <button
+            className="p-2 rounded-full text-white/80 hover:bg-white/10 hover:-translate-y-px hover:text-white active:translate-y-0 transition-all bg-transparent border-0 cursor-pointer flex items-center justify-center sm:p-1.5"
             aria-label="Voice call"
             onClick={() => selectedUser && onVoiceCall?.(selectedUser._id)}
             disabled={!selectedUser}
           >
             <Phone size={20} />
           </button>
-          <button 
-            className={styles.actionButton} 
+          <button
+            className="p-2 rounded-full text-white/80 hover:bg-white/10 hover:-translate-y-px hover:text-white active:translate-y-0 transition-all bg-transparent border-0 cursor-pointer flex items-center justify-center sm:p-1.5"
             aria-label="Video call"
             onClick={() => selectedUser && onVideoCall?.(selectedUser._id)}
             disabled={!selectedUser}
           >
             <Video size={20} />
           </button>
-
-          <button className={styles.actionButton} aria-label="Close chat" onClick={onClose}>
+          <button
+            className="p-2 rounded-full text-white/80 hover:bg-white/10 hover:-translate-y-px hover:text-white active:translate-y-0 transition-all bg-transparent border-0 cursor-pointer flex items-center justify-center sm:p-1.5"
+            aria-label="Close chat"
+            onClick={onClose}
+          >
             <X size={20} />
           </button>
         </div>
       </div>
 
       {/* Messages Container */}
-      <div 
-        ref={containerRef} 
-        className={cn(styles.messagesContainer, "custom-scrollbar")}
-      >
-        {/* Loading older messages indicator */}
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 flex flex-col min-h-0 relative custom-scrollbar sm:p-2.5">
+        {/* Loading older messages */}
         {loadingOlder && (
-          <div className={styles.loadingOlderMessages}>
-            <div className={styles.loadingSpinner}></div>
-            <span>Loading older messages...</span>
+          <div className="flex flex-col items-center justify-center p-4 gap-3 shrink-0 sticky top-0 z-[5] bg-slate-900/95 backdrop-blur-xl border-b border-white/10 mb-2">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-blue-400 rounded-full animate-spin-ring" />
+            <span className="text-white/60 text-xs font-medium">Loading older messages...</span>
           </div>
         )}
 
-        {/* Encryption notice at top */}
-        <div className={styles.encryptionNotice}>
-          <span className={styles.encryptionBadge}>
-            <Lock size={12} className={styles.lockIcon} />
+        {/* Encryption notice */}
+        <div className="sticky top-0 z-10 flex justify-center py-2 bg-slate-900/95 backdrop-blur-xl mb-4 border-b border-white/10 shrink-0">
+          <span className="bg-yellow-500/15 text-yellow-200 text-xs py-2 px-4 rounded-full border border-yellow-500/30 flex items-center gap-2 font-medium backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.2)] hover:bg-yellow-500/20 hover:-translate-y-px transition-all cursor-default">
+            <Lock size={12} className="w-3 h-3 shrink-0" />
             Messages and media are end-to-end encrypted
           </span>
         </div>
 
         {isLoading && showSkeleton ? (
-          <div className={styles.skeletonWrapper}>
+          <div className="flex flex-col justify-end flex-1 min-h-0 gap-1">
             {renderSkeletonMessages()}
           </div>
         ) : (
           <>
-            {/* Messages list */}
             {messages.map((msg, index) => {
               const isMe = msg.sender === currentUserId;
               const messageId = msg._id;
@@ -494,7 +493,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     message={msg}
                     isMe={isMe}
                     currentUserId={currentUserId}
-                    // ✅ UPDATED: Only pass decrypted data, not decrypt functions
                     decryptedText={decryptedMessages[messageId]}
                     decryptedMedia={mediaForThisMessage}
                   />
@@ -502,22 +500,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               );
             })}
 
-            {/* Typing indicator */}
+            {/* Typing bubble */}
             {isTyping && (
-              <div className={styles.typingBubble}>
-                <div className={styles.typingIndicator}>
-                  <div className={styles.typingDots}>
-                    <div className={`${styles.typingDot} ${styles.typingDot1}`}></div>
-                    <div className={`${styles.typingDot} ${styles.typingDot2}`}></div>
-                    <div className={`${styles.typingDot} ${styles.typingDot3}`}></div>
-                  </div>
+              <div className="mt-2 mx-4 self-start shrink-0">
+                <div className="text-green-400 font-medium flex items-center gap-1.5">
+                  <span className="flex items-center gap-0.5">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-typing-dot" />
+                  </span>
                 </div>
               </div>
             )}
           </>
         )}
 
-        <div ref={bottomRef} className={styles.bottomRef} />
+        <div ref={bottomRef} className="h-px w-full shrink-0 pointer-events-none" />
       </div>
     </div>
   );

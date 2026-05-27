@@ -1,74 +1,25 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  FiUser, 
-  FiMail, 
-  FiMapPin, 
-  FiEdit3, 
-  FiLock, 
-  FiEye, 
-  FiEyeOff,
-  FiArrowLeft,
-  FiCamera,
-  FiCheck,
-  FiX,
-  FiCheckCircle,
-  FiXCircle
+import {
+  FiUser, FiMapPin, FiEdit3, FiLock, FiEye, FiEyeOff,
+  FiArrowLeft, FiCamera, FiCheck, FiX, FiCheckCircle, FiXCircle
 } from 'react-icons/fi';
 import { api } from '@/lib/api';
 import Toast from '@/components/chat/Toast';
 import UserProfile from '@/components/chat/UserProfile';
 import { User } from '@/types';
-import styles from './Settings.module.css';
 
-interface ApiFieldError {
-  location: string;
-  msg: string;
-  path: string;
-  type: string;
-  value: string;
-}
-
+interface ApiFieldError { location: string; msg: string; path: string; type: string; value: string; }
 interface ApiError {
-  response?: {
-    data?: {
-      errors?: ApiFieldError[];
-      message?: string;
-      error?: string;
-      // Add other possible error fields
-      details?: string;
-      msg?: string;
-    };
-  };
+  response?: { data?: { errors?: ApiFieldError[]; message?: string; error?: string; details?: string; msg?: string; }; };
   message?: string;
 }
+interface ToastState { id: string; type: 'success' | 'error' | 'info' | 'warning'; title: string; message: string; duration?: number; }
+interface PasswordRequirements { hasMinLength: boolean; hasUpperCase: boolean; hasLowerCase: boolean; hasDigit: boolean; hasSpecialChar: boolean; }
+interface ProfileFormData { fullName: string; username: string; bio: string; location: string; profilePic: null | File; profilePicUrl: string; }
 
-interface ToastState {
-  id: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  title: string;
-  message: string;
-  duration?: number;
-}
-
-interface PasswordRequirements {
-  hasMinLength: boolean;
-  hasUpperCase: boolean;
-  hasLowerCase: boolean;
-  hasDigit: boolean;
-  hasSpecialChar: boolean;
-}
-
-// Create a type for the form that doesn't require all User properties
-interface ProfileFormData {
-  fullName: string;
-  username: string;
-  bio: string;
-  location: string;
-  profilePic: null | File;
-  profilePicUrl: string;
-}
+const fieldInput = "w-full px-4 py-3 bg-white/[0.08] border border-white/15 rounded-[0.75rem] text-white text-base transition-all font-[inherit] outline-none placeholder:text-white/40 focus:border-blue-500/60 focus:bg-white/[0.12] focus:shadow-[0_0_0_3px_rgba(59,130,246,0.15)]";
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
@@ -83,136 +34,60 @@ export default function ProfileSettingsPage() {
   const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Profile form state - use the new type
   const [profileForm, setProfileForm] = useState<ProfileFormData>({
-    fullName: '',
-    username: '',
-    bio: '',
-    location: '',
-    profilePic: null,
-    profilePicUrl: ''
+    fullName: '', username: '', bio: '', location: '', profilePic: null, profilePicUrl: ''
   });
-
-  // Password form state
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
-    newPassword: ''
-  });
-
-  // Password requirements state
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [passwordRequirements, setPasswordRequirements] = useState<PasswordRequirements>({
-    hasMinLength: false,
-    hasUpperCase: false,
-    hasLowerCase: false,
-    hasDigit: false,
-    hasSpecialChar: false
+    hasMinLength: false, hasUpperCase: false, hasLowerCase: false, hasDigit: false, hasSpecialChar: false
   });
-
-  // Use ref to track toast IDs and prevent duplicates
   const toastIdsRef = useRef<Set<string>>(new Set());
 
-  // Add useEffect to close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setShowUserMenu(false);
-      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) setShowUserMenu(false);
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Add toast function with duplicate prevention
-  const addToast = useCallback((
-    type: 'success' | 'error' | 'info' | 'warning',
-    title: string,
-    message: string,
-    duration: number = 5000
-  ) => {
+  const addToast = useCallback((type: 'success' | 'error' | 'info' | 'warning', title: string, message: string, duration = 5000) => {
     const toastId = `${type}-${title}-${message}`;
-    
-    if (toastIdsRef.current.has(toastId)) {
-      return;
-    }
-
+    if (toastIdsRef.current.has(toastId)) return;
     toastIdsRef.current.add(toastId);
-    
     setToasts(prev => {
-      if (prev.some(t => t.title === title && t.message === message)) {
-        return prev;
-      }
-      
+      if (prev.some(t => t.title === title && t.message === message)) return prev;
       const id = Math.random().toString(36).substring(2, 9);
       return [...prev, { id, type, title, message, duration }];
     });
   }, []);
 
-  // Remove toast function
   const removeToast = useCallback((id: string) => {
     setToasts(prev => {
       const newToasts = prev.filter(toast => toast.id !== id);
-      
-      // Also clean up the ref
       const removedToast = prev.find(t => t.id === id);
-      if (removedToast) {
-        const toastId = `${removedToast.type}-${removedToast.title}-${removedToast.message}`;
-        toastIdsRef.current.delete(toastId);
-      }
-      
+      if (removedToast) toastIdsRef.current.delete(`${removedToast.type}-${removedToast.title}-${removedToast.message}`);
       return newToasts;
     });
   }, []);
 
-  // Improved error handler function
-  const handleApiError = useCallback((error: unknown, defaultMessage: string, context?: string) => {
-    console.error(`API Error${context ? ` in ${context}` : ''}:`, error);
-    
+  const handleApiError = useCallback((error: unknown, defaultMessage: string) => {
     const apiError = error as ApiError;
     let errorMessage = defaultMessage;
-    
-    // Log the full response for debugging
     if (apiError.response?.data) {
-      console.log('Full error response:', apiError.response.data);
-    }
-    
-    if (apiError.response?.data) {
-      const errorData = apiError.response.data;
-      
-      // Handle different error response formats
-      if (typeof errorData === 'string') {
-        errorMessage = errorData;
-      } else if (errorData.message) {
-        errorMessage = errorData.message;
-      } else if (errorData.error) {
-        errorMessage = errorData.error;
-      } else if (errorData.msg) {
-        errorMessage = errorData.msg;
-      } else if (errorData.details) {
-        errorMessage = errorData.details;
-      } else if (Array.isArray(errorData.errors) && errorData.errors.length > 0) {
-        // Handle array of field errors - take the first one
-        errorMessage = errorData.errors[0].msg || errorData.errors[0].msg || defaultMessage;
-      } else if (typeof errorData === 'object') {
-        // Try to get first property if it's an object
-        const firstKey = Object.keys(errorData)[0];
-        if (firstKey) {
-          const firstValue = errorData[firstKey as keyof typeof errorData];
-          if (Array.isArray(firstValue)) {
-            errorMessage = firstValue[0].msg || defaultMessage;
-          } else if (typeof firstValue === 'string') {
-            errorMessage = firstValue;
-          }
-        }
-      }
+      const d = apiError.response.data;
+      if (typeof d === 'string') errorMessage = d;
+      else if (d.message) errorMessage = d.message;
+      else if (d.error) errorMessage = d.error;
+      else if (d.msg) errorMessage = d.msg;
+      else if (d.details) errorMessage = d.details;
+      else if (Array.isArray(d.errors) && d.errors.length > 0) errorMessage = d.errors[0].msg || defaultMessage;
     } else if (apiError.message) {
       errorMessage = apiError.message;
     }
-    
     addToast('error', 'Error', errorMessage);
   }, [addToast]);
 
-  // Load current user data
   useEffect(() => {
     const loadCurrentUser = async () => {
       try {
@@ -220,157 +95,72 @@ export default function ProfileSettingsPage() {
         if (userData) {
           const parsedUser = JSON.parse(userData);
           setCurrentUser(parsedUser);
-          setProfileForm({
-            fullName: parsedUser.fullName || '',
-            username: parsedUser.username || '',
-            bio: parsedUser.bio || '',
-            location: parsedUser.location || '',
-            profilePic: null,
-            profilePicUrl: parsedUser.profilePic || ''
-          });
-          
-          // Load additional user data like notifications and friend requests
+          setProfileForm({ fullName: parsedUser.fullName || '', username: parsedUser.username || '', bio: parsedUser.bio || '', location: parsedUser.location || '', profilePic: null, profilePicUrl: parsedUser.profilePic || '' });
           await loadUserStats(parsedUser._id);
         } else {
-          // Fallback: fetch user data from API
           const response = await api.get<User>('/users/me');
           setCurrentUser(response.data);
-          setProfileForm({
-            fullName: response.data.fullName || '',
-            username: response.data.username || '',
-            bio: response.data.bio || '',
-            location: response.data.location || '',
-            profilePic: null,
-            profilePicUrl: response.data.profilePic || ''
-          });
+          setProfileForm({ fullName: response.data.fullName || '', username: response.data.username || '', bio: response.data.bio || '', location: response.data.location || '', profilePic: null, profilePicUrl: response.data.profilePic || '' });
           await loadUserStats(response.data._id);
         }
       } catch (error) {
-        handleApiError(error, 'Failed to load profile data', 'loadCurrentUser');
-        // Create a default user object
-        setCurrentUser({
-          _id: 'default',
-          username: 'user',
-          profilePic: '',
-          fullName: 'User',
-          unreadCount: 0,
-          isOnboarded: true
-        });
+        handleApiError(error, 'Failed to load profile data');
+        setCurrentUser({ _id: 'default', username: 'user', profilePic: '', fullName: 'User', unreadCount: 0, isOnboarded: true });
       }
     };
-
     loadCurrentUser();
   }, [addToast, handleApiError]);
 
-  // Load user statistics (notifications, friend requests)
   const loadUserStats = async (userId: string) => {
     try {
-      // Load unread notifications count
-      const notificationsResponse = await api.get('/notifications/unread-count');
-      setUnreadNotifications(notificationsResponse.data.count || 0);
-
-      // Load pending friend requests count
-      const friendsResponse = await api.get('/users/friend-request/pending-count');
-      setPendingFriendRequests(friendsResponse.data.count || 0);
-    } catch (error) {
-      console.error('Error loading user stats:', error);
-    }
+      const [notifRes, friendsRes] = await Promise.all([
+        api.get('/notifications/unread-count'),
+        api.get('/users/friend-request/pending-count')
+      ]);
+      setUnreadNotifications(notifRes.data.count || 0);
+      setPendingFriendRequests(friendsRes.data.count || 0);
+    } catch { /* silent */ }
   };
 
-  // Check password requirements
   const checkPasswordRequirements = (password: string) => {
-    const requirements = {
+    setPasswordRequirements({
       hasMinLength: password.length >= 8,
       hasUpperCase: /[A-Z]/.test(password),
       hasLowerCase: /[a-z]/.test(password),
       hasDigit: /\d/.test(password),
       hasSpecialChar: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
-    };
-    setPasswordRequirements(requirements);
+    });
   };
 
-  // Check if password meets all requirements
-  const isPasswordValid = () => {
-    return Object.values(passwordRequirements).every(requirement => requirement === true);
-  };
+  const isPasswordValid = () => Object.values(passwordRequirements).every(r => r === true);
 
   const handleProfileImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        addToast('error', 'Invalid File', 'Please select an image file');
-        return;
-      }
-
-      // Validate file size (5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        addToast('error', 'File Too Large', 'Please select an image smaller than 5MB');
-        return;
-      }
-
-      setProfileForm(prev => ({ ...prev, profilePic: file }));
-    }
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { addToast('error', 'Invalid File', 'Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { addToast('error', 'File Too Large', 'Please select an image smaller than 5MB'); return; }
+    setProfileForm(prev => ({ ...prev, profilePic: file }));
   };
 
-  const removeProfileImage = () => {
-    setProfileForm(prev => ({ 
-      ...prev, 
-      profilePic: null,
-      profilePicUrl: '' // Clear the profile picture URL
-    }));
-  };
+  const removeProfileImage = () => setProfileForm(prev => ({ ...prev, profilePic: null, profilePicUrl: '' }));
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
     try {
       const formData = new FormData();
-      
-      // Only append fields that have values (make fields optional)
-      if (profileForm.fullName.trim()) {
-        formData.append('fullName', profileForm.fullName.trim());
-      }
-      if (profileForm.username.trim()) {
-        formData.append('username', profileForm.username.trim());
-      }
-      if (profileForm.bio.trim()) {
-        formData.append('bio', profileForm.bio.trim());
-      }
-      if (profileForm.location.trim()) {
-        formData.append('location', profileForm.location.trim());
-      }
-      
-      if (profileForm.profilePic) {
-        formData.append('profilePic', profileForm.profilePic);
-      }
-
-      console.log('Sending profile update with data:', {
-        fullName: profileForm.fullName,
-        username: profileForm.username,
-        bio: profileForm.bio,
-        location: profileForm.location,
-        hasProfilePic: !!profileForm.profilePic
-      });
-
-      const response = await api.put('/settings/profile', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
+      if (profileForm.fullName.trim()) formData.append('fullName', profileForm.fullName.trim());
+      if (profileForm.username.trim()) formData.append('username', profileForm.username.trim());
+      if (profileForm.bio.trim()) formData.append('bio', profileForm.bio.trim());
+      if (profileForm.location.trim()) formData.append('location', profileForm.location.trim());
+      if (profileForm.profilePic) formData.append('profilePic', profileForm.profilePic);
+      await api.put('/settings/profile', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       addToast('success', 'Profile Updated', 'Your profile has been updated successfully');
-      
-      // Reload user data to get updated profile information
       const updatedUserResponse = await api.get<User>('/auth/me');
       setCurrentUser(updatedUserResponse.data);
-      
-      // Update localStorage with new user data
       localStorage.setItem('user', JSON.stringify(updatedUserResponse.data));
-
     } catch (error: unknown) {
-      handleApiError(error, 'Failed to update profile', 'handleProfileUpdate');
+      handleApiError(error, 'Failed to update profile');
     } finally {
       setIsLoading(false);
     }
@@ -378,36 +168,15 @@ export default function ProfileSettingsPage() {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!isPasswordValid()) {
-      addToast('error', 'Invalid Password', 'Please meet all password requirements');
-      return;
-    }
-
+    if (!isPasswordValid()) { addToast('error', 'Invalid Password', 'Please meet all password requirements'); return; }
     setIsLoading(true);
-
     try {
       await api.put('/settings/change-password', passwordForm);
-      
       addToast('success', 'Password Updated', 'Your password has been changed successfully');
-      
-      // Clear password form
-      setPasswordForm({
-        currentPassword: '',
-        newPassword: ''
-      });
-      
-      // Reset password requirements
-      setPasswordRequirements({
-        hasMinLength: false,
-        hasUpperCase: false,
-        hasLowerCase: false,
-        hasDigit: false,
-        hasSpecialChar: false
-      });
-
+      setPasswordForm({ currentPassword: '', newPassword: '' });
+      setPasswordRequirements({ hasMinLength: false, hasUpperCase: false, hasLowerCase: false, hasDigit: false, hasSpecialChar: false });
     } catch (error: unknown) {
-      handleApiError(error, 'Failed to change password', 'handlePasswordChange');
+      handleApiError(error, 'Failed to change password');
     } finally {
       setIsLoading(false);
     }
@@ -420,405 +189,217 @@ export default function ProfileSettingsPage() {
 
   const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    
-    if (name === 'newPassword') {
-      checkPasswordRequirements(value);
-    }
-    
+    if (name === 'newPassword') checkPasswordRequirements(value);
     setPasswordForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // UserProfile handlers
-  const handleUserProfileLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
-    router.push('/auth/login');
-  };
-
-  const handleUserProfileSettings = () => {
-    setShowUserMenu(false);
-  };
-
-  const handleUserProfileCreateGroup = () => {
-    addToast('info', 'Create Group', 'Group creation feature coming soon');
-    setShowUserMenu(false);
-  };
-
-  const handleUserProfileNotifications = () => {
-    router.push('/notifications');
-  };
-
-  const handleUserProfileFriendRequests = () => {
-    router.push('/friends/requests');
-  };
-
-  const handleUserProfileRecommendations = () => {
-    router.push('/recommendations');
-  };
-
-  const handleUserProfileMessages = () => {
-    router.push('/chat');
-  };
-
-  const handleUserProfileHome = () => {
-    router.push('/');
-  };
-
-  // FIXED: Check if profile form has changes - should enable button when any optional field has input
   const hasProfileChanges = () => {
     if (!currentUser) return false;
-    
-    const hasFormChanges = 
+    return (
       profileForm.fullName.trim() !== (currentUser.fullName || '') ||
       profileForm.username.trim() !== (currentUser.username || '') ||
       profileForm.bio.trim() !== (currentUser.bio || '') ||
       profileForm.location.trim() !== (currentUser.location || '') ||
-      profileForm.profilePic !== null;
-
-    // Also check if any optional field has been filled (even if it's the same as current)
-    const hasAnyInput = 
+      profileForm.profilePic !== null ||
       profileForm.fullName.trim().length > 0 ||
       profileForm.username.trim().length > 0 ||
       profileForm.bio.trim().length > 0 ||
-      profileForm.location.trim().length > 0 ||
-      profileForm.profilePic !== null;
-
-    return hasFormChanges || hasAnyInput;
+      profileForm.location.trim().length > 0
+    );
   };
 
+  const defaultUser = { _id: 'default', username: 'user', profilePic: '', fullName: 'User', unreadCount: 0, isOnboarded: true };
+  const reqItem = (met: boolean, label: string) => (
+    <li className={`flex items-center gap-2 text-sm ${met ? 'text-emerald-400' : 'text-white/40'}`}>
+      {met ? <FiCheckCircle size={14} /> : <FiXCircle size={14} />}
+      {label}
+    </li>
+  );
+
   return (
-    <div className={styles.fullPage}>
-      {/* Toast Container */}
-      <div className={styles.toastContainer}>
+    <div className="min-h-screen bg-gradient-to-br from-[#1e1e2f] to-[#111117] relative overflow-x-hidden text-white">
+      {/* Toast container */}
+      <div className="fixed top-5 right-5 z-[1000] flex flex-col gap-2.5">
         {toasts.map(toast => (
-          <Toast
-            key={toast.id}
-            type={toast.type}
-            title={toast.title}
-            message={toast.message}
-            duration={toast.duration}
-            onClose={() => removeToast(toast.id)}
-          />
+          <Toast key={toast.id} type={toast.type} title={toast.title} message={toast.message} duration={toast.duration} onClose={() => removeToast(toast.id)} />
         ))}
       </div>
 
-      {/* Background elements */}
-      <div className={`${styles.blob} ${styles.blobPurple}`}></div>
-      <div className={`${styles.blob} ${styles.blobBlue}`}></div>
-      <div className={`${styles.blob} ${styles.blobTeal}`}></div>
-      
-      {/* Floating particles */}
-      <div className={styles.particlesContainer} id="particles"></div>
+      {/* Background blobs */}
+      <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(128,90,213,0.3)] -top-32 -right-32 pointer-events-none" />
+      <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(59,130,246,0.3)] -bottom-32 -left-32 [animation-delay:2s] pointer-events-none" />
+      <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(45,212,191,0.25)] top-1/2 left-[60%] [animation-delay:4s] pointer-events-none" />
 
-      <div className={styles.container}>
-        {/* Header with UserProfile */}
-        <div className={styles.headerWithProfile}>
-          <div className={styles.headerMain}>
-            <button 
-              className={styles.backButton}
+      <div className="relative z-[1] max-w-[800px] mx-auto p-8 sm:p-4">
+        {/* Header */}
+        <div className="flex items-start gap-4 mb-8 sm:flex-col sm:mb-6">
+          <div className="flex items-start gap-4 flex-1">
+            <button
+              className="bg-white/10 border border-white/20 text-white/80 rounded-[0.75rem] p-3 cursor-pointer transition-all flex items-center justify-center hover:bg-white/15 hover:-translate-x-0.5 shrink-0"
               onClick={() => router.back()}
               aria-label="Go back"
             >
-              <FiArrowLeft />
+              <FiArrowLeft size={20} />
             </button>
-            
-            <div className={styles.headerContent}>
-              <h1 className={styles.title}>Profile Settings</h1>
-              <p className={styles.subtitle}>
-                Manage your profile information and security settings
-              </p>
+            <div className="flex-1 text-center">
+              <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent leading-tight sm:text-4xl">
+                Profile Settings
+              </h1>
+              <p className="text-white/70 text-xl sm:text-base">Manage your profile information and security settings</p>
             </div>
           </div>
-
-          {/* Integrated UserProfile */}
-          <div className={styles.userProfileSection}>
-           <UserProfile
-                         currentUser={currentUser || { 
-                           _id: 'default',
-                           username: 'user',
-                           profilePic: '',
-                           fullName: 'User',
-                           unreadCount: 0,
-                           isOnboarded: true
-                         }}
-                         showUserMenu={showUserMenu}
-                         setShowUserMenu={setShowUserMenu}
-                         userMenuRef={userMenuRef}
-                         pendingFriendRequests={pendingFriendRequests}
-                         currentPage="settings"
-                       />
+          <div className="shrink-0 sm:self-end" ref={userMenuRef}>
+            <UserProfile
+              currentUser={currentUser || defaultUser}
+              showUserMenu={showUserMenu}
+              setShowUserMenu={setShowUserMenu}
+              userMenuRef={userMenuRef}
+              pendingFriendRequests={pendingFriendRequests}
+              currentPage="settings"
+            />
           </div>
         </div>
 
         {/* Tabs */}
-        <div className={styles.tabsContainer}>
-          <div className={styles.tabs}>
-            <button
-              className={`${styles.tab} ${activeTab === 'profile' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('profile')}
-            >
-              <FiUser />
-              Profile Information
-            </button>
-            <button
-              className={`${styles.tab} ${activeTab === 'password' ? styles.activeTab : ''}`}
-              onClick={() => setActiveTab('password')}
-            >
-              <FiLock />
-              Change Password
-            </button>
+        <div className="flex justify-center mb-8">
+          <div className="flex bg-white/5 border border-white/10 rounded-2xl p-2 backdrop-blur-xl">
+            {(['profile', 'password'] as const).map(tab => {
+              const Icon = tab === 'profile' ? FiUser : FiLock;
+              return (
+                <button
+                  key={tab}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-[0.75rem] text-base font-semibold cursor-pointer transition-all border-0 font-[inherit] ${
+                    activeTab === tab ? 'text-white bg-blue-500/20 border border-blue-500/30' : 'text-white/60 bg-transparent hover:text-white/80 hover:bg-white/5'
+                  }`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  <Icon size={18} />
+                  {tab === 'profile' ? 'Profile Information' : 'Change Password'}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Content */}
-        <div className={styles.content}>
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl sm:p-4">
           {activeTab === 'profile' ? (
-            <form onSubmit={handleProfileUpdate} className={styles.form}>
-              {/* Profile Picture Section */}
-              <div className={styles.profilePictureSection}>
-                <div className={styles.profilePictureContainer}>
-                  <div className={styles.profilePicture}>
+            <form onSubmit={handleProfileUpdate} className="w-full">
+              {/* Profile picture */}
+              <div className="flex justify-center mb-8">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="relative w-[120px] h-[120px] rounded-full bg-white/10 border-[3px] border-white/20 overflow-hidden">
                     {profileForm.profilePic ? (
                       <>
-                        <img 
-                          src={URL.createObjectURL(profileForm.profilePic)} 
-                          alt="Profile preview" 
-                          className={styles.profileImage}
-                        />
-                        <button
-                          type="button"
-                          className={styles.removeImageButton}
-                          onClick={removeProfileImage}
-                          title="Remove image"
-                        >
-                          <FiX />
+                        <img src={URL.createObjectURL(profileForm.profilePic)} alt="Profile preview" className="w-full h-full object-cover" />
+                        <button type="button" onClick={removeProfileImage} title="Remove image"
+                          className="absolute top-[5px] right-[5px] bg-red-500/90 border-0 rounded-full w-7 h-7 flex items-center justify-center text-white cursor-pointer transition-all hover:bg-red-500 hover:scale-110">
+                          <FiX size={14} />
                         </button>
                       </>
                     ) : profileForm.profilePicUrl ? (
                       <>
-                        <img 
-                          src={profileForm.profilePicUrl} 
-                          alt="Current profile" 
-                          className={styles.profileImage}
-                        />
-                        <button
-                          type="button"
-                          className={styles.removeImageButton}
-                          onClick={removeProfileImage}
-                          title="Remove image"
-                        >
-                          <FiX />
+                        <img src={profileForm.profilePicUrl} alt="Current profile" className="w-full h-full object-cover" />
+                        <button type="button" onClick={removeProfileImage} title="Remove image"
+                          className="absolute top-[5px] right-[5px] bg-red-500/90 border-0 rounded-full w-7 h-7 flex items-center justify-center text-white cursor-pointer transition-all hover:bg-red-500 hover:scale-110">
+                          <FiX size={14} />
                         </button>
                       </>
                     ) : (
-                      <div className={styles.defaultAvatar}>
-                        <FiUser className={styles.defaultAvatarIcon} />
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
+                        <FiUser size={48} className="text-white" />
                       </div>
                     )}
                   </div>
-                  
-                  <div className={styles.profilePictureActions}>
-                    <input
-                      type="file"
-                      id="profilePic"
-                      accept="image/*"
-                      onChange={handleProfileImageChange}
-                      className={styles.fileInput}
-                    />
-                    <label htmlFor="profilePic" className={styles.uploadButton}>
-                      <FiCamera />
+                  <div className="flex flex-col items-center gap-2">
+                    <input type="file" id="profilePic" accept="image/*" onChange={handleProfileImageChange} className="hidden" />
+                    <label htmlFor="profilePic" className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-[0.75rem] cursor-pointer text-sm font-semibold transition-all hover:bg-blue-500/30 hover:-translate-y-0.5">
+                      <FiCamera size={14} />
                       {profileForm.profilePicUrl || profileForm.profilePic ? 'Change Photo' : 'Upload Photo'}
                     </label>
-                    <p className={styles.uploadHint}>
-                      JPG, PNG or WebP. Max 5MB.
-                    </p>
+                    <p className="text-white/50 text-[0.8rem] text-center">JPG, PNG or WebP. Max 5MB.</p>
                   </div>
                 </div>
               </div>
 
-              {/* Form Fields */}
-              <div className={styles.formGrid}>
-                <div className={styles.formGroup}>
-                  <label htmlFor="fullName" className={styles.label}>
-                    Full Name
-                    <span className={styles.optional}>(optional)</span>
+              {/* Form fields */}
+              <div className="grid grid-cols-2 gap-6 mb-8 sm:grid-cols-1">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="fullName" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
+                    Full Name <span className="text-white/40 font-normal text-sm">(optional)</span>
                   </label>
-                  <input
-                    type="text"
-                    id="fullName"
-                    name="fullName"
-                    value={profileForm.fullName}
-                    onChange={handleProfileInputChange}
-                    className={styles.input}
-                    placeholder={currentUser?.fullName || "Enter your full name"}
-                  />
+                  <input type="text" id="fullName" name="fullName" value={profileForm.fullName} onChange={handleProfileInputChange} className={fieldInput} placeholder={currentUser?.fullName || "Enter your full name"} />
                 </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="username" className={styles.label}>
-                    Username
-                    <span className={styles.optional}>(optional)</span>
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="username" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
+                    Username <span className="text-white/40 font-normal text-sm">(optional)</span>
                   </label>
-                  <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    value={profileForm.username}
-                    onChange={handleProfileInputChange}
-                    className={styles.input}
-                    placeholder={currentUser?.username || "Enter your username"}
-                  />
+                  <input type="text" id="username" name="username" value={profileForm.username} onChange={handleProfileInputChange} className={fieldInput} placeholder={currentUser?.username || "Enter your username"} />
                 </div>
-
-                <div className={styles.formGroup}>
-                  <label htmlFor="location" className={styles.label}>
-                    <FiMapPin className={styles.labelIcon} />
-                    Location
-                    <span className={styles.optional}>(optional)</span>
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="location" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
+                    <FiMapPin size={16} className="text-white/60" />
+                    Location <span className="text-white/40 font-normal text-sm">(optional)</span>
                   </label>
-                  <input
-                    type="text"
-                    id="location"
-                    name="location"
-                    value={profileForm.location}
-                    onChange={handleProfileInputChange}
-                    className={styles.input}
-                    placeholder={currentUser?.location || "Enter your location"}
-                  />
+                  <input type="text" id="location" name="location" value={profileForm.location} onChange={handleProfileInputChange} className={fieldInput} placeholder={currentUser?.location || "Enter your location"} />
                 </div>
-
-                <div className={styles.formGroupFull}>
-                  <label htmlFor="bio" className={styles.label}>
-                    <FiEdit3 className={styles.labelIcon} />
-                    Bio
-                    <span className={styles.optional}>(optional)</span>
+                <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
+                  <label htmlFor="bio" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
+                    <FiEdit3 size={16} className="text-white/60" />
+                    Bio <span className="text-white/40 font-normal text-sm">(optional)</span>
                   </label>
-                  <textarea
-                    id="bio"
-                    name="bio"
-                    value={profileForm.bio}
-                    onChange={handleProfileInputChange}
-                    className={styles.textarea}
-                    placeholder={currentUser?.bio || "Tell us something about yourself..."}
-                    rows={4}
-                    maxLength={500}
-                  />
-                  <div className={styles.charCount}>
-                    {profileForm.bio.length}/500
-                  </div>
+                  <textarea id="bio" name="bio" value={profileForm.bio} onChange={handleProfileInputChange}
+                    className={`${fieldInput} resize-y min-h-[100px]`}
+                    placeholder={currentUser?.bio || "Tell us something about yourself..."} rows={4} maxLength={500} />
+                  <div className="text-right text-white/50 text-[0.8rem]">{profileForm.bio.length}/500</div>
                 </div>
               </div>
 
-              <div className={styles.formActions}>
-                <button
-                  type="submit"
-                  className={styles.saveButton}
-                  disabled={!hasProfileChanges() || isLoading}
-                >
-                  {isLoading ? (
-                    <div className={styles.loadingSpinner}></div>
-                  ) : (
-                    <FiCheck />
-                  )}
+              <div className="flex justify-center mt-8">
+                <button type="submit" className="flex items-center gap-2 px-8 py-3 bg-green-500/20 text-green-300 border border-green-500/30 rounded-[0.75rem] text-base font-semibold cursor-pointer transition-all font-[inherit] hover:bg-green-500/30 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0" disabled={!hasProfileChanges() || isLoading}>
+                  {isLoading ? <div className="w-4 h-4 border-2 border-transparent border-l-green-300 rounded-full animate-spin-ring" /> : <FiCheck size={16} />}
                   {isLoading ? 'Updating...' : 'Save Changes'}
                 </button>
               </div>
             </form>
           ) : (
-            <form onSubmit={handlePasswordChange} className={styles.form}>
-              <div className={styles.passwordForm}>
-                <div className={styles.formGroup}>
-                  <label htmlFor="currentPassword" className={styles.label}>
-                    Current Password *
-                  </label>
-                  <div className={styles.passwordInputContainer}>
-                    <input
-                      type={showCurrentPassword ? 'text' : 'password'}
-                      id="currentPassword"
-                      name="currentPassword"
-                      value={passwordForm.currentPassword}
-                      onChange={handlePasswordInputChange}
-                      className={styles.input}
-                      required
-                      placeholder="Enter your current password"
-                    />
-                    <button
-                      type="button"
-                      className={styles.passwordToggle}
-                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    >
-                      {showCurrentPassword ? <FiEyeOff /> : <FiEye />}
+            <form onSubmit={handlePasswordChange} className="w-full">
+              <div className="max-w-[500px] mx-auto flex flex-col gap-6">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="currentPassword" className="text-white/90 text-[0.9rem] font-semibold">Current Password *</label>
+                  <div className="relative flex items-center">
+                    <input type={showCurrentPassword ? 'text' : 'password'} id="currentPassword" name="currentPassword" value={passwordForm.currentPassword} onChange={handlePasswordInputChange} className={`${fieldInput} pr-12`} required placeholder="Enter your current password" />
+                    <button type="button" className="absolute right-4 text-white/50 hover:text-white/80 transition-colors cursor-pointer bg-transparent border-0 p-1 rounded" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
+                      {showCurrentPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                     </button>
                   </div>
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label htmlFor="newPassword" className={styles.label}>
-                    New Password *
-                  </label>
-                  <div className={styles.passwordInputContainer}>
-                    <input
-                      type={showNewPassword ? 'text' : 'password'}
-                      id="newPassword"
-                      name="newPassword"
-                      value={passwordForm.newPassword}
-                      onChange={handlePasswordInputChange}
-                      className={styles.input}
-                      required
-                      placeholder="Enter your new password"
-                      minLength={8}
-                    />
-                    <button
-                      type="button"
-                      className={styles.passwordToggle}
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                    >
-                      {showNewPassword ? <FiEyeOff /> : <FiEye />}
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="newPassword" className="text-white/90 text-[0.9rem] font-semibold">New Password *</label>
+                  <div className="relative flex items-center">
+                    <input type={showNewPassword ? 'text' : 'password'} id="newPassword" name="newPassword" value={passwordForm.newPassword} onChange={handlePasswordInputChange} className={`${fieldInput} pr-12`} required placeholder="Enter your new password" minLength={8} />
+                    <button type="button" className="absolute right-4 text-white/50 hover:text-white/80 transition-colors cursor-pointer bg-transparent border-0 p-1 rounded" onClick={() => setShowNewPassword(!showNewPassword)}>
+                      {showNewPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                     </button>
                   </div>
-                  <div className={styles.passwordHint}>
-                    Password must be at least 8 characters long and contain uppercase, lowercase, digit, and special character
-                  </div>
+                  <p className="text-white/50 text-[0.8rem] mt-1">Password must be at least 8 characters long and contain uppercase, lowercase, digit, and special character</p>
                 </div>
 
-                {/* Password Requirements */}
-                <div className={styles.passwordRequirements}>
-                  <h4>Password Requirements:</h4>
-                  <ul className={styles.requirementsList}>
-                    <li className={passwordRequirements.hasMinLength ? styles.requirementMet : styles.requirementNotMet}>
-                      {passwordRequirements.hasMinLength ? <FiCheckCircle /> : <FiXCircle />}
-                      At least 8 characters long
-                    </li>
-                    <li className={passwordRequirements.hasUpperCase ? styles.requirementMet : styles.requirementNotMet}>
-                      {passwordRequirements.hasUpperCase ? <FiCheckCircle /> : <FiXCircle />}
-                      At least one uppercase letter (A-Z)
-                    </li>
-                    <li className={passwordRequirements.hasLowerCase ? styles.requirementMet : styles.requirementNotMet}>
-                      {passwordRequirements.hasLowerCase ? <FiCheckCircle /> : <FiXCircle />}
-                      At least one lowercase letter (a-z)
-                    </li>
-                    <li className={passwordRequirements.hasDigit ? styles.requirementMet : styles.requirementNotMet}>
-                      {passwordRequirements.hasDigit ? <FiCheckCircle /> : <FiXCircle />}
-                      At least one digit (0-9)
-                    </li>
-                    <li className={passwordRequirements.hasSpecialChar ? styles.requirementMet : styles.requirementNotMet}>
-                      {passwordRequirements.hasSpecialChar ? <FiCheckCircle /> : <FiXCircle />}
-                      At least one special character (!@#$%^&* etc.)
-                    </li>
+                <div className="bg-white/5 border border-white/10 rounded-[0.75rem] p-4">
+                  <h4 className="text-white text-[0.9rem] font-semibold mb-3">Password Requirements:</h4>
+                  <ul className="flex flex-col gap-2 list-none p-0 m-0">
+                    {reqItem(passwordRequirements.hasMinLength, 'At least 8 characters long')}
+                    {reqItem(passwordRequirements.hasUpperCase, 'At least one uppercase letter (A-Z)')}
+                    {reqItem(passwordRequirements.hasLowerCase, 'At least one lowercase letter (a-z)')}
+                    {reqItem(passwordRequirements.hasDigit, 'At least one digit (0-9)')}
+                    {reqItem(passwordRequirements.hasSpecialChar, 'At least one special character (!@#$%^&* etc.)')}
                   </ul>
                 </div>
 
-                <div className={styles.formActions}>
-                  <button
-                    type="submit"
-                    className={styles.saveButton}
-                    disabled={isLoading || !passwordForm.currentPassword || !passwordForm.newPassword || !isPasswordValid()}
-                  >
-                    {isLoading ? (
-                      <div className={styles.loadingSpinner}></div>
-                    ) : (
-                      <FiCheck />
-                    )}
+                <div className="flex justify-center mt-4">
+                  <button type="submit" className="flex items-center gap-2 px-8 py-3 bg-green-500/20 text-green-300 border border-green-500/30 rounded-[0.75rem] text-base font-semibold cursor-pointer transition-all font-[inherit] hover:bg-green-500/30 hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed" disabled={isLoading || !passwordForm.currentPassword || !passwordForm.newPassword || !isPasswordValid()}>
+                    {isLoading ? <div className="w-4 h-4 border-2 border-transparent border-l-green-300 rounded-full animate-spin-ring" /> : <FiCheck size={16} />}
                     {isLoading ? 'Updating...' : 'Change Password'}
                   </button>
                 </div>

@@ -10,11 +10,10 @@ import {
   MessageSquare,
   Maximize2,
 } from "lucide-react";
-import styles from "./ActiveCallScreen.module.css";
-
 import { CallState } from "@/types";
+
 type CallType = "audio" | "video";
-type CallViewMode = 'full' | 'mini';
+type CallViewMode = "full" | "mini";
 
 interface ActiveCallScreenProps {
   isVisible: boolean;
@@ -43,14 +42,14 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   callType,
   localStream,
   remoteStream,
-  callState = 'idle',
+  callState = "idle",
   onHangup,
   onToggleMic,
   onToggleCamera,
   isMicEnabled,
   isCameraEnabled,
   onOpenChat,
-  viewMode = 'full',
+  viewMode = "full",
   onExpand,
   onCollapse,
   onBackToCall,
@@ -60,198 +59,181 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastCallStateRef = useRef<CallState>(callState);
 
-  // Format call duration
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
-        .toString()
-        .padStart(2, "0")}`;
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
     }
     return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Get call status text
   const getCallStatus = useCallback(() => {
     switch (callState) {
-      case 'initiating':
-      case 'ringing':
-        return 'Ringing...';
-      case 'connecting':
-        return 'Connecting...';
-      case 'connected':
-        return null; // Show timer instead
-      case 'failed':
-        return 'Call failed';
-      case 'ended':
-        return 'Call ended';
-      case 'rejected':
-        return 'Call rejected';
-      case 'busy':
-        return 'User is busy';
+      case "initiating":
+      case "ringing":
+        return "Ringing...";
+      case "connecting":
+        return "Connecting...";
+      case "connected":
+        return null;
+      case "failed":
+        return "Call failed";
+      case "ended":
+        return "Call ended";
+      case "rejected":
+        return "Call rejected";
+      case "busy":
+        return "User is busy";
       default:
-        return 'Dialing...';
+        return "Dialing...";
     }
   }, [callState]);
 
- 
-  // Handle remote stream
+  // Remote stream attachment
   useEffect(() => {
     if (!remoteStream) return;
-
-    const setupRemoteStream = () => {
-      // For video calls, attach to video element
-      if (remoteVideoRef.current && callType === 'video') {
-        const currentStream = remoteVideoRef.current.srcObject;
-        if (currentStream !== remoteStream) {
+    const setup = () => {
+      if (remoteVideoRef.current && callType === "video") {
+        if (remoteVideoRef.current.srcObject !== remoteStream) {
           remoteVideoRef.current.srcObject = remoteStream;
         }
       }
-      
-      // For audio-only calls, attach to audio element
-      if (remoteAudioRef.current && callType === 'audio') {
-        const currentStream = remoteAudioRef.current.srcObject;
-        if (currentStream !== remoteStream) {
+      if (remoteAudioRef.current && callType === "audio") {
+        if (remoteAudioRef.current.srcObject !== remoteStream) {
           remoteAudioRef.current.srcObject = remoteStream;
-          // Attempt to play with error handling
-          remoteAudioRef.current.play().catch((err) => {
-            console.warn('Audio autoplay prevented:', err);
-          });
+          remoteAudioRef.current.play().catch(() => {});
         }
       }
     };
-
-    // Use requestAnimationFrame to avoid synchronous updates
-    requestAnimationFrame(setupRemoteStream);
+    requestAnimationFrame(setup);
   }, [remoteStream, callType]);
 
-  // Handle local stream
+  // Local stream attachment — re-runs when isCameraEnabled changes so
+  // the video element is re-attached after it re-mounts on camera toggle
   useEffect(() => {
     if (!localStream) {
-      if (localVideoRef.current?.srcObject) {
-        localVideoRef.current.srcObject = null;
-      }
+      if (localVideoRef.current?.srcObject) localVideoRef.current.srcObject = null;
       return;
     }
-
-    const setupLocalStream = () => {
+    const setup = () => {
       if (localVideoRef.current) {
-        const currentStream = localVideoRef.current.srcObject;
-        if (currentStream !== localStream) {
+        if (localVideoRef.current.srcObject !== localStream) {
           localVideoRef.current.srcObject = localStream;
         }
       }
     };
+    requestAnimationFrame(setup);
+  }, [localStream, isCameraEnabled]);
 
-    requestAnimationFrame(setupLocalStream);
-  }, [localStream]);
+  // Call duration timer
   useEffect(() => {
-  if (callState === 'connected' && isVisible) {
-    if (!timerIntervalRef.current) {
-      timerIntervalRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
+    if (callState === "connected" && isVisible) {
+      if (!timerIntervalRef.current) {
+        timerIntervalRef.current = setInterval(() => {
+          setCallDuration((prev) => prev + 1);
+        }, 1000);
+      }
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
     }
-  } else {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-  }
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [callState, isVisible]);
 
-  return () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-  };
-}, [callState, isVisible]);
-
-
-  // Get display text
   const getDisplayText = useCallback(() => {
-    return callState === 'connected' ? formatDuration(callDuration) : getCallStatus();
+    return callState === "connected" ? formatDuration(callDuration) : getCallStatus();
   }, [callState, callDuration, getCallStatus]);
 
   if (!isVisible) return null;
 
-  // Mini mode rendering
-  if (viewMode === 'mini') {
+  const avatarSrc =
+    remoteUserAvatar ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=200&background=random`;
+
+  // ── MINI MODE ─────────────────────────────────────────────────────────────
+  if (viewMode === "mini") {
     return (
-      <div className={styles.miniContainer}>
-        <div className={styles.miniContent}>
+      <div className="fixed bottom-5 right-5 w-[280px] bg-[rgba(11,20,26,0.95)] backdrop-blur-xl rounded-xl shadow-2xl z-[1000] overflow-hidden border border-white/10 md:w-[260px] sm:w-[230px] sm:bottom-2.5 sm:right-2.5">
+        <div className="flex items-center gap-3 p-3">
           {/* Avatar */}
-          <div className={styles.miniAvatarWrapper}>
+          <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 shrink-0 border-2 border-white/10 sm:w-10 sm:h-10">
             <img
-              src={
-                remoteUserAvatar ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=64&background=random`
-              }
+              src={avatarSrc}
               alt={remoteUserName}
-              className={styles.miniAvatar}
+              className="w-full h-full object-cover"
               onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=64&background=random`;
+                (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=64&background=random`;
               }}
             />
           </div>
 
-          {/* User Info */}
-          <div className={styles.miniUserInfo}>
-            <div className={styles.miniUserName}>{remoteUserName}</div>
-            <div className={styles.miniStatus}>
+          {/* Info */}
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="text-white text-[0.9375rem] font-medium truncate sm:text-sm">
+              {remoteUserName}
+            </div>
+            <div className="text-white/70 text-[0.8125rem] truncate sm:text-xs">
               {getDisplayText()}
             </div>
           </div>
 
-          {/* Mini Controls */}
-          <div className={styles.miniControls}>
+          {/* Controls */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
-              className={`${styles.miniButton} ${
-                !isMicEnabled ? styles.miniButtonDisabled : ""
+              className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 sm:w-7 sm:h-7 ${
+                !isMicEnabled
+                  ? "bg-red-500/30 opacity-80"
+                  : "bg-white/15 hover:bg-white/25 hover:scale-110 active:scale-95"
               }`}
               onClick={onToggleMic}
               title={isMicEnabled ? "Mute" : "Unmute"}
               type="button"
             >
-              {isMicEnabled ? <Mic size={16} /> : <MicOff size={16} />}
+              {isMicEnabled ? <Mic size={14} /> : <MicOff size={14} />}
             </button>
 
-            {callType === 'video' && (
+            {callType === "video" && (
               <button
-                className={`${styles.miniButton} ${
-                  !isCameraEnabled ? styles.miniButtonDisabled : ""
+                className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 sm:w-7 sm:h-7 ${
+                  !isCameraEnabled
+                    ? "bg-red-500/30 opacity-80"
+                    : "bg-white/15 hover:bg-white/25 hover:scale-110 active:scale-95"
                 }`}
                 onClick={onToggleCamera}
                 title={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
                 type="button"
               >
-                {isCameraEnabled ? <Video size={16} /> : <VideoOff size={16} />}
+                {isCameraEnabled ? <Video size={14} /> : <VideoOff size={14} />}
               </button>
             )}
 
             <button
-              className={`${styles.miniButton} ${styles.miniEndButton}`}
+              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 bg-red-500 hover:bg-[#da190b] hover:scale-110 active:scale-95 sm:w-7 sm:h-7"
               onClick={onHangup}
               title="End call"
               type="button"
             >
-              <PhoneOff size={16} />
+              <PhoneOff size={14} />
             </button>
 
             {onBackToCall && (
               <button
-                className={styles.miniButton}
+                className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 bg-white/15 hover:bg-white/25 hover:scale-110 active:scale-95 sm:w-7 sm:h-7"
                 onClick={onBackToCall}
                 title="Back to call"
                 type="button"
               >
-                <Maximize2 size={16} />
+                <Maximize2 size={14} />
               </button>
             )}
           </div>
@@ -260,70 +242,65 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     );
   }
 
-  // Full mode rendering
+  // ── FULL MODE ─────────────────────────────────────────────────────────────
   const isVideoCall = callType === "video";
   const hasRemoteVideo = isVideoCall && remoteStream;
   const showAvatar = !isVideoCall || !hasRemoteVideo;
 
   return (
-    <div className={styles.container}>
+    <div className="call-screen-group fixed inset-0 w-full h-full bg-black flex flex-col items-center justify-between overflow-hidden z-[1000]">
       {/* Hidden audio element for audio-only calls */}
-      {callType === 'audio' && (
+      {callType === "audio" && (
         <audio
           ref={remoteAudioRef}
           autoPlay
           playsInline
-          style={{ position: 'absolute', left: '-9999px', width: 0, height: 0 }}
+          style={{ position: "absolute", left: "-9999px", width: 0, height: 0 }}
         />
       )}
 
-      {/* Remote Video Background (for video calls) */}
+      {/* Remote Video Background */}
       {hasRemoteVideo && (
         <video
           ref={remoteVideoRef}
-          className={styles.remoteVideo}
+          className="absolute inset-0 w-full h-full object-cover z-[1]"
           autoPlay
           playsInline
           muted={false}
         />
       )}
 
-      {/* Main Content Area */}
-      <div className={styles.contentArea}>
-        {/* Centered Avatar - Show for audio calls or when video not available */}
+      {/* Main Content */}
+      <div className="relative flex-1 w-full flex flex-col items-center justify-center p-8 z-[2] sm:p-4">
         {showAvatar && (
-          <div className={styles.avatarContainer}>
-            <div className={styles.avatarWrapper}>
+          <div className="mb-6">
+            <div className="w-[200px] h-[200px] rounded-full overflow-hidden bg-white/10 flex items-center justify-center sm:w-40 sm:h-40">
               <img
-                src={
-                  remoteUserAvatar ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=200&background=random`
-                }
+                src={avatarSrc}
                 alt={remoteUserName}
-                className={styles.avatar}
+                className="w-full h-full object-cover"
                 onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=200&background=random`;
+                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUserName)}&size=200&background=random`;
                 }}
               />
             </div>
           </div>
         )}
 
-        {/* User Name - Always show */}
-        <h1 className={styles.userName}>{remoteUserName}</h1>
+        <h1 className="text-white text-2xl font-medium mb-2 text-center leading-tight sm:text-xl">
+          {remoteUserName}
+        </h1>
 
-        {/* Status Text / Timer */}
-        <p className={styles.statusText}>
+        <p className="text-white/60 text-[0.9375rem] text-center min-h-[1.5rem] sm:text-sm">
           {getDisplayText()}
         </p>
 
-        {/* Local Video (PiP) - Only for video calls when camera is enabled */}
+        {/* Local Video PiP */}
         {isVideoCall && localStream && isCameraEnabled && (
-          <div className={styles.localVideoContainer}>
+          <div className="absolute bottom-[120px] right-5 w-[120px] h-[120px] rounded-full overflow-hidden bg-black border-[3px] border-white/30 shadow-lg z-10 sm:w-[100px] sm:h-[100px] sm:bottom-[100px] sm:right-4">
             <video
               ref={localVideoRef}
-              className={styles.localVideo}
+              className="w-full h-full object-cover"
               autoPlay
               muted
               playsInline
@@ -332,12 +309,14 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         )}
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className={styles.actionBar}>
-        {/* Toggle Mic */}
+      {/* Action Bar */}
+      <div className="call-action-bar w-full flex justify-center items-center gap-4 py-6 px-8 bg-black/40 backdrop-blur-xl z-10 transition-opacity duration-300 sm:py-5 sm:px-4 sm:gap-3.5">
+        {/* Mic */}
         <button
-          className={`${styles.actionButton} ${
-            !isMicEnabled ? styles.actionButtonDisabled : ""
+          className={`w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 sm:w-12 sm:h-12 ${
+            !isMicEnabled
+              ? "bg-red-500/30 opacity-80"
+              : "bg-white/20 hover:bg-white/30 hover:scale-105 active:scale-95"
           }`}
           onClick={onToggleMic}
           title={isMicEnabled ? "Mute" : "Unmute"}
@@ -346,11 +325,13 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           {isMicEnabled ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
 
-        {/* Toggle Camera (only for video calls) */}
-        {callType === 'video' && (
+        {/* Camera (video calls only) */}
+        {callType === "video" && (
           <button
-            className={`${styles.actionButton} ${
-              !isCameraEnabled ? styles.actionButtonDisabled : ""
+            className={`w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 sm:w-12 sm:h-12 ${
+              !isCameraEnabled
+                ? "bg-red-500/30 opacity-80"
+                : "bg-white/20 hover:bg-white/30 hover:scale-105 active:scale-95"
             }`}
             onClick={onToggleCamera}
             title={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
@@ -360,10 +341,10 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </button>
         )}
 
-        {/* Show Chat Button */}
+        {/* Chat / Collapse */}
         {onCollapse && (
           <button
-            className={styles.actionButton}
+            className="w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 bg-white/20 hover:bg-white/30 hover:scale-105 active:scale-95 sm:w-12 sm:h-12"
             onClick={onCollapse}
             title="Show chat"
             type="button"
@@ -372,9 +353,9 @@ const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           </button>
         )}
 
-        {/* End Call Button */}
+        {/* End Call */}
         <button
-          className={`${styles.actionButton} ${styles.endCallButton}`}
+          className="w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all duration-200 border-0 text-white shrink-0 bg-red-500 hover:bg-red-400 hover:scale-105 active:scale-95 sm:w-14 sm:h-14"
           onClick={onHangup}
           title="End call"
           type="button"

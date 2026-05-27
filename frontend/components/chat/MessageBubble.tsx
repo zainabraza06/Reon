@@ -4,7 +4,6 @@ import React, { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import { Message, MediaForUI, DecryptedMediaForUI } from "@/types";
 import { formatTime } from "@/lib/utils";
 import { Check, CheckCheck, Clock, Image as ImageIcon, Video, Music, File as FileIcon, Download, Play, Pause, Loader2 } from "lucide-react";
-import styles from "./MessageBubble.module.css";
 
 interface MessageBubbleProps {
   message: Message;
@@ -362,27 +361,27 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
     if (isTempMessage || message.status === 'none') {
       return {
-        icon: <Clock size={14} className={styles.clockIcon} />,
+        icon: <Clock size={14} className="text-white/50" />,
         title: "Sending...",
       };
     }
 
     if (message.read === true || message.status === 'read') {
       return {
-        icon: <CheckCheck size={14} className={styles.doubleTickRead} />,
+        icon: <CheckCheck size={14} className="text-[#0e9b9d] drop-shadow-[0_0_4px_rgba(147,197,253,0.3)]" />,
         title: "Read",
       };
     }
 
     if (message.delivered === true || message.status === 'delivered') {
       return {
-        icon: <CheckCheck size={14} className={styles.doubleTick} />,
+        icon: <CheckCheck size={14} className="text-white" />,
         title: "Delivered",
       };
     }
 
     return {
-      icon: <Check size={14} className={styles.singleTick} />,
+      icon: <Check size={14} className="text-white" />,
       title: "Sent",
     };
   }, [message.status, message.read, message.delivered, isMe, isTempMessage]);
@@ -400,61 +399,56 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     const fileSize = getFileSize(media);
     const hasError = loadState === 'error';
 
-    // Show loading state while decrypting
     if (loadState === 'loading') {
       return (
-        <div className={styles.mediaItem}>
-          <div className={styles.loadingMediaPlaceholder}>
-            <Loader2 className={styles.spinner} size={24} />
-            <div className={styles.loadingMediaInfo}>
-              <span className={styles.loadingMediaText}>
-                Decrypting {media.type}...
-              </span>
+        <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 relative">
+          <div className="flex items-center p-5 bg-white/5 rounded-xl gap-4 relative z-[2]">
+            <Loader2 className="animate-spin text-blue-500 w-6 h-6 block" size={24} />
+            <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+              <span className="text-[0.8125rem] text-white/70">Decrypting {media.type}...</span>
             </div>
           </div>
         </div>
       );
     }
 
-    // Show error state
     if (hasError) {
       return (
-        <div className={styles.mediaItem}>
-          <div className={styles.errorMediaPlaceholder}>
-            <FileIcon size={24} className={styles.errorIcon} />
-            <div className={styles.errorMediaInfo}>
-              <span className={styles.errorText}>Failed to load</span>
+        <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 relative">
+          <div className="flex items-center p-5 bg-red-500/10 border border-red-500/30 rounded-xl w-full min-h-[80px] relative z-[2]">
+            <FileIcon size={24} className="text-red-400 mr-4 shrink-0" />
+            <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+              <span className="font-semibold text-sm text-red-400">Failed to load</span>
             </div>
           </div>
         </div>
       );
     }
 
-    // Show media based on type
     switch (media.type) {
       case "image":
         const imageUrl = getMediaDisplayUrl(media, index);
         return (
-          <div className={styles.mediaItem}>
-            <div className={styles.imageContainer}>
-              <img 
-                src={imageUrl} 
-                alt={fileName} 
-                className={styles.image}
+          <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 transition-transform hover:scale-[1.01] relative">
+            <div className="relative cursor-pointer overflow-hidden rounded-lg">
+              <img
+                src={imageUrl}
+                alt={fileName}
+                className="w-full max-h-96 object-cover block bg-gradient-to-br from-slate-800 to-slate-600 transition-transform duration-500 hover:scale-[1.02] sm:max-h-64"
                 loading="lazy"
               />
             </div>
             {isDecrypted && (
-              <div className={styles.mediaActions}>
-                <button 
-                  className={styles.downloadButton}
+              <div className="flex items-center justify-between px-4 py-3 bg-black/20 border-t border-white/10 relative z-10">
+                <button
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 px-4 py-2 rounded-full text-[0.8125rem] cursor-pointer font-medium hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(37,99,235,0.3)] transition-all touch-manipulation"
                   onClick={() => downloadFile(media as DecryptedMediaForUI, index)}
                   title={`Download ${fileName}`}
                 >
                   <Download size={16} />
                   <span>Download Image</span>
                 </button>
-                {fileSize && <span className={styles.fileSize}>{fileSize}</span>}
+                {fileSize && <span className="text-xs text-white/60 ml-auto shrink-0">{fileSize}</span>}
               </div>
             )}
           </div>
@@ -463,86 +457,72 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       case "video":
         const videoUrl = getMediaDisplayUrl(media, index);
         return (
-          <div className={styles.mediaItem}>
-            <div className={styles.videoContainer}>
-              <video 
+          <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 transition-transform hover:scale-[1.01] relative">
+            <div className="relative rounded-lg overflow-hidden bg-black">
+              <video
                 src={isDecrypted ? videoUrl : ''}
-                className={styles.videoPlayer}
+                className="w-full max-h-96 block bg-black sm:max-h-64"
                 preload="metadata"
                 controls={isDecrypted}
               />
               {!isDecrypted && (
-                <div className={styles.videoLoadingOverlay}>
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-white gap-2.5 z-[5]">
                   <Video size={24} />
                   <span>Video file</span>
                 </div>
               )}
             </div>
             {isDecrypted && (
-              <div className={styles.mediaActions}>
-                <button 
-                  className={styles.downloadButton}
+              <div className="flex items-center justify-between px-4 py-3 bg-black/20 border-t border-white/10 relative z-10">
+                <button
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 px-4 py-2 rounded-full text-[0.8125rem] cursor-pointer font-medium hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(37,99,235,0.3)] transition-all touch-manipulation"
                   onClick={() => downloadFile(media as DecryptedMediaForUI, index)}
                   title={`Download ${fileName}`}
                 >
                   <Download size={16} />
                   <span>Download Video</span>
                 </button>
-                {fileSize && <span className={styles.fileSize}>{fileSize}</span>}
+                {fileSize && <span className="text-xs text-white/60 ml-auto shrink-0">{fileSize}</span>}
               </div>
             )}
           </div>
         );
 
       case "audio":
-        const audioUrl = getMediaDisplayUrl(media, index);
-        
         return (
-          <div className={styles.mediaItem}>
-            <div className={styles.audioContainer}>
-              <div className={styles.audioIcon}>
+          <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 relative">
+            <div className="flex items-center p-4 bg-white/5 rounded-lg gap-4 relative isolate">
+              <div className="p-3 bg-gradient-to-br from-blue-500/30 to-blue-400/30 rounded-lg shrink-0 z-[2]">
                 <Music size={32} />
               </div>
-              <div className={styles.audioContent}>
-                <div className={styles.audioControls}>
-                  <button 
-                    className={`${styles.playButton} ${isDecrypted ? '' : styles.disabled}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                         if (isDecrypted) {
-                        toggleAudioPlay(index);
-                      }
-                    }}
+              <div className="flex-1 flex flex-col gap-3 min-w-0 relative z-[2]">
+                <div className="flex items-center gap-4 relative z-10">
+                  <button
+                    className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-white/20 border-0 text-white cursor-pointer flex items-center justify-center transition-all hover:bg-white/30 hover:scale-110 active:scale-95 relative z-[100] touch-manipulation ${!isDecrypted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); if (isDecrypted) toggleAudioPlay(index); }}
                     disabled={!isDecrypted}
                     title={isDecrypted ? "Play audio" : "Decrypting audio..."}
                   >
                     {isDecrypted ? (
                       audioPlaying[index] ? <Pause size={16} /> : <Play size={16} />
                     ) : (
-                      <Loader2 className={styles.spinnerSmall} size={16} />
+                      <Loader2 className="animate-spin block w-4 h-4" size={16} />
                     )}
                   </button>
-                  <audio 
-                    ref={el => { 
-                      if (el && !audioRefs.current[index]) {
-                           audioRefs.current[index] = el;
-                      }
-                    }}
-                    className={styles.audioPlayer}
+                  <audio
+                    ref={el => { if (el && !audioRefs.current[index]) audioRefs.current[index] = el; }}
+                    className="absolute top-0 left-0 w-px h-px opacity-0 invisible -z-[1000]"
                     preload="metadata"
                   />
-                  <div className={styles.audioInfo}>
-                    <span className={styles.audioText}>Audio Message</span>
-                    {fileSize && <span className={styles.audioSize}>{fileSize}</span>}
+                  <div className="flex-1 flex flex-col gap-1 min-w-0 z-[2]">
+                    <span className="font-medium text-sm whitespace-nowrap overflow-hidden text-ellipsis">Audio Message</span>
+                    {fileSize && <span className="text-xs opacity-70">{fileSize}</span>}
                   </div>
                 </div>
                 {isDecrypted && (
-                  <button 
-                    className={styles.downloadButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      downloadFile(media as DecryptedMediaForUI, index);
-                    }}
+                  <button
+                    className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white border-0 px-4 py-2 rounded-full text-[0.8125rem] cursor-pointer font-medium hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(37,99,235,0.3)] transition-all touch-manipulation"
+                    onClick={(e) => { e.stopPropagation(); downloadFile(media as DecryptedMediaForUI, index); }}
                     title="Download audio"
                   >
                     <Download size={16} />
@@ -556,18 +536,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
 
       case "document":
         return (
-          <div className={styles.mediaItem}>
-            <div className={styles.documentContainer}>
-              <div className={styles.documentIcon}>
+          <div className="rounded-[0.875rem] overflow-visible bg-black/20 border border-white/10 relative">
+            <div className="flex items-center p-4 bg-white/5 rounded-lg gap-4 cursor-pointer border border-transparent hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all relative z-[2]">
+              <div className="p-3 bg-gradient-to-br from-blue-500/30 to-blue-400/30 rounded-lg flex items-center justify-center shrink-0">
                 <FileIcon size={32} />
               </div>
-              <div className={styles.documentInfo}>
-                <span className={styles.documentName}>{fileName}</span>
-                {fileSize && <span className={styles.documentSize}>{fileSize}</span>}
+              <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+                <span className="font-medium text-sm overflow-hidden text-ellipsis whitespace-nowrap">{fileName}</span>
+                {fileSize && <span className="text-xs opacity-70">{fileSize}</span>}
               </div>
               {isDecrypted && (
-                <button 
-                  className={styles.downloadIconButton}
+                <button
+                  className="bg-transparent border-0 text-white/70 cursor-pointer p-2 rounded-md flex items-center justify-center shrink-0 z-10 hover:bg-white/10 hover:text-white transition-all"
                   onClick={() => downloadFile(media as DecryptedMediaForUI, index)}
                   title={`Download ${fileName}`}
                 >
@@ -582,20 +562,24 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         return null;
     }
   }, [
-    mediaLoadStates, 
-    audioPlaying, 
-    getFileName, 
-    getFileSize, 
-    getMediaDisplayUrl, 
-    downloadFile, 
+    mediaLoadStates,
+    audioPlaying,
+    getFileName,
+    getFileSize,
+    getMediaDisplayUrl,
+    downloadFile,
     toggleAudioPlay
   ]);
 
   return (
-    <div className={`${styles.container} ${isMe ? styles.sent : styles.received}`}>
-      <div className={`${styles.bubble} ${isMe ? styles.sentBubble : styles.receivedBubble}`}>
+    <div className={`flex flex-col mb-6 max-w-[85%] relative sm:max-w-[90%] ${isMe ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
+      <div className={`rounded-[1.25rem] px-5 py-4 relative break-words backdrop-blur-xl transition-all shadow-[0_4px_20px_rgba(0,0,0,0.1)] overflow-hidden hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(0,0,0,0.2)] sm:px-4 sm:py-3 sm:rounded-[1rem] ${
+        isMe
+          ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-tr-lg rounded-br-[1.25rem] rounded-bl-[1.25rem]'
+          : 'bg-white/[0.08] text-white rounded-tl-lg rounded-br-[1.25rem] rounded-bl-[1.25rem] border border-white/10'
+      }`}>
         {processedMedia.length > 0 && (
-          <div className={styles.mediaSection}>
+          <div className="mb-4 flex flex-col gap-3 sm:mb-3">
             {processedMedia.map((media, idx) => (
               <React.Fragment key={`${message._id}-media-${idx}`}>
                 {renderMedia(media, idx)}
@@ -604,19 +588,14 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
           </div>
         )}
 
-        <div className={styles.content}>
-          <p className={styles.messageText}>
-            {displayText}
-          </p>
+        <div className="relative z-[1] break-words whitespace-pre-wrap leading-relaxed">
+          <p className="text-[0.9375rem] leading-[1.7] m-0 tracking-[0.2px]">{displayText}</p>
         </div>
 
-        <div className={`${styles.metadata} ${isMe ? styles.metadataSent : styles.metadataReceived}`}>
-          <span className={styles.timestamp}>{formatTime(message.sentAt)}</span>
+        <div className={`flex items-center justify-end gap-3 mt-3 text-xs opacity-80 hover:opacity-100 transition-opacity relative z-[1] ${isMe ? 'text-white/90' : 'text-white/70'}`}>
+          <span className="font-normal tracking-[0.3px]">{formatTime(message.sentAt)}</span>
           {isMe && messageStatus && (
-            <span 
-              className={styles.status} 
-              title={messageStatus.title}
-            >
+            <span className="flex items-center justify-center" title={messageStatus.title}>
               {messageStatus.icon}
             </span>
           )}

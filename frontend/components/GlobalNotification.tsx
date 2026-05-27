@@ -3,7 +3,6 @@
 import React from 'react';
 import { useNotification } from '@/context/NotificationContext';
 import Toast from '@/components/chat/Toast';
-import styles from './GlobalNotification.module.css';
 
 export const GlobalNotifications: React.FC = () => {
   const { notifications, removeNotification } = useNotification();
@@ -11,7 +10,7 @@ export const GlobalNotifications: React.FC = () => {
   if (notifications.length === 0) return null;
 
   return (
-    <div className={styles.globalNotifications}>
+    <div className="fixed top-5 right-5 z-[10000] flex flex-col gap-2.5 max-w-[400px] sm:top-2.5 sm:right-2.5 sm:max-w-[calc(100vw-20px)]">
       {notifications.map(notification => (
         <Toast
           key={notification.id}

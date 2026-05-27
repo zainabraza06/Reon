@@ -129,10 +129,10 @@ class SocketService {
 
       try {
       this.callSocket = io((process.env.NEXT_PUBLIC_SOCKET_URL || "https://reon-4g0b.onrender.com") + "/calls", {
-        auth: { token },
+        auth: { token, userId },
         transports: ['websocket', 'polling'],
         withCredentials: true,
-        query: { userId }
+        query: { userId, token: token || '' }
       });
 
       // Forward incoming call namespace events into our event system

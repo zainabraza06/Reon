@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import styles from './LoginPage.module.css';
 import { ChatMessage, FlashMessage } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import {api} from '@/lib/api';
+import { api } from '@/lib/api';
+import BackgroundScene from '@/components/3d/BackgroundScene';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Eye, EyeOff, Check, AlertCircle, Info } from 'lucide-react';
 
 // Define proper error types
 interface ApiError extends Error {
@@ -15,9 +18,14 @@ interface ApiError extends Error {
   };
 }
 
-interface AuthError extends Error {
-  message: string;
-}
+// Demo chat messages static data
+const DEMO_MESSAGES: ChatMessage[] = [
+  { text: "Hey team, ready for the client call?", type: "other", time: "10:05 AM" },
+  { text: "Yep, final docs uploaded.", type: "user", time: "10:06 AM", status: "read" },
+  { text: "Perfect, starting in 20 mins.", type: "other", time: "10:07 AM" },
+  { text: "Don't forget the Q3 report!", type: "user", time: "10:08 AM", status: "read" },
+  { text: "Already shared with everyone", type: "other", time: "10:09 AM" },
+];
 
 export default function LoginPage() {
   const chatBoxRef = useRef<HTMLDivElement>(null);
@@ -28,292 +36,210 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
-  const [animationCycle, setAnimationCycle] = useState(0); // Track animation cycles
+  const [animationCycle, setAnimationCycle] = useState(0);
 
   const { login } = useAuth();
 
-  // Demo chat messages
-  const messages: ChatMessage[] = [
-    { text: "Hey team, ready for the client call?", type: "other", time: "10:05 AM" },
-    { text: "Yep, final docs uploaded.", type: "user", time: "10:06 AM", status: "read" },
-    { text: "Perfect, starting in 20 mins.", type: "other", time: "10:07 AM" },
-    { text: "Don't forget the Q3 report!", type: "user", time: "10:08 AM", status: "read" },
-    { text: "Already shared with everyone", type: "other", time: "10:09 AM" },
-  ];
-
-  // Flash message display function
+  // Flash message
   const showFlash = (message: string, type: 'success' | 'error' | 'info' = 'error') => {
     setFlashMessage({ message, type });
-    // Auto hide after 5 seconds
     setTimeout(() => {
       setFlashMessage(null);
     }, 5000);
   };
 
-  // Chat animation effect - restarts when animationCycle changes
+  // Chat animation effect
   useEffect(() => {
     let idx = 0;
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const typeNextMessage = () => {
-      if (idx >= messages.length) {
-        // Animation completed, wait a bit and restart
-        setTimeout(() => {
-          setAnimationCycle(prev => prev + 1);
-        }, 3000); // Wait 3 seconds before restarting
+      if (!mounted) return;
+
+      if (idx >= DEMO_MESSAGES.length) {
+        timeoutId = setTimeout(() => {
+          if (mounted) setAnimationCycle(prev => prev + 1);
+        }, 3000);
         return;
       }
 
-      const msg = messages[idx];
-
-      // Add new message with typing state
-      setChatMessages(prev => [
-        ...prev,
-        { ...msg, typing: true, currentText: '' }
-      ]);
+      const msg = DEMO_MESSAGES[idx];
+      setChatMessages(prev => [...prev, { ...msg, typing: true, currentText: '' }]);
 
       let char = 0;
-
       const typeChar = () => {
+        if (!mounted) return;
         if (char < msg.text.length) {
           setChatMessages(prev =>
-            prev.map((m, i) =>
-              i === prev.length - 1
-                ? { ...m, currentText: msg.text.slice(0, char + 1) }
-                : m
-            )
+            prev.map((m, i) => i === prev.length - 1 ? { ...m, currentText: msg.text.slice(0, char + 1) } : m)
           );
           char++;
           setTimeout(typeChar, 35);
         } else {
-          // Mark typing finished
           setChatMessages(prev =>
-            prev.map((m, i) =>
-              i === prev.length - 1 ? { ...m, typing: false } : m
-            )
+            prev.map((m, i) => i === prev.length - 1 ? { ...m, typing: false } : m)
           );
-
           idx++;
-          setTimeout(typeNextMessage, 800);
+          timeoutId = setTimeout(typeNextMessage, 800);
         }
       };
-
       typeChar();
     };
 
-    // Clear previous messages and start new animation
     setChatMessages([]);
     typeNextMessage();
-  }, [animationCycle]); // Re-run when animationCycle changes
 
-  // Particles effect
-  useEffect(() => {
-    const createParticles = () => {
-      const container = document.getElementById('particles');
-      if (!container) return;
-
-      container.innerHTML = '';
-      const particleCount = 25;
-
-      for (let i = 0; i < particleCount; i++) {
-        const particle = document.createElement('div');
-        particle.className = styles.particle;
-        particle.style.left = `${Math.random() * 100}%`;
-        particle.style.animationDelay = `${Math.random() * 15}s`;
-        container.appendChild(particle);
-      }
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
     };
-
-    createParticles();
-  }, []);
+  }, [animationCycle]);
 
   // Handle forgot password
   const handleForgotPassword = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation
-    
-    // If email field is empty, show error
+    e.preventDefault();
     if (!email) {
       showFlash('Please enter your email address first', 'error');
       return;
     }
-
     setIsForgotPasswordLoading(true);
-
     try {
       const response = await api.post('/auth/forgot-password', { email });
-      
       if (response.status === 200) {
         showFlash('Password reset link sent to your email! Check your inbox.', 'success');
       } else {
         showFlash(response.data?.message || 'Failed to send reset email', 'error');
       }
     } catch (err: unknown) {
-      console.error('Forgot password error:', err);
-      
+      // ... error handling logic ...
       let errorMessage = 'Failed to send reset email';
-      
       if (err && typeof err === 'object' && 'response' in err) {
         const apiError = err as ApiError;
         errorMessage = apiError.response?.data?.message || errorMessage;
-      } else if (err instanceof Error) {
-        errorMessage = err.message || errorMessage;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
       }
-      
       showFlash(errorMessage, 'error');
     }
-
     setIsForgotPasswordLoading(false);
   };
 
   // Handle login submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Basic validation
     if (!email || !password) {
       showFlash('Please fill in all fields', 'error');
       return;
     }
-
     setIsLoading(true);
-
     try {
       await login(email, password);
       showFlash('Login successful! Redirecting...', 'success');
-      // Redirect or show dashboard after login
     } catch (err: unknown) {
-      console.error('Login error:', err);
-      
+      // ... error handling logic ...
       let errorMessage = 'Invalid email or password';
-      
-      // Type guard to check if it's an ApiError
       if (err && typeof err === 'object' && 'response' in err) {
         const apiError = err as ApiError;
         errorMessage = apiError.response?.data?.message || errorMessage;
-      } 
-      // Type guard to check if it's a standard Error
-      else if (err instanceof Error) {
-        errorMessage = err.message || errorMessage;
       }
-      // Type guard to check if it's a string
-      else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      
       showFlash(errorMessage, 'error');
     }
-
     setIsLoading(false);
   };
 
   const handleGoogleLogin = () => {
     showFlash('Redirecting to Google authentication...', 'info');
     window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google`;
-
-  };
-
-  // Close flash message manually
-  const closeFlash = () => {
-    setFlashMessage(null);
   };
 
   return (
     <>
-      <div className={styles.fullPage}>
+      <BackgroundScene />
+
+      <div className="min-h-screen flex flex-col relative z-10 font-sans text-white overflow-hidden">
+
         {/* Flash Message */}
-        {flashMessage && (
-          <div className={`${styles.flashMessage} ${styles[flashMessage.type]}`}>
-            <div className={styles.flashContent}>
-              {flashMessage.type === 'success' && (
-                <div className={styles.flashIcon}>✓</div>
-              )}
-              {flashMessage.type === 'error' && (
-                <div className={styles.flashIcon}>✕</div>
-              )}
-              {flashMessage.type === 'info' && (
-                <div className={styles.flashIcon}>ℹ</div>
-              )}
-              <span className={styles.flashText}>{flashMessage.message}</span>
-            </div>
-            <button 
-              onClick={closeFlash}
-              className={styles.flashClose}
-              aria-label="Close message"
+        <AnimatePresence>
+          {flashMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, x: '-50%' }}
+              animate={{ opacity: 1, y: 0, x: '-50%' }}
+              exit={{ opacity: 0, y: -20, x: '-50%' }}
+              className={`fixed top-5 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-white/10
+                    ${flashMessage.type === 'success' ? 'bg-green-500/20 text-green-200' :
+                  flashMessage.type === 'error' ? 'bg-red-500/20 text-red-200' : 'bg-blue-500/20 text-blue-200'}`}
             >
-              ×
-            </button>
-          </div>
-        )}
+              {flashMessage.type === 'success' && <Check size={16} />}
+              {flashMessage.type === 'error' && <AlertCircle size={16} />}
+              {flashMessage.type === 'info' && <Info size={16} />}
+              <span className="text-sm font-medium">{flashMessage.message}</span>
+              <button onClick={() => setFlashMessage(null)} className="ml-2 hover:bg-white/10 rounded-full p-1">
+                <Check size={14} className="opacity-0" /> {/* Spacer */}
+                ✕
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Background blobs */}
-        <div className={`${styles.blob} ${styles.blobPurple}`}></div>
-        <div className={`${styles.blob} ${styles.blobBlue}`}></div>
-        <div className={`${styles.blob} ${styles.blobTeal}`}></div>
+        <div className="flex-1 flex flex-col md:flex-row items-center justify-center p-4 md:p-8 gap-8 md:gap-16 max-w-7xl mx-auto w-full">
 
-        {/* Particles */}
-        <div className={styles.particlesContainer} id="particles"></div>
-
-        <div className={styles.main}>
-          {/* Login Form */}
-          <div className={styles.formSection}>
-            <div className={styles.brand}>
-              <div className={styles.logo}>R</div>
-              <div className={styles.brandText}>Reon Messaging</div>
+          {/* Main Form Section */}
+          <motion.div
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+            className="w-full max-w-md"
+          >
+            <div className="flex items-center gap-3 mb-8 justify-center md:justify-start">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center font-bold text-xl shadow-lg shadow-blue-500/30">R</div>
+              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Reon Messaging</span>
             </div>
 
-            <div className={styles.glassForm}>
-              <div className={styles.formHeader}>
-                <h1 className={styles.title}>Welcome Back</h1>
-                <p className={styles.subtitle}>Sign in to your Reon Messaging account</p>
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
+                <p className="text-gray-400">Sign in to your Reon Messaging account</p>
               </div>
 
-              <form className={styles.formBox} onSubmit={handleSubmit}>
-                <div className={styles.formGroup}>
-                  <label>Email address</label>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-300 ml-1">Email address</label>
                   <input
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="you@example.com"
+                    className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                     required
-                    className={styles.glassInput}
                   />
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label>Password</label>
-                  <div className={styles.passwordWrapper}>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-300 ml-1">Password</label>
+                  <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
+                      className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all pr-12"
                       required
-                      className={styles.glassInput}
                     />
                     <button
                       type="button"
-                      className={styles.passwordToggle}
                       onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                     >
-                      {showPassword ? 'Hide' : 'Show'}
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
 
-                <div className={styles.formOptions}>
-                  <button 
+                <div className="flex justify-end">
+                  <button
                     type="button"
                     onClick={handleForgotPassword}
-                    className={`${styles.forgotPassword} ${isForgotPasswordLoading ? styles.loading : ''}`}
                     disabled={isForgotPasswordLoading}
-                    style={{ 
-                      background: 'none', 
-                      border: 'none', 
-                      cursor: isForgotPasswordLoading ? 'not-allowed' : 'pointer',
-                      textDecoration: 'underline'
-                    }}
+                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
                   >
                     {isForgotPasswordLoading ? 'Sending...' : 'Forgot password?'}
                   </button>
@@ -321,72 +247,97 @@ export default function LoginPage() {
 
                 <button
                   type="submit"
-                  className={`${styles.btnPrimary} ${isLoading ? styles.loading : ''}`}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all transform active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center"
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Signing In...' : 'Sign In'}
+                  {isLoading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : 'Sign In'}
                 </button>
 
-                <div className={styles.divider}>
-                  <span>Or continue with</span>
+                <div className="relative flex items-center gap-4 py-2">
+                  <div className="h-px bg-white/10 flex-1" />
+                  <span className="text-xs text-gray-500 uppercase tracking-widest">Or continue with</span>
+                  <div className="h-px bg-white/10 flex-1" />
                 </div>
 
-                <button type="button" className={styles.btnGoogle} onClick={handleGoogleLogin}>
-                  <svg className={styles.googleIcon} viewBox="0 0 24 24" width="18" height="18">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43-.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                   </svg>
                   Sign in with Google
                 </button>
 
-                <div className={styles.altText}>
-                  <span>New here?</span>
-                  <a href="/auth/signup">Create Account</a>
+                <div className="text-center text-sm text-gray-400 mt-4">
+                  New here? <Link href="/auth/signup" className="text-blue-400 hover:text-blue-300 font-medium">Create Account</Link>
                 </div>
               </form>
             </div>
-          </div>
+          </motion.div>
 
-          {/* Chat demo */}
-          <div className={styles.chatContainer}>
-            <div className={styles.chatBox} ref={chatBoxRef}>
-              <div className={styles.chatTitle}>
-                <div className={styles.statusDot}></div>
-                Team Chat Preview
+          {/* Right: Mock Chat (Desktop only) */}
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="hidden md:block flex-1 max-w-sm mr-10 relative"
+          >
+            <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full -z-10" />
+
+            <div className="bg-gray-900/60 backdrop-blur-xl border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl ring-1 ring-white/10">
+              <div className="px-6 py-4 border-b border-white/10 flex items-center gap-3 bg-white/5">
+                <div className="flex gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+                </div>
+                <div className="ml-auto text-xs font-mono text-gray-500">Preview</div>
               </div>
 
-              {chatMessages.map((message, index) => (
-                <div
-                  key={`${animationCycle}-${index}`} // Include cycle in key to force re-render
-                  className={`${styles.chatMessage} ${styles[message.type]} ${message.visible ? styles.show : ''}`}
-                >
-                  <div className={styles.messageContent}>
-                    {message.currentText || message.text}
-                  </div>
-                  <div className={styles.messageStatus}>
-                    <span>{message.time}</span>
-                    {message.status && <span>✓✓</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+              <div ref={chatBoxRef} className="h-[350px] p-5 overflow-y-auto space-y-3">
+                {chatMessages.map((msg, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[85%] px-3 py-2.5 rounded-2xl text-sm relative ${msg.type === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-white/10 text-gray-200 rounded-bl-sm border border-white/5'
+                      }`}>
+                      <div>{msg.currentText || msg.text}</div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
 
-      {/* Footer */}
-      <footer className={styles.footer}>
-        <div className={styles.footerInfo}>
-          <span>Enterprise-grade security</span>
-          <div className={styles.dot}></div>
-          <span>99.9% Uptime</span>
-          <div className={styles.dot}></div>
-          <span>24/7 Support</span>
+              <div className="p-4 border-t border-white/10 bg-white/5">
+                <div className="h-9 bg-white/10 rounded-full w-3/4 animate-pulse opacity-30" />
+              </div>
+            </div>
+          </motion.div>
+
         </div>
-        <p>© 2024 Reon Messaging. All rights reserved.</p>
-      </footer>
+
+        <footer className="w-full py-6 mt-auto border-t border-white/5 text-center text-xs text-gray-500 bg-black/20 backdrop-blur-sm">
+          <div className="flex justify-center gap-4 mb-2">
+            <span>Enterprise-grade security</span>
+            <span>•</span>
+            <span>99.9% Uptime</span>
+            <span>•</span>
+            <span>24/7 Support</span>
+          </div>
+          <p>© 2024 Reon Messaging. All rights reserved.</p>
+        </footer>
+      </div>
     </>
   );
 }

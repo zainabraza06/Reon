@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Paperclip, Mic, X, FileText, Loader2, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import styles from './InputArea.module.css';
 
 interface InputAreaProps {
   onSendMessage: (text: string, files: File[]) => Promise<void> | void;
@@ -207,9 +206,9 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   const getFileIcon = (type: string) => {
     switch (type) {
-      case 'image': return <div className={styles.imageIcon} aria-hidden="true">🖼️</div>;
-      case 'video': return <div className={styles.videoIcon} aria-hidden="true">🎬</div>;
-      case 'audio': return <div className={styles.audioIcon} aria-hidden="true">🎵</div>;
+      case 'image': return <span aria-hidden="true" className="text-2xl">🖼️</span>;
+      case 'video': return <span aria-hidden="true" className="text-2xl">🎬</span>;
+      case 'audio': return <span aria-hidden="true" className="text-2xl">🎵</span>;
       default: return <FileText size={24} aria-hidden="true" />;
     }
   };
@@ -331,48 +330,34 @@ const InputArea: React.FC<InputAreaProps> = ({
     }
   };
 
+  const iconBtn = "p-3 text-white/80 rounded-full transition-all bg-white/5 border border-white/10 cursor-pointer flex items-center justify-center shrink-0 hover:text-white hover:bg-white/10 hover:border-white/20 hover:-translate-y-px active:translate-y-0";
+
   return (
-    <div className={styles.container}>
+    <div className="p-4 bg-slate-900/80 backdrop-blur-xl border-t border-white/10 shrink-0 relative z-10 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] sm:p-3">
       {selectedFiles.length > 0 && (
-        <div className={styles.filePreviews}>
+        <div className="flex gap-3 mb-4 overflow-x-auto pb-3 [scrollbar-width:thin]">
           {selectedFiles.map((item, idx) => (
-            <div key={idx} className={styles.previewItem}>
+            <div key={idx} className="group relative w-20 h-20 shrink-0 bg-white/5 rounded-xl overflow-hidden border border-white/15 hover:border-blue-400/50 hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)] transition-all">
               {item.preview ? (
-                <div className={styles.previewContainer}>
-                  <img
-                    src={item.preview}
-                    alt={`Preview of ${item.file.name}`}
-                    className={styles.previewImage}
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.parentElement!.classList.add(styles.previewError);
-                    }}
-                  />
-                  <div className={styles.fileInfo}>
-                    <span className={styles.fileName}>{item.file.name}</span>
-                    <span className={styles.fileSize}>{formatFileSize(item.file.size)}</span>
-                  </div>
-                </div>
+                <img
+                  src={item.preview}
+                  alt={`Preview of ${item.file.name}`}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
               ) : (
-                <div className={styles.previewContainer}>
-                  <div className={styles.previewIcon} aria-hidden="true">
-                    {getFileIcon(item.type)}
-                  </div>
-                  <div className={styles.fileInfo}>
-                    <span className={styles.fileName}>{item.file.name}</span>
-                    <span className={styles.fileSize}>{formatFileSize(item.file.size)}</span>
-                  </div>
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400/10 to-purple-500/10" aria-hidden="true">
+                  {getFileIcon(item.type)}
                 </div>
               )}
-              <button 
-                onClick={() => removeFile(idx)} 
-                className={styles.removeButton} 
+              <button
+                onClick={() => removeFile(idx)}
+                className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-1 border-0 cursor-pointer flex items-center justify-center w-5 h-5 opacity-0 scale-[0.8] group-hover:opacity-100 group-hover:scale-100 hover:bg-red-500/90 transition-all"
                 type="button"
                 disabled={isProcessing}
                 title={`Remove ${item.file.name}`}
                 aria-label={`Remove file ${item.file.name}`}
               >
-                <X size={14} aria-hidden="true" />
+                <X size={12} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -380,14 +365,14 @@ const InputArea: React.FC<InputAreaProps> = ({
       )}
 
       {isRecording && (
-        <div className={styles.recordingIndicator} role="status" aria-live="polite">
-          <div className={styles.recordingDot} aria-hidden="true"></div>
-          <span className={styles.recordingText}>
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-red-500/10 border border-red-500/20 rounded-xl" role="status" aria-live="polite">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" aria-hidden="true" />
+          <span className="text-sm text-red-400 font-medium flex-1">
             Recording: {formatRecordingTime(recordingTime)}
           </span>
-          <button 
+          <button
             onClick={handleVoiceRecording}
-            className={styles.stopRecordingButton}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-xs cursor-pointer hover:bg-red-500/30 transition-all"
             type="button"
             title="Stop recording"
             aria-label="Stop voice recording"
@@ -398,11 +383,11 @@ const InputArea: React.FC<InputAreaProps> = ({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className={styles.inputForm}>
-        <button 
-          type="button" 
-          onClick={handleAttachClick} 
-          className={cn(styles.iconButton, isRecording && styles.buttonDisabled)}
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 sm:gap-2">
+        <button
+          type="button"
+          onClick={handleAttachClick}
+          className={cn(iconBtn, (isRecording) && "opacity-50 cursor-not-allowed")}
           disabled={disabled || isProcessing || isRecording}
           title="Attach files"
           aria-label="Attach files"
@@ -410,12 +395,12 @@ const InputArea: React.FC<InputAreaProps> = ({
           <Paperclip size={20} aria-hidden="true" />
           <span className="sr-only">Attach files</span>
         </button>
-        
-        <input 
-          type="file" 
-          multiple 
-          ref={fileInputRef} 
-          className={styles.hiddenInput} 
+
+        <input
+          type="file"
+          multiple
+          ref={fileInputRef}
+          className="hidden"
           onChange={handleFileSelect}
           accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
           aria-label="Attach files"
@@ -430,18 +415,21 @@ const InputArea: React.FC<InputAreaProps> = ({
           onBlur={handleBlur}
           onFocus={handleFocus}
           placeholder={isRecording ? "Recording in progress..." : "Type a message..."}
-          className={cn(styles.textInput, isRecording && styles.textInputDisabled)}
+          className={cn(
+            "flex-1 bg-white/5 border border-white/15 rounded-full py-3.5 px-5 text-white text-[0.9375rem] transition-all outline-none min-w-0 placeholder:text-white/40 focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.08] focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)]",
+            isRecording && "opacity-50 cursor-not-allowed"
+          )}
           ref={textInputRef}
           disabled={disabled || isProcessing || isRecording}
           aria-label="Message input"
           aria-describedby={isRecording ? "recording-status" : undefined}
         />
 
-        <div className={styles.actionButtons}>
+        <div className="flex items-center shrink-0">
           {(text.trim() || selectedFiles.length > 0) && !isRecording ? (
-            <button 
-              type="submit" 
-              className={styles.sendButton} 
+            <button
+              type="submit"
+              className="p-3 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full text-white shadow-[0_4px_15px_rgba(59,130,246,0.3)] transition-all border-0 cursor-pointer flex items-center justify-center shrink-0 hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(59,130,246,0.4)] active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               disabled={disabled || isProcessing}
               title="Send message"
               aria-label="Send message"
@@ -457,9 +445,9 @@ const InputArea: React.FC<InputAreaProps> = ({
             <button
               type="button"
               className={cn(
-                styles.micButton,
-                isRecording && styles.recording,
-                (disabled || isProcessing) && styles.buttonDisabled
+                iconBtn,
+                isRecording && "bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600",
+                (disabled || isProcessing) && "opacity-50 cursor-not-allowed"
               )}
               onClick={handleVoiceRecording}
               disabled={disabled || isProcessing}
@@ -468,15 +456,9 @@ const InputArea: React.FC<InputAreaProps> = ({
               aria-pressed={isRecording}
             >
               {isRecording ? (
-                <>
-                  <Square size={20} aria-hidden="true" />
-                  <span className="sr-only">Stop recording</span>
-                </>
+                <Square size={20} aria-hidden="true" />
               ) : (
-                <>
-                  <Mic size={20} aria-hidden="true" />
-                  <span className="sr-only">Start voice recording</span>
-                </>
+                <Mic size={20} aria-hidden="true" />
               )}
             </button>
           )}

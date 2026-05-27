@@ -58,7 +58,6 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
 
   // Update call state
   const updateCallState = useCallback((newState: CallState, session: CallSession | null = null) => {
-    console.log(`📞 Call state change: ${callState} -> ${newState}`, session ? `callId: ${session.callId}` : '');
     setCallState(newState);
     if (session) {
       const updatedSession = { ...session, state: newState };
@@ -66,7 +65,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       callSessionRef.current = updatedSession;
     }
     onCallStateChange?.(newState, session);
-  }, [callState, onCallStateChange]);
+  }, [onCallStateChange]);
 
   // Get local media stream
   const getLocalStream = useCallback(async (callType: CallType) => {
@@ -210,22 +209,31 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
   // Handle incoming call offer
   const handleIncomingOffer = useCallback((data: { callId: string; fromUserId: string; offer: string; type: CallType }) => {
     console.log('📞 Incoming offer received:', data);
-    
-    // Check if we're already in a call
-    const currentState = callSessionRef.current?.state;
-    const isCurrentlyInCall = currentState && 
+
+    const currentSession = callSessionRef.current;
+    const currentState = currentSession?.state;
+    const isCurrentlyInCall = currentState &&
       ['ringing', 'connecting', 'connected'].includes(currentState);
-    
+
     if (isCurrentlyInCall) {
+      if (currentSession?.callId === data.callId) {
+        // Same call already initiated via call:initiate — just store the offer silently
+        pendingOfferRef.current = {
+          callId: data.callId,
+          offer: data.offer,
+          callType: data.type,
+          fromUserId: data.fromUserId
+        };
+        console.log('✅ Offer stored for already-ringing call');
+        return;
+      }
+      // Different call — busy
       console.log('⚠️ Already in a call, sending busy');
-      socketService.emit('call:busy', {
-        callId: data.callId,
-        reason: 'busy'
-      });
+      socketService.emit('call:busy', { callId: data.callId, reason: 'busy' });
       return;
     }
 
-    // Store the offer
+    // Fallback: offer arrived without a prior call:initiate
     pendingOfferRef.current = {
       callId: data.callId,
       offer: data.offer,
@@ -233,9 +241,8 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       fromUserId: data.fromUserId
     };
 
-    console.log('✅ Offer stored in pendingOfferRef, ready for answering');
+    console.log('✅ Offer stored (no prior initiate)');
 
-    // Create session for incoming call
     const session: CallSession = {
       callId: data.callId,
       peerId: data.fromUserId,
@@ -247,7 +254,6 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
     callSessionRef.current = session;
     updateCallState('ringing', session);
 
-    // Set timeout for auto-reject
     incomingCallTimeoutRef.current = setTimeout(async () => {
       if (callSessionRef.current?.callId === data.callId && callSessionRef.current.state === 'ringing') {
         console.log('⏰ Incoming call timeout - auto rejecting');
@@ -255,7 +261,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       }
     }, INCOMING_CALL_TIMEOUT_MS);
 
-    // Notify parent component
+    // Only notify when call:initiate was missed
     onIncomingCall?.({
       callId: data.callId,
       fromUserId: data.fromUserId,
@@ -604,16 +610,49 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
     }
   }, []);
 
-  // Handle socket events for incoming calls
+  // Handle call:initiate — creates a preliminary ringing session before the offer arrives
   const handleIncomingCall = useCallback((data: any) => {
-    console.log('📞 Incoming call received:', data);
+    console.log('📞 Incoming call:initiate received:', data);
+
+    const currentSession = callSessionRef.current;
+    // Ignore if already in a different active call
+    if (currentSession &&
+        ['ringing', 'connecting', 'connected'].includes(currentSession.state) &&
+        currentSession.callId !== data.callId) {
+      return;
+    }
+
+    // Only create session if not already tracking this call
+    if (!currentSession || currentSession.callId !== data.callId) {
+      const session: CallSession = {
+        callId: data.callId,
+        peerId: data.fromUserId,
+        callType: data.type || 'audio',
+        state: 'ringing'
+      };
+      callSessionRef.current = session;
+      setCallSession(session);
+
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+      }
+      incomingCallTimeoutRef.current = setTimeout(async () => {
+        if (callSessionRef.current?.callId === data.callId &&
+            callSessionRef.current.state === 'ringing') {
+          console.log('⏰ Incoming call timeout - auto rejecting');
+          await rejectCall(data.callId);
+        }
+      }, INCOMING_CALL_TIMEOUT_MS);
+    }
+
+    // Notify UI to show incoming call banner
     onIncomingCall?.({
       callId: data.callId,
       fromUserId: data.fromUserId,
       type: data.type || 'audio',
       fromUserName: data.fromUserName
     });
-  }, [onIncomingCall]);
+  }, [onIncomingCall, rejectCall]);
 
   // In the useWebRTC hook, add this function:
 const answerCallById = useCallback(async (callId: string) => {
