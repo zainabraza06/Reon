@@ -638,7 +638,7 @@ export const useWebRTC = (options: UseWebRTCOptions) => {
       }
       incomingCallTimeoutRef.current = setTimeout(async () => {
         if (callSessionRef.current?.callId === data.callId &&
-            callSessionRef.current.state === 'ringing') {
+            callSessionRef.current?.state === 'ringing') {
           console.log('⏰ Incoming call timeout - auto rejecting');
           await rejectCall(data.callId);
         }

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChatMessage, FlashMessage } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { api } from '@/lib/api';
 import BackgroundScene from '@/components/3d/BackgroundScene';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';

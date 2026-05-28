@@ -25,7 +25,7 @@ function Sphere({ color, position, scale }: { color: string; position: [number, 
 }
 
 function StarField(props: any) {
-  const ref = useRef<any>();
+  const ref = useRef<any>(null);
   const [sphere] = useState(() => random.inSphere(new Float32Array(5000), { radius: 10 }));
 
   useFrame((state, delta) => {
