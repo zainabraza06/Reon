@@ -155,7 +155,7 @@ export default function OnboardingPage() {
   const triggerFileInput = () => fileInputRef.current?.click();
 
   return (
-    <div className="min-h-screen p-4 flex items-center justify-center relative bg-gradient-to-br from-[#1e1e2f] to-[#111117] overflow-hidden text-white">
+    <div className="min-h-screen p-4 flex items-start justify-center py-8 relative bg-gradient-to-br from-[#1e1e2f] to-[#111117] overflow-x-hidden text-white sm:items-center">
       {/* Background blobs */}
       <div className="absolute w-[20rem] h-[20rem] rounded-full blur-[80px] opacity-30 animate-pulse-blob bg-[rgba(128,90,213,0.25)] top-[10%] right-[10%]" />
       <div className="absolute w-[20rem] h-[20rem] rounded-full blur-[80px] opacity-30 animate-pulse-blob bg-[rgba(59,130,246,0.25)] bottom-[10%] left-[10%] [animation-delay:2s]" />

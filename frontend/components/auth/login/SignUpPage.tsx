@@ -148,7 +148,7 @@ export default function SignupPage() {
     <>
       <BackgroundScene />
 
-      <div className="min-h-screen flex flex-col relative z-10 font-sans text-white overflow-hidden">
+      <div className="min-h-screen flex flex-col relative z-10 font-sans text-white overflow-x-hidden">
 
         <AnimatePresence>
           {flashMessage && (

@@ -132,7 +132,7 @@ export default function LoginPage() {
     <>
       <BackgroundScene />
 
-      <div className="min-h-screen flex flex-col relative z-10 font-sans text-white overflow-hidden">
+      <div className="min-h-screen flex flex-col relative z-10 font-sans text-white overflow-x-hidden">
 
         {/* Flash Message */}
         <AnimatePresence>
