@@ -16,7 +16,7 @@ const processedMessageDeliveries = new Map(); // userId → Set(messageIds)
 // Store typing status: userId → { typingTo: receiverId, timestamp: Date.now() }
 const typingStatus = new Map(); // userId → typing data
 
-const HEARTBEAT_TIMEOUT = 15000; // 15 seconds 
+const HEARTBEAT_TIMEOUT = 45000; // 45 seconds
 const HEARTBEAT_CHECK_INTERVAL = 5000; // Check every 5 seconds
 
 // Clear typing status
@@ -391,31 +391,29 @@ export const initSocket = (server) => {
         return;
       }
 
-      socket.userId = userId;
-      socket.join(userId);
-      
-      // Check if user was previously disconnected due to heartbeat timeout
-      const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
-      
-      // Mark user as online
-      const isReconnection = await markUserAsOnline(userId, socket.id, wasDisconnectedDueToTimeout);
-      
-      // Get online friends
-      const onlineFriends = await getOnlineFriends(userId);
-      
-      // Deliver pending messages if this is the first socket connection
-      if (isReconnection || userSockets.get(userId).size === 1) {
-        const deliveryResult = await deliverPendingMessages(userId, socket);
+      try {
+        socket.userId = userId;
+        socket.join(userId);
+
+        const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
+        const isReconnection = await markUserAsOnline(userId, socket.id, wasDisconnectedDueToTimeout);
+        const onlineFriends = await getOnlineFriends(userId);
+
+        if (isReconnection || userSockets.get(userId).size === 1) {
+          await deliverPendingMessages(userId, socket);
+        }
+
+        socket.emit("authenticated", {
+          userId,
+          socketId: socket.id,
+          onlineFriends,
+          wasDisconnectedDueToTimeout,
+          timestamp: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error(`❌ Authentication error for user ${userId}:`, err);
+        socket.emit("authentication-error", { message: "Authentication failed" });
       }
-      
-      // Notify user of successful authentication with online friends
-      socket.emit("authenticated", { 
-        userId, 
-        socketId: socket.id,
-        onlineFriends,
-        wasDisconnectedDueToTimeout,
-        timestamp: new Date().toISOString()
-      });
     });
 
     // HEARTBEAT

@@ -1,7 +1,6 @@
 // src/controllers/auth.controller.js
 import crypto from "crypto";
 import User from "../models/User.js";
-import sendEmail from "../utils/sendEmail.js";
 import { generateToken } from "../utils/generateToken.js";
 import cloudinary from "../lib/cloudinary.js";
 import dotenv from "dotenv";
@@ -127,22 +126,6 @@ export async function verifyEmail(req, res) {
 
     console.log("✅ User verified successfully");
 
-    // Optional: Send welcome email
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: "Welcome to Reon Secure Messaging!",
-        title: "Welcome Aboard",
-        body: `<p>Hi ${user.fullName}, your email has been verified. Enjoy chatting securely!</p>`,
-        buttonText: "Go to Login",
-        buttonLink: `${FRONTEND_URL}/login`,
-      });
-      console.log("✅ Welcome email sent");
-    } catch (emailError) {
-      console.error("❌ Failed to send welcome email:", emailError);
-      // Don't fail the verification if email fails
-    }
-
     return res.status(200).json({ message: "Email verified successfully." });
   } catch (error) {
     console.error("💥 Verification error:", error);
@@ -247,31 +230,7 @@ export async function googleCallback(req, res) {
 }
 
 export async function forgotPassword(req, res) {
-  const { email } = req.body;
-  
-  const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ message: "User not found" });
-
-  // Generate token and expiry (15 min)
-  const resetToken = crypto.randomBytes(32).toString("hex");
-  const tokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
-
-  user.passwordResetToken = resetToken;
-  user.passwordResetExpires = tokenExpiry;
-  await user.save();
-
-  const resetUrl = `${FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
-
-  await sendEmail({
-    to: user.email,
-    subject: "Password Reset Request",
-    title: "Reset Your Password",
-    body: `<p>Hi ${user.fullName}, click below to reset your password.</p>`,
-    buttonText: "Reset Password",
-    buttonLink: resetUrl,
-  });
-
-  return res.status(200).json({ message: "Password reset email sent." });
+  return res.status(503).json({ message: "Password reset via email is not available." });
 }
 
 export async function resetForgotPassword(req, res) {

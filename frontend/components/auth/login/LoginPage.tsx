@@ -32,7 +32,7 @@ export default function LoginPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [flashMessage, setFlashMessage] = useState<FlashMessage | null>(null);
@@ -96,31 +96,9 @@ export default function LoginPage() {
     };
   }, [animationCycle]);
 
-  // Handle forgot password
-  const handleForgotPassword = async (e: React.MouseEvent) => {
+  const handleForgotPassword = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (!email) {
-      showFlash('Please enter your email address first', 'error');
-      return;
-    }
-    setIsForgotPasswordLoading(true);
-    try {
-      const response = await api.post('/auth/forgot-password', { email });
-      if (response.status === 200) {
-        showFlash('Password reset link sent to your email! Check your inbox.', 'success');
-      } else {
-        showFlash(response.data?.message || 'Failed to send reset email', 'error');
-      }
-    } catch (err: unknown) {
-      // ... error handling logic ...
-      let errorMessage = 'Failed to send reset email';
-      if (err && typeof err === 'object' && 'response' in err) {
-        const apiError = err as ApiError;
-        errorMessage = apiError.response?.data?.message || errorMessage;
-      }
-      showFlash(errorMessage, 'error');
-    }
-    setIsForgotPasswordLoading(false);
+    showFlash('Password reset is not available. Please contact support.', 'error');
   };
 
   // Handle login submit
@@ -238,10 +216,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={handleForgotPassword}
-                    disabled={isForgotPasswordLoading}
-                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
                   >
-                    {isForgotPasswordLoading ? 'Sending...' : 'Forgot password?'}
+                    Forgot password?
                   </button>
                 </div>
 

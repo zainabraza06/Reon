@@ -234,23 +234,26 @@ class SocketService {
 
     this.socket.on("reconnect_failed", () => {
       console.error("❌ Reconnection failed after multiple attempts");
+      // socket.io gave up; trigger manual reconnect
+      if (this.userId) {
+        setTimeout(() => {
+          if (this.userId && !this.socket?.connected) {
+            this.connectionPromise = null;
+            this.connect(this.userId).catch(err =>
+              console.error('Manual reconnect after reconnect_failed:', err)
+            );
+          }
+        }, 3000);
+      }
     });
 
-    // ✅ Add timeout to prevent hanging promise
+    // Timeout: if authenticated event not received, resolve false and schedule retry
     setTimeout(() => {
       if (this.connectionState === 'connecting') {
-     
         this.connectionState = 'error';
         resolve(false);
         this.connectionPromise = null;
-        
-        // Clean up socket on timeout
-        if (this.socket) {
-          this.socket.removeAllListeners();
-          this.socket.disconnect();
-             this.callSocket?.removeAllListeners();
-          this.socket = null;
-        }
+        // Don't destroy the socket — let socket.io reconnect naturally
       }
     }, 10000);
   });
@@ -271,15 +274,13 @@ private debugSocketEvents() {
 }
 
   private startHeartbeat(userId: string) {
-    // Clear any existing interval
     this.stopHeartbeat();
-    
-    // Send heartbeat every 30 seconds
+    // Send heartbeat every 12 seconds (well within the 45-second server timeout)
     this.heartbeatInterval = setInterval(() => {
       if (this.socket?.connected && userId) {
         this.emit("heartbeat", { userId });
       }
-    }, 15000); // 20 seconds
+    }, 12000);
   }
 
   private stopHeartbeat() {
@@ -550,7 +551,6 @@ onOnlineFriendsResponse(callback: (data: OnlineFriendsResponseData) => void) {
         this.listeners.delete(event);
       }
     }
-    this.socket?.off(event);
   }
 
   removeAllListeners() {

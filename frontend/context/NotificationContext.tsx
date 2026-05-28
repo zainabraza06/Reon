@@ -9,6 +9,7 @@ interface FriendRequestEvent {
   receiver?: { _id?: string; fullName?: string };
   senderId?: string;
   receiverId?: string;
+  requestId?: string;
 }
 
 interface Notification {
@@ -23,7 +24,7 @@ interface NotificationContextType {
   notifications: Notification[];
   addNotification: (notification: Omit<Notification, 'id'>) => void;
   removeNotification: (id: string) => void;
-  initializeSocketListeners: (user: User) => void;
+  initializeSocketListeners: (user: User) => (() => void) | void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -31,18 +32,15 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // 🚀 Remove notification
   const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
-  // 🚀 Add notification (TOP LEVEL — valid hook usage)
   const addNotification = useCallback(
     (notification: Omit<Notification, 'id'>) => {
       const id = Math.random().toString(36).substring(2, 9);
 
       setNotifications(prev => {
-        // Avoid duplicate spam
         if (prev.some(n => n.title === notification.title && n.message === notification.message)) {
           return prev;
         }
@@ -56,65 +54,77 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     [removeNotification]
   );
 
-  // 🚀 Initialize socket listeners
   const initializeSocketListeners = useCallback(
     (user: User) => {
       socketService.connect(user._id);
 
-      // 🔔 Friend request received
+      // friend-request-received → toast for the receiver
       const handleFriendRequestReceived = (data: FriendRequestEvent) => {
-        const senderName = data?.sender?.fullName || 'Someone';
         addNotification({
           type: 'info',
           title: 'New Friend Request',
-          message: `${senderName} sent you a friend request`,
+          message: `${data?.sender?.fullName || 'Someone'} sent you a friend request`,
           duration: 5000
         });
       };
 
-      // 🔔 Friend request accepted
+      // friend-request-accepted-realtime → toast for both sides
       const handleFriendRequestAccepted = (data: FriendRequestEvent) => {
         const currentUserId = user._id;
         const senderId = data?.senderId || data?.sender?._id;
         const receiverId = data?.receiverId || data?.receiver?._id;
-        
-        // If current user is the sender, show "X accepted your request"
+
         if (currentUserId === senderId) {
-          const receiverName = data?.receiver?.fullName || 'Someone';
           addNotification({
             type: 'success',
             title: 'Friend Request Accepted',
-            message: `${receiverName} accepted your friend request!`,
+            message: `${data?.receiver?.fullName || 'Someone'} accepted your friend request!`,
             duration: 5000
           });
-        } 
-        // If current user is the receiver (acceptor), show "You are now friends with X"
-        else if (currentUserId === receiverId) {
-          const senderName = data?.sender?.fullName || 'Someone';
+        } else if (currentUserId === receiverId) {
           addNotification({
             type: 'success',
             title: 'You are now friends!',
-            message: `You are now friends with ${senderName}`,
+            message: `You are now friends with ${data?.sender?.fullName || 'Someone'}`,
             duration: 5000
           });
         }
       };
 
-      // 🔔 Friend request withdrawn
-      const handleFriendRequestWithdrawn = () => {
-      
+      // friend-request-rejected → toast for the original sender
+      const handleFriendRequestRejected = (data: FriendRequestEvent) => {
+        if (user._id === data?.senderId) {
+          addNotification({
+            type: 'info',
+            title: 'Friend Request Declined',
+            message: 'Your friend request was declined',
+            duration: 4000
+          });
+        }
       };
 
-      // Register listeners
-      socketService.onFriendRequestReceived(handleFriendRequestReceived);
-      socketService.onFriendRequestAccepted(handleFriendRequestAccepted);
-      socketService.onFriendRequestWithdrawn(handleFriendRequestWithdrawn);
+      // friend-request-withdrawn → toast for the receiver
+      const handleFriendRequestWithdrawn = (data: FriendRequestEvent) => {
+        if (user._id === data?.receiverId) {
+          addNotification({
+            type: 'info',
+            title: 'Friend Request Withdrawn',
+            message: 'A friend request was withdrawn',
+            duration: 4000
+          });
+        }
+      };
 
-      // Cleanup
+      socketService.on('friend-request-received', handleFriendRequestReceived);
+      socketService.on('friend-request-accepted-realtime', handleFriendRequestAccepted);
+      socketService.on('friend-request-rejected', handleFriendRequestRejected);
+      socketService.on('friend-request-withdrawn', handleFriendRequestWithdrawn);
+
       return () => {
-        socketService.removeListener('friend-request-received', handleFriendRequestReceived);
-        socketService.removeListener('friend-request-accepted-realtime', handleFriendRequestAccepted);
-        socketService.removeListener('friend-request-withdrawn', handleFriendRequestWithdrawn);
+        socketService.off('friend-request-received', handleFriendRequestReceived);
+        socketService.off('friend-request-accepted-realtime', handleFriendRequestAccepted);
+        socketService.off('friend-request-rejected', handleFriendRequestRejected);
+        socketService.off('friend-request-withdrawn', handleFriendRequestWithdrawn);
       };
     },
     [addNotification]

@@ -64,8 +64,6 @@ export const updateProfile = async (req, res) => {
 
 
 
-import sendEmail from "../utils/sendEmail.js";
-
 export const changePassword = async (req, res) => {
   try {
     const userOld = req.user; // your authenticated user

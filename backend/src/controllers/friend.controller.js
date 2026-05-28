@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import User from "../models/User.js";
 import FriendRequest from "../models/FriendRequest.js";
 import Notification from "../models/Notification.js";
-import sendEmail from  "../utils/sendEmail.js"; 
 import { getIO, emitToUser } from "../lib/socket.js";
 
 //  GET RECOMMENDED FRIENDS 
