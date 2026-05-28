@@ -194,7 +194,7 @@ export default function LoginPage() {
               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Reon Messaging</span>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl">
               <div className="mb-8">
                 <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>
                 <p className="text-gray-400">Sign in to your Reon Messaging account</p>
@@ -287,7 +287,7 @@ export default function LoginPage() {
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="hidden md:block flex-1 max-w-sm mr-10 relative"
+            className="hidden md:block flex-1 max-w-sm mr-4 lg:mr-10 relative"
           >
             <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full -z-10" />
 

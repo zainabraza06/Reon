@@ -202,9 +202,9 @@ export default function RecommendedFriendsPage() {
       <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(59,130,246,0.3)] -bottom-32 -left-32 [animation-delay:2s] pointer-events-none" />
       <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(45,212,191,0.25)] top-1/2 left-[60%] [animation-delay:4s] pointer-events-none" />
 
-      <div className="relative z-[1] max-w-[1200px] mx-auto p-8 sm:p-4">
+      <div className="relative z-[1] max-w-[1200px] mx-auto p-4 sm:p-8">
         {/* Header */}
-        <div className="flex justify-between items-start mb-12 gap-8 sm:flex-col sm:mb-6 sm:gap-4">
+        <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:justify-between sm:items-start sm:mb-12 sm:gap-8">
           <div className="flex items-start gap-4 flex-1">
             <button
               className="bg-white/10 border border-white/20 text-white/80 rounded-[0.75rem] p-3 cursor-pointer transition-all flex items-center justify-center hover:bg-white/15 hover:-translate-x-0.5 shrink-0"
@@ -214,7 +214,7 @@ export default function RecommendedFriendsPage() {
               <FiArrowLeft size={20} />
             </button>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-1 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent sm:text-2xl">
+              <h1 className="text-2xl font-bold mb-1 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent sm:text-3xl">
                 Find Friends
               </h1>
               <p className="text-white/60 text-sm">Discover people you might know and connect with them</p>

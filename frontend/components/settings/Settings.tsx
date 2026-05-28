@@ -230,9 +230,9 @@ export default function ProfileSettingsPage() {
       <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(59,130,246,0.3)] -bottom-32 -left-32 [animation-delay:2s] pointer-events-none" />
       <div className="fixed w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(45,212,191,0.25)] top-1/2 left-[60%] [animation-delay:4s] pointer-events-none" />
 
-      <div className="relative z-[1] max-w-[800px] mx-auto p-8 sm:p-4">
+      <div className="relative z-[1] max-w-[800px] mx-auto p-4 sm:p-8">
         {/* Header */}
-        <div className="flex items-start gap-4 mb-8 sm:flex-col sm:mb-6">
+        <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-start sm:mb-8">
           <div className="flex items-start gap-4 flex-1">
             <button
               className="bg-white/10 border border-white/20 text-white/80 rounded-[0.75rem] p-3 cursor-pointer transition-all flex items-center justify-center hover:bg-white/15 hover:-translate-x-0.5 shrink-0"
@@ -242,13 +242,13 @@ export default function ProfileSettingsPage() {
               <FiArrowLeft size={20} />
             </button>
             <div className="flex-1 text-center">
-              <h1 className="text-5xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent leading-tight sm:text-4xl">
+              <h1 className="text-2xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent leading-tight sm:text-4xl md:text-5xl">
                 Profile Settings
               </h1>
-              <p className="text-white/70 text-xl sm:text-base">Manage your profile information and security settings</p>
+              <p className="text-white/70 text-sm sm:text-base md:text-xl">Manage your profile information and security settings</p>
             </div>
           </div>
-          <div className="shrink-0 sm:self-end" ref={userMenuRef}>
+          <div className="shrink-0 self-end sm:self-auto" ref={userMenuRef}>
             <UserProfile
               currentUser={currentUser || defaultUser}
               showUserMenu={showUserMenu}
@@ -268,7 +268,7 @@ export default function ProfileSettingsPage() {
               return (
                 <button
                   key={tab}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-[0.75rem] text-base font-semibold cursor-pointer transition-all border-0 font-[inherit] ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-[0.75rem] text-sm font-semibold cursor-pointer transition-all border-0 font-[inherit] sm:gap-2 sm:px-6 sm:py-3 sm:text-base ${
                     activeTab === tab ? 'text-white bg-blue-500/20 border border-blue-500/30' : 'text-white/60 bg-transparent hover:text-white/80 hover:bg-white/5'
                   }`}
                   onClick={() => setActiveTab(tab)}
@@ -282,7 +282,7 @@ export default function ProfileSettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl sm:p-4">
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-4 backdrop-blur-xl sm:p-8">
           {activeTab === 'profile' ? (
             <form onSubmit={handleProfileUpdate} className="w-full">
               {/* Profile picture */}
@@ -323,7 +323,7 @@ export default function ProfileSettingsPage() {
               </div>
 
               {/* Form fields */}
-              <div className="grid grid-cols-2 gap-6 mb-8 sm:grid-cols-1">
+              <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 sm:gap-6 sm:mb-8">
                 <div className="flex flex-col gap-2">
                   <label htmlFor="fullName" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
                     Full Name <span className="text-white/40 font-normal text-sm">(optional)</span>
@@ -343,7 +343,7 @@ export default function ProfileSettingsPage() {
                   </label>
                   <input type="text" id="location" name="location" value={profileForm.location} onChange={handleProfileInputChange} className={fieldInput} placeholder={currentUser?.location || "Enter your location"} />
                 </div>
-                <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
+                <div className="flex flex-col gap-2 sm:col-span-2">
                   <label htmlFor="bio" className="flex items-center gap-2 text-white/90 text-[0.9rem] font-semibold">
                     <FiEdit3 size={16} className="text-white/60" />
                     Bio <span className="text-white/40 font-normal text-sm">(optional)</span>

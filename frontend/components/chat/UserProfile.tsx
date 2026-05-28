@@ -87,7 +87,7 @@ export default function UserProfile({
         </button>
 
         {showUserMenu && (
-          <div className="absolute top-full right-0 mt-2 bg-white/10 backdrop-blur-xl border border-white/15 rounded-xl p-2 min-w-[220px] z-[1000] shadow-[0_10px_25px_rgba(0,0,0,0.2)]">
+          <div className="absolute top-full right-0 mt-2 bg-white/10 backdrop-blur-xl border border-white/15 rounded-xl p-2 w-[220px] max-w-[calc(100vw-1.5rem)] z-[1000] shadow-[0_10px_25px_rgba(0,0,0,0.2)]">
             <button
               className={`${itemBase} ${isActivePage('messages') ? itemActive : ''}`}
               onClick={() => { setShowUserMenu(false); if (!isActivePage('messages')) router.push('/chat'); }}

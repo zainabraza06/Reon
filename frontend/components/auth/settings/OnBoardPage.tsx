@@ -191,7 +191,7 @@ export default function OnboardingPage() {
             </h1>
           </div>
 
-          <div className="w-[400px] h-[5px] bg-white/10 rounded-[3px] mx-auto mb-2 overflow-hidden sm:w-[300px]">
+          <div className="w-full max-w-[400px] h-[5px] bg-white/10 rounded-[3px] mx-auto mb-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-[3px] transition-[width] duration-300"
               style={{ width: `${(currentStep / 4) * 100}%` }}
@@ -209,7 +209,7 @@ export default function OnboardingPage() {
         <div className="flex gap-6 items-start justify-center">
           <div className="flex-1 max-w-[600px]">
             <form
-              className="bg-white/[0.08] backdrop-blur-3xl rounded-[2rem] p-4 border border-white/15 shadow-[0_20px_40px_rgba(0,0,0,0.3)] max-w-[600px] mx-auto"
+              className="bg-white/[0.08] backdrop-blur-3xl rounded-[2rem] p-4 sm:p-6 border border-white/15 shadow-[0_20px_40px_rgba(0,0,0,0.3)] max-w-[600px] mx-auto"
               onSubmit={handleSubmit}
               noValidate
             >
@@ -401,7 +401,7 @@ export default function OnboardingPage() {
               )}
 
               {/* Navigation Buttons */}
-              <div className="flex gap-4 justify-between mt-6 sm:flex-col">
+              <div className="flex flex-col gap-4 mt-6 sm:flex-row sm:justify-between">
                 {currentStep > 1 && (
                   <button
                     type="button"

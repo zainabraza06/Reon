@@ -526,7 +526,7 @@ const ChatPage: React.FC = () => {
                     onVideoCall={handleVideoCall}
                     onLoadMore={() => loadOlderMessages?.()}
                   />
-                  <div className="shrink-0 bg-slate-900/90 border-t border-white/10 p-4 backdrop-blur-md md:p-4 sm:p-3">
+                  <div className="shrink-0 bg-slate-900/90 border-t border-white/10 p-3 sm:p-4 backdrop-blur-md">
                     <InputArea
                       onSendMessage={handleSendMessage}
                       onTyping={handleTyping}

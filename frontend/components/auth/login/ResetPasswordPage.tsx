@@ -90,7 +90,7 @@ export default function ResetPasswordPage() {
       <div className="absolute w-[25rem] h-[25rem] rounded-full blur-[100px] opacity-40 animate-pulse-blob bg-[rgba(45,212,191,0.25)] top-1/2 left-[60%] [animation-delay:4s]" />
       <div className="absolute inset-0 z-0 pointer-events-none hidden sm:block" id="particles" />
 
-      <div className="w-full max-w-[1400px] flex lg:flex-row flex-col gap-12 items-center justify-center z-[2] relative flex-1">
+      <div className="w-full max-w-[1400px] flex flex-col gap-8 lg:flex-row lg:gap-12 items-center justify-center z-[2] relative flex-1">
         {/* Form section */}
         <div className="flex-1 flex flex-col items-center justify-center min-w-0 lg:min-w-[400px]">
           <div className="flex items-center gap-2 mb-6 justify-center">

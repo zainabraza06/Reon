@@ -183,7 +183,7 @@ export default function SignupPage() {
               <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">Reon Messaging</span>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-5 sm:p-8 shadow-2xl">
               <div className="mb-6">
                 <h1 className="text-3xl font-bold mb-2">Create Account</h1>
                 <p className="text-gray-400">Join Reon and start collaborating</p>

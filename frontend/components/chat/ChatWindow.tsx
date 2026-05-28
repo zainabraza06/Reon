@@ -346,7 +346,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <p className="relative z-[1] text-white/70 text-[1.1rem] max-w-[28rem] leading-relaxed mb-10 sm:text-base sm:px-4">
           Select a chat to start messaging securely with end-to-end encryption.
         </p>
-        <div className="relative z-[1] flex flex-wrap gap-6 justify-center max-w-[32rem] mt-8 sm:flex-col sm:items-center sm:gap-4 sm:px-4">
+        <div className="relative z-[1] flex flex-col items-center gap-4 px-4 justify-center max-w-[32rem] mt-8 sm:flex-row sm:flex-wrap sm:gap-6 sm:px-0">
           {[
             { icon: '🔒', text: 'End-to-End Encryption' },
             { icon: '🚀', text: 'Instant Messages' },
