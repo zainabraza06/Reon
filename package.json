@@ -1,0 +1,13 @@
+{
+  "name": "reon",
+  "version": "1.0.0",
+  "description": "Reon – encrypted messaging app (monorepo root)",
+  "scripts": {
+    "start": "node backend/src/server.js",
+    "build": "npm install --prefix backend",
+    "dev": "npm run dev --prefix backend"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

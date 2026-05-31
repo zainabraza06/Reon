@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/.next",
+  "installCommand": "echo 'dependencies installed inside buildCommand'",
+  "framework": "nextjs",
+  "rewrites": []
+}

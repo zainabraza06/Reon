@@ -30,12 +30,35 @@ dotenv.config();
 const app = express();
 app.set('trust proxy', 1);
 
+// Allow the deployed frontend URL plus local dev origins.
+// FRONTEND_URL can be a comma-separated list for Render.
+const rawOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...rawOrigins,
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow server-to-server calls (no Origin header) and listed origins
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
   credentials: true,
   exposedHeaders: ['Content-Disposition', 'X-Encrypted', 'X-Encryption-IV', 'X-File-Name'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
+
+// Handle preflight for all routes
+app.options('*', cors(corsOptions));
 
 
 
