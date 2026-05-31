@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import Sidebar from "@/components/chat/Sidebar";
+import Sidebar from "@/components/chat/SideBar";
 import MobileNav from "@/components/layout/MobileNav";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 
