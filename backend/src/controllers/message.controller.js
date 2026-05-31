@@ -63,9 +63,64 @@ function getDefaultExtension(fileType) {
   switch (fileType) {
     case 'image': return '.jpg';
     case 'video': return '.mp4';
-    case 'audio': return '.mp3';
+    case 'audio': return '.webm';
     case 'document': return '.bin';
     default: return '.bin';
+  }
+}
+
+// Centralised MIME map used by both serve and download handlers
+const MIME_MAP = {
+  // images
+  '.jpg':  'image/jpeg', '.jpeg': 'image/jpeg', '.png':  'image/png',
+  '.gif':  'image/gif',  '.webp': 'image/webp', '.svg':  'image/svg+xml',
+  '.bmp':  'image/bmp',  '.ico':  'image/x-icon', '.tiff': 'image/tiff',
+  // video
+  '.mp4':  'video/mp4',  '.webm': 'video/webm', '.ogg':  'video/ogg',
+  '.avi':  'video/x-msvideo', '.mov': 'video/quicktime',
+  '.mkv':  'video/x-matroska', '.flv': 'video/x-flv',
+  '.3gp':  'video/3gpp',
+  // audio  (webm is the most common recorder format in browsers)
+  '.mp3':  'audio/mpeg', '.wav':  'audio/wav',   '.ogg':  'audio/ogg',
+  '.m4a':  'audio/mp4',  '.aac':  'audio/aac',   '.flac': 'audio/flac',
+  '.webm': 'audio/webm', '.opus': 'audio/ogg',   '.weba': 'audio/webm',
+  '.3gp':  'audio/3gpp',
+  // documents
+  '.pdf':  'application/pdf',
+  '.doc':  'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls':  'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt':  'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.txt':  'text/plain',
+  '.csv':  'text/csv',
+  '.zip':  'application/zip',
+  '.rar':  'application/x-rar-compressed',
+  '.7z':   'application/x-7z-compressed',
+  '.tar':  'application/x-tar',
+  '.gz':   'application/gzip',
+  '.json': 'application/json',
+};
+
+function resolveMime(extension, fileType) {
+  // ext lookup first (most precise)
+  const ext = (extension || '').toLowerCase();
+  if (MIME_MAP[ext]) {
+    // distinguish audio .webm from video .webm via stored fileType
+    if (ext === '.webm' || ext === '.ogg') {
+      if (fileType === 'audio') return 'audio/' + (ext === '.ogg' ? 'ogg' : 'webm');
+      if (fileType === 'video') return 'video/' + (ext === '.ogg' ? 'ogg' : 'webm');
+    }
+    return MIME_MAP[ext];
+  }
+  // fallback by fileType
+  switch (fileType) {
+    case 'image': return 'image/jpeg';
+    case 'video': return 'video/mp4';
+    case 'audio': return 'audio/mpeg';
+    case 'document': return 'application/octet-stream';
+    default: return 'application/octet-stream';
   }
 }
 
@@ -98,12 +153,11 @@ export const serveMediaFile = async (req, res) => {
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Range, Accept-Ranges, ETag, X-Encryption-IV, X-File-Name');
     
     // Determine content type
-    let contentType = 'application/octet-stream';
     const originalName = file.metadata?.originalName || '';
     const isVideo = file.metadata?.type === 'video';
     const isAudio = file.metadata?.type === 'audio';
     const isImage = file.metadata?.type === 'image';
-    
+
     // Get extension from metadata or original filename
     let extension = '';
     if (file.metadata?.extension) {
@@ -111,66 +165,8 @@ export const serveMediaFile = async (req, res) => {
     } else if (originalName.includes('.')) {
       extension = originalName.substring(originalName.lastIndexOf('.'));
     }
-    
-    // Set content type based on file type and extension
-    switch (file.metadata?.type) {
-      case 'image':
-        if (extension.toLowerCase() === '.png') {
-          contentType = 'image/png';
-        } else if (extension.toLowerCase() === '.gif') {
-          contentType = 'image/gif';
-        } else if (extension.toLowerCase() === '.webp') {
-          contentType = 'image/webp';
-        } else if (extension.toLowerCase() === '.svg') {
-          contentType = 'image/svg+xml';
-        } else if (extension.toLowerCase() === '.bmp') {
-          contentType = 'image/bmp';
-        } else {
-          contentType = 'image/jpeg';
-        }
-        break;
-      case 'video':
-        if (extension.toLowerCase() === '.webm') {
-          contentType = 'video/webm';
-        } else if (extension.toLowerCase() === '.avi') {
-          contentType = 'video/x-msvideo';
-        } else if (extension.toLowerCase() === '.mov') {
-          contentType = 'video/quicktime';
-        } else {
-          contentType = 'video/mp4';
-        }
-        break;
-      case 'audio':
-        if (extension.toLowerCase() === '.wav') {
-          contentType = 'audio/wav';
-        } else if (extension.toLowerCase() === '.ogg') {
-          contentType = 'audio/ogg';
-        } else if (extension.toLowerCase() === '.m4a') {
-          contentType = 'audio/mp4';
-        } else {
-          contentType = 'audio/mpeg';
-        }
-        break;
-      case 'document':
-        if (extension.toLowerCase() === '.pdf') {
-          contentType = 'application/pdf';
-        } else if (extension.toLowerCase() === '.doc') {
-          contentType = 'application/msword';
-        } else if (extension.toLowerCase() === '.docx') {
-          contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        } else if (extension.toLowerCase() === '.txt') {
-          contentType = 'text/plain';
-        } else if (extension.toLowerCase() === '.zip') {
-          contentType = 'application/zip';
-        } else if (extension.toLowerCase() === '.xlsx') {
-          contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        } else if (extension.toLowerCase() === '.pptx') {
-          contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-        }
-        break;
-      default:
-        contentType = 'application/octet-stream';
-    }
+
+    const contentType = resolveMime(extension, file.metadata?.type);
 
     // Generate ETag for caching (using file ID and upload date)
     const etag = `"${fileId}-${file.uploadDate?.getTime() || file._id}"`;
@@ -302,82 +298,22 @@ export const downloadEncryptedFile = async (req, res) => {
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Encrypted, X-Encryption-IV, X-File-Name');
     
     // Determine content type and extension
-    let contentType = 'application/octet-stream';
-    let extension = '';
     const originalName = file.metadata?.originalName || '';
-    
-    // Get extension from metadata or original filename
+    let extension = '';
     if (file.metadata?.extension) {
       extension = file.metadata.extension;
     } else if (originalName.includes('.')) {
       extension = originalName.substring(originalName.lastIndexOf('.'));
     }
-    
-    // Set content type based on file type and extension
-    switch (file.metadata?.type) {
-      case 'image':
-        if (extension.toLowerCase() === '.png') {
-          contentType = 'image/png';
-        } else if (extension.toLowerCase() === '.gif') {
-          contentType = 'image/gif';
-        } else if (extension.toLowerCase() === '.webp') {
-          contentType = 'image/webp';
-        } else if (extension.toLowerCase() === '.svg') {
-          contentType = 'image/svg+xml';
-        } else if (extension.toLowerCase() === '.bmp') {
-          contentType = 'image/bmp';
-        } else {
-          contentType = 'image/jpeg';
-        }
-        break;
-      case 'video':
-        if (extension.toLowerCase() === '.webm') {
-          contentType = 'video/webm';
-        } else if (extension.toLowerCase() === '.avi') {
-          contentType = 'video/x-msvideo';
-        } else if (extension.toLowerCase() === '.mov') {
-          contentType = 'video/quicktime';
-        } else {
-          contentType = 'video/mp4';
-        }
-        break;
-      case 'audio':
-        if (extension.toLowerCase() === '.wav') {
-          contentType = 'audio/wav';
-        } else if (extension.toLowerCase() === '.ogg') {
-          contentType = 'audio/ogg';
-        } else if (extension.toLowerCase() === '.m4a') {
-          contentType = 'audio/mp4';
-        } else {
-          contentType = 'audio/mpeg';
-        }
-        break;
-      case 'document':
-        if (extension.toLowerCase() === '.pdf') {
-          contentType = 'application/pdf';
-        } else if (extension.toLowerCase() === '.doc') {
-          contentType = 'application/msword';
-        } else if (extension.toLowerCase() === '.docx') {
-          contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        } else if (extension.toLowerCase() === '.txt') {
-          contentType = 'text/plain';
-        } else if (extension.toLowerCase() === '.zip') {
-          contentType = 'application/zip';
-        }
-        break;
-    }
-    
+
+    const contentType = resolveMime(extension, file.metadata?.type);
+
     // Ensure filename has extension
     let fileName = originalName;
     if (!fileName.includes('.') && extension) {
       fileName += extension;
     } else if (!fileName.includes('.')) {
-      switch (file.metadata?.type) {
-        case 'image': fileName += '.jpg'; break;
-        case 'video': fileName += '.mp4'; break;
-        case 'audio': fileName += '.mp3'; break;
-        default: fileName += '.bin'; break;
-      }
+      fileName += getDefaultExtension(file.metadata?.type || 'document');
     }
     
     // Clean filename for safe download

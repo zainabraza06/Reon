@@ -38,15 +38,21 @@ export const api = {
 
   // ── Messages (1:1) ─────────────────────────────────────────────────────────
   messages: {
-    send: (formData: FormData) =>
-      fetch(`${BASE_URL}/messages/send`, { method: "POST", credentials: "include", body: formData }).then(
-        (r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.message))))
-      ),
-    get: (userId: string, params?: { limit?: number; before?: string }) => {
+    // Returns { success, data: messageObject }
+    send: async (formData: FormData): Promise<import("@/types").Message> => {
+      const r = await fetch(`${BASE_URL}/messages/send`, { method: "POST", credentials: "include", body: formData });
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.message || "Send failed");
+      // backend wraps in { success, data } or { success, message, data }
+      return (json.data ?? json.message ?? json) as import("@/types").Message;
+    },
+    // Returns { success, data: Message[] }
+    get: async (userId: string, params?: { limit?: number; before?: string }): Promise<{ messages: import("@/types").Message[] }> => {
       const q = new URLSearchParams();
       if (params?.limit) q.set("limit", String(params.limit));
       if (params?.before) q.set("before", params.before);
-      return request<{ messages: import("@/types").Message[] }>(`/messages/${userId}?${q}`);
+      const json = await request<{ success: boolean; data?: import("@/types").Message[]; messages?: import("@/types").Message[] }>(`/messages/${userId}?${q}`);
+      return { messages: json.data ?? json.messages ?? [] };
     },
     sidebar: () => request<{ chats: import("@/types").ChatListItem[] }>("/messages/sidebar/list"),
     search: (q: string) => request<{ users: import("@/types").ChatListItem[] }>(`/messages/search?q=${encodeURIComponent(q)}`),
@@ -93,6 +99,17 @@ export const api = {
     received: () => request<{ requests: import("@/types").FriendRequest[] }>("/users/friend-requests/received"),
     sent: () => request<{ requests: import("@/types").FriendRequest[] }>("/users/friend-requests/sent"),
     pendingCount: () => request<{ count: number }>("/users/friend-request/pending-count"),
+  },
+
+  // ── Calls ──────────────────────────────────────────────────────────────────
+  calls: {
+    create: (toUserId: string, type: "audio" | "video") =>
+      request<{ callId: string; type: string; iceServers: RTCIceServer[]; status: string; calleeStatus: string }>(
+        "/calls", { method: "POST", body: JSON.stringify({ toUserId, type }) }
+      ),
+    get: (callId: string) =>
+      request<{ callId: string; type: string; status: string; iceServers: RTCIceServer[] }>(`/calls/${callId}`),
+    turn: (callId: string) => request<{ iceServers: RTCIceServer[] }>(`/calls/${callId}/turn`),
   },
 
   // ── Settings ───────────────────────────────────────────────────────────────
