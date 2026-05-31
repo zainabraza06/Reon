@@ -1,4 +1,11 @@
 // ── Auth ──────────────────────────────────────────────────────────────────────
+export interface RecommendedUser extends Omit<User, "friends" | "isOnboarded" | "isVerified"> {
+  mutualFriendsCount?: number;
+  friendRequestSent?: boolean;
+  friendRequestReceived?: boolean;
+  score?: number;
+}
+
 export interface User {
   _id: string;
   fullName: string;

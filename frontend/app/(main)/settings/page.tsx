@@ -72,11 +72,11 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-y-auto">
-      <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700">
+      <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-200 dark:border-gray-700">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h1>
       </div>
 
-      <div className="max-w-lg mx-auto w-full p-6 space-y-8">
+      <div className="max-w-lg mx-auto w-full p-4 sm:p-6 space-y-8">
         {/* Profile */}
         <section>
           <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Profile</h2>

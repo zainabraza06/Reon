@@ -89,8 +89,26 @@ export const api = {
 
   // ── Friends ────────────────────────────────────────────────────────────────
   friends: {
-    list: () => request<{ friends: import("@/types").User[] }>("/users/friends"),
-    recommendations: () => request<{ users: import("@/types").User[] }>("/users/recommendation"),
+    // Backend returns { page, limit, total, friends: [] }
+    list: (params?: { search?: string; page?: number; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.search) q.set("search", params.search);
+      if (params?.page)   q.set("page",   String(params.page));
+      if (params?.limit)  q.set("limit",  String(params.limit));
+      return request<{ friends: import("@/types").User[]; total: number; page: number }>(`/users/friends?${q}`);
+    },
+    // Backend returns { success, page, limit, total, recommended: [] }
+    recommendations: (params?: { search?: string; page?: number; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.search) q.set("search", params.search);
+      if (params?.page)   q.set("page",   String(params.page));
+      if (params?.limit)  q.set("limit",  String(params.limit));
+      return request<{
+        recommended: import("@/types").RecommendedUser[];
+        total: number;
+        page: number;
+      }>(`/users/recommendation?${q}`);
+    },
     send: (id: string) => request(`/users/friend-request/${id}`, { method: "POST" }),
     accept: (id: string) => request(`/users/friend-request/${id}/accept`, { method: "POST" }),
     reject: (id: string) => request(`/users/friend-request/${id}`, { method: "DELETE" }),
@@ -98,7 +116,11 @@ export const api = {
     remove: (id: string) => request(`/users/friends/${id}`, { method: "PATCH" }),
     received: () => request<{ requests: import("@/types").FriendRequest[] }>("/users/friend-requests/received"),
     sent: () => request<{ requests: import("@/types").FriendRequest[] }>("/users/friend-requests/sent"),
-    pendingCount: () => request<{ count: number }>("/users/friend-request/pending-count"),
+    // Backend returns { pendingCount } (NOT { count })
+    pendingCount: async (): Promise<{ count: number }> => {
+      const r = await request<{ pendingCount?: number; count?: number }>("/users/friend-request/pending-count");
+      return { count: r.pendingCount ?? r.count ?? 0 };
+    },
   },
 
   // ── Calls ──────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Users, Settings, Plus, LogOut, Search } from "lucide-react";
+import { MessageSquare, Users, Settings, Plus, LogOut, Search, Compass } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
@@ -120,7 +120,10 @@ export default function Sidebar({ onNewGroup }: Props) {
       <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 dark:border-gray-700">
         <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">Reon</span>
         <div className="flex items-center gap-1">
-          <Link href="/friends" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative ${pathname === "/friends" ? "text-indigo-600" : "text-gray-500"}`}>
+          <Link href="/recommendations" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pathname === "/recommendations" ? "text-indigo-600" : "text-gray-500"}`} title="Discover people">
+            <Compass size={18} />
+          </Link>
+          <Link href="/friends" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative ${pathname === "/friends" ? "text-indigo-600" : "text-gray-500"}`} title="Friends">
             <Users size={18} />
             {pendingCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
@@ -128,10 +131,10 @@ export default function Sidebar({ onNewGroup }: Props) {
               </span>
             )}
           </Link>
-          <Link href="/settings" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pathname === "/settings" ? "text-indigo-600" : "text-gray-500"}`}>
+          <Link href="/settings" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pathname === "/settings" ? "text-indigo-600" : "text-gray-500"}`} title="Settings">
             <Settings size={18} />
           </Link>
-          <button onClick={logout} className="p-2 rounded-full text-gray-500 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <button onClick={logout} className="p-2 rounded-full text-gray-500 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Logout">
             <LogOut size={18} />
           </button>
         </div>

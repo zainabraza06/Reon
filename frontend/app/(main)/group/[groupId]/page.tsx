@@ -194,9 +194,11 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
           <MessageInput onSend={sendMessage} onTyping={handleTyping} placeholder={`Message ${group?.name || "group"}`} />
         </div>
 
-        {/* Info panel */}
+        {/* Info panel — fixed overlay on mobile, side panel on desktop */}
         {showInfo && group && (
-          <div className="w-64 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-30 md:static md:z-auto md:inset-auto md:w-64 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 md:bg-gray-50 md:dark:bg-gray-800/50 flex flex-col overflow-hidden shadow-xl md:shadow-none"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowInfo(false); }}
+          >
             <div className="px-4 py-4 border-b border-gray-200 dark:border-gray-700">
               <h3 className="font-semibold text-gray-900 dark:text-white text-sm">{group.name}</h3>
               {group.description && <p className="text-xs text-gray-500 mt-1">{group.description}</p>}
