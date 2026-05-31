@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
+import { GroupChat } from "../models/GroupChat.js";
 import * as messageController from "../controllers/message.controller.js";
 
 let io;
@@ -694,6 +695,34 @@ export const initSocket = (server) => {
           hasPending: false,
           error: "Failed to check pending messages"
         });
+      }
+    });
+
+    // GROUP CHAT: typing indicator
+    socket.on("group-typing-start", ({ groupId }) => {
+      const userId = socket.userId;
+      if (!userId || !groupId) return;
+      // Broadcast to group room (all members except sender)
+      socket.to(`group:${groupId}`).emit("group-user-typing", { groupId, userId, isTyping: true });
+    });
+
+    socket.on("group-typing-stop", ({ groupId }) => {
+      const userId = socket.userId;
+      if (!userId || !groupId) return;
+      socket.to(`group:${groupId}`).emit("group-user-typing", { groupId, userId, isTyping: false });
+    });
+
+    // GROUP CHAT: join room when user is authenticated
+    socket.on("join-groups", async () => {
+      const userId = socket.userId;
+      if (!userId) return;
+      try {
+        const groups = await GroupChat.find({ "members.user": userId, isActive: true }).select("_id");
+        for (const g of groups) {
+          socket.join(`group:${g._id.toString()}`);
+        }
+      } catch (err) {
+        console.error("join-groups error:", err);
       }
     });
 

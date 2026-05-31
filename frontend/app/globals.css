@@ -1,194 +1,28 @@
-/* Reset and global styles */
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+:root {
+  --background: #f9fafb;
+  --foreground: #111827;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1117;
+    --foreground: #f3f4f6;
+  }
+}
 
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
-html {
-  overflow-x: hidden;
-  -webkit-text-size-adjust: 100%;
-  -webkit-tap-highlight-color: transparent;
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
-body {
-  min-height: 100dvh;
-  overflow-x: hidden;
-  background: linear-gradient(135deg,#1e1e2f,#111117);
-  color: white;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  -webkit-overflow-scrolling: touch;
-}
-
-@supports (-webkit-touch-callout: none) {
-  body {
-    min-height: -webkit-fill-available;
-  }
-}
-
-footer {
-  text-align: center;
-  font-size: 0.875rem;
-  color: rgba(255,255,255,0.5);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  padding: 2rem 0 1rem 0;
-  margin-top: auto;
-}
-
-/* ===================== CUSTOM ANIMATIONS ===================== */
-
-@keyframes slideDownBanner {
-  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-@keyframes slideUpModal {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideUpFromBottom {
-  from { opacity: 0; transform: translateY(100%); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeInOverlay {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-@keyframes typingBounce {
-  0%, 80%, 100% { transform: scale(0.8); opacity: 0.3; }
-  40%           { transform: scale(1.1); opacity: 1; }
-}
-
-@keyframes badgePop {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.05); }
-}
-
-@keyframes pulseFade {
-  0%, 100% { opacity: 0.7; }
-  50%       { opacity: 1; }
-}
-
-@keyframes tickReveal {
-  0%   { transform: scale(0.8); opacity: 0; }
-  70%  { transform: scale(1.1); }
-  100% { transform: scale(1);   opacity: 1; }
-}
-
-@keyframes callAvatarPulse {
-  0%   { transform: scale(1);    box-shadow: 0 0 0 0   rgba(52,199,89,0.4); }
-  50%  { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(52,199,89,0); }
-  100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(52,199,89,0); }
-}
-
-@keyframes floatY {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-20px); }
-}
-
-@keyframes spinRing {
-  to { transform: rotate(360deg); }
-}
-
-/* ===================== UTILITY CLASSES ===================== */
-
-.animate-typing-dot {
-  animation: typingBounce 1.4s infinite ease-in-out;
-}
-.animate-typing-dot:nth-child(1) { animation-delay: -0.32s; }
-.animate-typing-dot:nth-child(2) { animation-delay: -0.16s; }
-
-.animate-badge-pop    { animation: badgePop    2s infinite; }
-.animate-pulse-fade   { animation: pulseFade   2s infinite; }
-.animate-tick-reveal  { animation: tickReveal  0.5s ease-out; }
-.animate-call-pulse   { animation: callAvatarPulse 1.5s ease-in-out infinite; }
-.animate-slide-down-banner { animation: slideDownBanner 0.3s ease-out; }
-.animate-slide-up-modal    { animation: slideUpModal    0.3s ease-out; }
-.animate-slide-up-bottom   { animation: slideUpFromBottom 0.3s ease-out; }
-.animate-fade-in-overlay   { animation: fadeInOverlay  0.2s ease-out; }
-.animate-float-y           { animation: floatY 6s ease-in-out infinite; }
-.animate-spin-ring         { animation: spinRing 1s linear infinite; }
-
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg,
-    rgba(255,255,255,0.05) 25%,
-    rgba(255,255,255,0.10) 50%,
-    rgba(255,255,255,0.05) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-/* Custom scrollbar */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.2) transparent;
-}
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.2);
-  border-radius: 3px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.3);
-}
-
-/* Call screen action bar desktop auto-hide */
-.call-screen-group:not(:hover) .call-action-bar {
-  opacity: 0.3;
-}
-@media (max-width: 768px) {
-  .call-screen-group .call-action-bar {
-    opacity: 1 !important;
-  }
-}
-
-/* ===================== AUTH PAGE ANIMATIONS ===================== */
-
-@keyframes pulseBlob {
-  0%   { transform: scale(0.9); opacity: 0.3; }
-  50%  { transform: scale(1.1); opacity: 0.5; }
-  100% { transform: scale(0.9); opacity: 0.3; }
-}
-
-@keyframes floatParticle {
-  0%   { transform: translateY(100vh) translateX(0); opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateY(-100px) translateX(100px); opacity: 0; }
-}
-
-@keyframes messageSlideIn {
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-pulse-blob    { animation: pulseBlob 8s infinite alternate; }
-.animate-message-slide { animation: messageSlideIn 0.4s ease forwards; }
-
-/* Particle used by imperative DOM in auth pages */
-.particle {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.4);
-  border-radius: 50%;
-  animation: floatParticle 20s infinite linear;
-}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }

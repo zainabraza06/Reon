@@ -13,6 +13,7 @@ import friendRoutes from "./routes/friend.route.js";
 import messageRoutes from "./routes/message.route.js";
 import keyRoutes from "./routes/key.route.js";
 import callRoutes from "./routes/call.route.js";
+import groupChatRoutes from "./routes/groupChat.route.js";
 
 
 
@@ -30,9 +31,9 @@ const app = express();
 app.set('trust proxy', 1);
 
 const corsOptions = {
-  origin: process.env.FRONTEND_URL,
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
-  exposedHeaders: ['Content-Disposition', 'X-Encrypted'],
+  exposedHeaders: ['Content-Disposition', 'X-Encrypted', 'X-Encryption-IV', 'X-File-Name'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
@@ -53,6 +54,7 @@ app.use("/api/users", friendRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/keys", keyRoutes);
 app.use("/api/calls", callRoutes);
+app.use("/api/groups", groupChatRoutes);
 
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);

@@ -92,7 +92,8 @@ export const serveMediaFile = async (req, res) => {
     const fileSize = file.length || 0;
     
     // Set CORS headers for media display
-    res.setHeader('Access-Control-Allow-Origin', 'https://reon-tau.vercel.app');
+    const origin = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Type, Content-Range, Accept-Ranges, ETag, X-Encryption-IV, X-File-Name');
     
@@ -150,10 +151,27 @@ export const serveMediaFile = async (req, res) => {
           contentType = 'audio/mpeg';
         }
         break;
+      case 'document':
+        if (extension.toLowerCase() === '.pdf') {
+          contentType = 'application/pdf';
+        } else if (extension.toLowerCase() === '.doc') {
+          contentType = 'application/msword';
+        } else if (extension.toLowerCase() === '.docx') {
+          contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        } else if (extension.toLowerCase() === '.txt') {
+          contentType = 'text/plain';
+        } else if (extension.toLowerCase() === '.zip') {
+          contentType = 'application/zip';
+        } else if (extension.toLowerCase() === '.xlsx') {
+          contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        } else if (extension.toLowerCase() === '.pptx') {
+          contentType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+        }
+        break;
       default:
         contentType = 'application/octet-stream';
     }
-    
+
     // Generate ETag for caching (using file ID and upload date)
     const etag = `"${fileId}-${file.uploadDate?.getTime() || file._id}"`;
     res.setHeader('ETag', etag);
@@ -278,7 +296,8 @@ export const downloadEncryptedFile = async (req, res) => {
     const file = files[0];
     
     // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', 'https://reon-tau.vercel.app');
+    const dlOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.setHeader('Access-Control-Allow-Origin', dlOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Encrypted, X-Encryption-IV, X-File-Name');
     
@@ -364,8 +383,9 @@ export const downloadEncryptedFile = async (req, res) => {
     // Clean filename for safe download
     fileName = fileName.replace(/[<>:"/\\|?*]/g, '_');
     
+    const encodedFileName = encodeURIComponent(fileName);
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${encodedFileName}`);
     res.setHeader('X-Encrypted', 'true');
     
     // Add encryption IV header if available

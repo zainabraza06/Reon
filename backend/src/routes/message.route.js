@@ -49,7 +49,8 @@ router.post('/send',
 );
 
 router.get('/media/:id', serveMediaFile);
-router.get('/files/:id', downloadEncryptedFile);
+router.get('/download/:id', downloadEncryptedFile);
+router.get('/files/:id', downloadEncryptedFile); // legacy alias
 
 // Mark message as delivered/seen
 router.post('/read/:messageId',  markMessageAsRead);
