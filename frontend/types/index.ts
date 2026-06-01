@@ -52,8 +52,12 @@ export interface Message {
   deliveredAt?: string;
   read?: boolean;
   readAt?: string;
-  status?: "sent" | "delivered" | "read";
+  status?: "sending" | "sent" | "delivered" | "read" | "failed";
   isVoiceMessage?: boolean;
+  // populated when contentType === "call-log"
+  callLog?: { callType: "audio" | "video"; outcome: "completed" | "missed" | "declined" | "busy"; duration?: number };
+  // client-only: temp id before server confirms
+  tempId?: string;
 }
 
 // ── Group Chat ─────────────────────────────────────────────────────────────────

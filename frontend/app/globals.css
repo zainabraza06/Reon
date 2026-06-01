@@ -1,49 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f9fafb;
-  --foreground: #111827;
+  --chat-bg: #f0f2f5;
+  --bg: #ffffff;
+  --fg: #111827;
+  --sidebar-bg: #ffffff;
+  --bubble-in: #ffffff;
+  --bubble-out: #4f46e5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0f1117;
-    --foreground: #f3f4f6;
+    --chat-bg: #0b141a;
+    --bg: #111b21;
+    --fg: #e9edef;
+    --sidebar-bg: #1f2c33;
+    --bubble-in: #1f2c33;
+    --bubble-out: #4338ca;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: var(--background);
-  color: var(--foreground);
-  /* Prevent horizontal scroll on mobile */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
-/* iOS safe-area support for bottom nav */
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
+/* Smooth touch */
+* { -webkit-tap-highlight-color: transparent; }
 
-/* Smooth tap highlight on mobile */
-* {
-  -webkit-tap-highlight-color: transparent;
-}
+/* iOS safe area */
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
-/* Custom scrollbar — desktop only (hidden on touch) */
+/* Minimal scrollbar */
 @media (pointer: fine) {
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
-  .dark ::-webkit-scrollbar-thumb { background: #374151; }
+  ::-webkit-scrollbar-thumb { background: #c9d0d5; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #b0b8be; }
 }
 
-/* Prevent overscroll bounce on iOS */
-html {
-  overscroll-behavior: none;
+/* Chat background — subtle dot grid pattern */
+.chat-bg {
+  background-color: var(--chat-bg);
+  background-image: radial-gradient(circle, #c9cdd1 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+@media (prefers-color-scheme: dark) {
+  .chat-bg {
+    background-image: radial-gradient(circle, #1e2b32 1px, transparent 1px);
+  }
+}
+
+/* Input focus ring */
+input:focus, textarea:focus {
+  outline: none;
 }

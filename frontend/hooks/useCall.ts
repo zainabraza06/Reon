@@ -5,25 +5,21 @@ import { api } from "@/lib/api";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:5001";
 
-export type CallStatus =
-  | "idle"
-  | "calling"    // outgoing, waiting for answer
-  | "incoming"   // incoming ring
-  | "connecting" // ICE/SDP exchange in progress
-  | "active"     // call connected
-  | "ended";
+export type CallStatus = "idle" | "calling" | "incoming" | "connecting" | "active" | "ended";
+export type CallEndReason = "completed" | "declined" | "missed" | "busy" | "failed" | null;
 
 export interface CallState {
   status: CallStatus;
   callId: string | null;
-  peerId: string | null;       // other user's ID
+  peerId: string | null;
   peerName: string | null;
   type: "audio" | "video";
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   isMuted: boolean;
   isCameraOff: boolean;
-  duration: number;            // seconds
+  duration: number;
+  endReason: CallEndReason;
 }
 
 const INIT: CallState = {
@@ -37,7 +33,32 @@ const INIT: CallState = {
   isMuted: false,
   isCameraOff: false,
   duration: 0,
+  endReason: null,
 };
+
+// Save a call-log message in the conversation so both sides see it
+async function saveCallLog(
+  myId: string,
+  peerId: string,
+  callType: "audio" | "video",
+  outcome: "completed" | "missed" | "declined" | "busy",
+  duration: number
+) {
+  try {
+    const fd = new FormData();
+    fd.append("data", JSON.stringify({
+      sender: myId,
+      receiver: peerId,
+      contentType: "call-log",
+      ciphertext: JSON.stringify({ callType, outcome, duration }),
+      encryptedKey: "",
+      senderEncryptedKey: "",
+    }));
+    await api.messages.send(fd);
+  } catch {
+    // Non-critical — don't crash if call log fails
+  }
+}
 
 export function useCall(myId: string | null) {
   const [state, setState] = useState<CallState>(INIT);
@@ -48,14 +69,42 @@ export function useCall(myId: string | null) {
   const callSockRef = useRef<Socket | null>(null);
   const durationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
+  // Track if call was ever active (to distinguish missed from never-answered)
+  const wasActivatedRef = useRef(false);
 
-  // ── connect /calls namespace with cookie auth ────────────────────────────
-  const connectCallSocket = useCallback((token?: string) => {
+  const stopDurationTimer = () => {
+    if (durationTimer.current) { clearInterval(durationTimer.current); durationTimer.current = null; }
+  };
+
+  const endCallLocal = useCallback((reason: CallEndReason = "completed") => {
+    const { localStream, peerId, type, duration, status } = stateRef.current;
+    stopDurationTimer();
+    localStream?.getTracks().forEach((t) => t.stop());
+    pcRef.current?.close();
+    pcRef.current = null;
+    iceQueueRef.current = [];
+
+    // Save call log if we have a peer and reason is meaningful
+    if (myId && peerId) {
+      const outcome =
+        reason === "declined" ? "declined" :
+        reason === "missed"   ? "missed" :
+        reason === "busy"     ? "busy" :
+        status === "active" || wasActivatedRef.current ? "completed" : "missed";
+      saveCallLog(myId, peerId, type, outcome, duration);
+    }
+
+    wasActivatedRef.current = false;
+    setState({ ...INIT, status: "ended", endReason: reason });
+    // Reset to fully idle after a brief moment (enough for UI to show the reason)
+    setTimeout(() => setState(INIT), 3500);
+  }, [myId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const connectCallSocket = useCallback(() => {
     if (callSockRef.current?.connected) return;
     const sock = io(`${SOCKET_URL}/calls`, {
       withCredentials: true,
       transports: ["websocket", "polling"],
-      auth: token ? { token } : undefined,
     });
     callSockRef.current = sock;
 
@@ -63,31 +112,28 @@ export function useCall(myId: string | null) {
       callId: string; fromUserId: string; fromUserName: string; type: "audio" | "video";
     }) => {
       if (stateRef.current.status !== "idle") {
-        sock.emit("call:busy", { callId });
+        sock.emit("call:busy", { callId, reason: "busy" });
         return;
       }
-      setState((s) => ({
-        ...s,
-        status: "incoming",
-        callId,
-        peerId: fromUserId,
-        peerName: fromUserName,
-        type: type as "audio" | "video",
-      }));
+      setState((s) => ({ ...s, status: "incoming", callId, peerId: fromUserId, peerName: fromUserName, type }));
     });
 
     sock.on("call:offer", async ({ callId, offer, type }: { callId: string; offer: RTCSessionDescriptionInit; type: string }) => {
       if (stateRef.current.callId !== callId) return;
-      await ensurePeerConnection(callId, type as "audio" | "video", false);
+      await ensurePeerConnection(callId, type as "audio" | "video");
       const pc = pcRef.current!;
-      await pc.setRemoteDescription(offer);
-      // Drain queued ICE candidates
-      for (const c of iceQueueRef.current) await pc.addIceCandidate(c).catch(() => {});
-      iceQueueRef.current = [];
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      sock.emit("call:answer", { callId, answer });
-      setState((s) => ({ ...s, status: "connecting" }));
+      try {
+        await pc.setRemoteDescription(offer);
+        for (const c of iceQueueRef.current) await pc.addIceCandidate(c).catch(() => {});
+        iceQueueRef.current = [];
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sock.emit("call:answer", { callId, answer });
+        setState((s) => ({ ...s, status: "connecting" }));
+      } catch (err) {
+        console.error("call:offer handling error:", err);
+        endCallLocal("failed");
+      }
     });
 
     sock.on("call:answer", async ({ callId, answer }: { callId: string; answer: RTCSessionDescriptionInit }) => {
@@ -105,14 +151,17 @@ export function useCall(myId: string | null) {
       }
     });
 
-    sock.on("call:reject",  ({ callId }: { callId: string }) => { if (stateRef.current.callId === callId) endCallLocal("rejected"); });
-    sock.on("call:hangup",  ({ callId }: { callId: string }) => { if (stateRef.current.callId === callId) endCallLocal("ended"); });
-    sock.on("call:busy",    ({ callId }: { callId: string }) => { if (stateRef.current.callId === callId) endCallLocal("busy"); });
-
-    sock.on("call:track:update", ({ trackType, enabled }: { trackType: string; enabled: boolean }) => {
-      // Could show remote mute indicator — omitted for brevity
-      void trackType; void enabled;
+    sock.on("call:reject", ({ callId }: { callId: string }) => {
+      if (stateRef.current.callId === callId) endCallLocal("declined");
     });
+    sock.on("call:hangup", ({ callId }: { callId: string }) => {
+      if (stateRef.current.callId === callId) endCallLocal("completed");
+    });
+    sock.on("call:busy", ({ callId }: { callId: string }) => {
+      if (stateRef.current.callId === callId) endCallLocal("busy");
+    });
+
+    sock.on("call:track:update", (_: unknown) => { /* remote mute state — future */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -120,9 +169,8 @@ export function useCall(myId: string | null) {
     return () => { callSockRef.current?.disconnect(); };
   }, [myId, connectCallSocket]);
 
-  // ── build RTCPeerConnection ───────────────────────────────────────────────
-  const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video", isInitiator: boolean) => {
-    if (pcRef.current) return;
+  const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video") => {
+    if (pcRef.current) return pcRef.current;
     const { iceServers } = await api.calls.get(callId);
     const pc = new RTCPeerConnection({ iceServers });
 
@@ -131,70 +179,47 @@ export function useCall(myId: string | null) {
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
+        wasActivatedRef.current = true;
         setState((s) => ({ ...s, status: "active" }));
-        startDurationTimer();
+        // start timer
+        if (!durationTimer.current) {
+          durationTimer.current = setInterval(() =>
+            setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
+        }
       }
       if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
-        endCallLocal("ended");
+        endCallLocal("completed");
       }
     };
     pc.ontrack = (e) => {
       setState((s) => ({ ...s, remoteStream: e.streams[0] ?? null }));
     };
 
-    // Attach local tracks
     try {
-      const constraints: MediaStreamConstraints = { audio: true, video: type === "video" };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       setState((s) => ({ ...s, localStream: stream }));
     } catch {
-      console.warn("Media access issue — continuing without local stream");
+      console.warn("Media access denied — audio/video unavailable");
     }
 
     pcRef.current = pc;
     return pc;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Duration timer ────────────────────────────────────────────────────────
-  const startDurationTimer = () => {
-    if (durationTimer.current) return;
-    durationTimer.current = setInterval(() => {
-      setState((s) => ({ ...s, duration: s.duration + 1 }));
-    }, 1000);
-  };
-
-  const stopDurationTimer = () => {
-    if (durationTimer.current) { clearInterval(durationTimer.current); durationTimer.current = null; }
-  };
-
-  // ── End call (local cleanup) ──────────────────────────────────────────────
-  const endCallLocal = useCallback((reason = "ended") => {
-    stopDurationTimer();
-    stateRef.current.localStream?.getTracks().forEach((t) => t.stop());
-    pcRef.current?.close();
-    pcRef.current = null;
-    iceQueueRef.current = [];
-    setState({ ...INIT });
-    void reason;
-  }, []);
-
-  // ── Public API ────────────────────────────────────────────────────────────
+  }, [endCallLocal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startCall = useCallback(async (toUserId: string, peerName: string, type: "audio" | "video") => {
     if (!myId || stateRef.current.status !== "idle") return;
     try {
-      const { callId, iceServers } = await api.calls.create(toUserId, type);
+      const { callId } = await api.calls.create(toUserId, type);
       setState((s) => ({ ...s, status: "calling", callId, peerId: toUserId, peerName, type }));
-
-      await ensurePeerConnection(callId, type, true);
+      await ensurePeerConnection(callId, type);
       const pc = pcRef.current!;
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       callSockRef.current?.emit("call:offer", { callId, offer, type });
     } catch (err) {
       console.error("startCall error:", err);
-      endCallLocal("error");
+      endCallLocal("failed");
     }
   }, [myId, ensurePeerConnection, endCallLocal]);
 
@@ -202,20 +227,20 @@ export function useCall(myId: string | null) {
     const { callId, type } = stateRef.current;
     if (!callId || stateRef.current.status !== "incoming") return;
     setState((s) => ({ ...s, status: "connecting" }));
-    await ensurePeerConnection(callId, type, false);
-    // The offer arrives via socket (call:offer event handles createAnswer)
+    await ensurePeerConnection(callId, type);
+    // call:offer event will arrive and complete the handshake
   }, [ensurePeerConnection]);
 
   const rejectCall = useCallback(() => {
     const { callId } = stateRef.current;
     if (callId) callSockRef.current?.emit("call:reject", { callId });
-    endCallLocal("rejected");
+    endCallLocal("declined");
   }, [endCallLocal]);
 
   const hangUp = useCallback(() => {
     const { callId } = stateRef.current;
     if (callId) callSockRef.current?.emit("call:hangup", { callId });
-    endCallLocal("hangup");
+    endCallLocal("completed");
   }, [endCallLocal]);
 
   const toggleMute = useCallback(() => {

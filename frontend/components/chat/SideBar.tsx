@@ -115,10 +115,10 @@ export default function Sidebar({ onNewGroup }: Props) {
   };
 
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <aside className="flex h-full w-[300px] flex-col border-r border-gray-200 dark:border-gray-700/60 bg-white dark:bg-[#111b21]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 dark:border-gray-700">
-        <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">Reon</span>
+      <div className="flex items-center justify-between px-4 py-3.5 bg-gray-50/80 dark:bg-[#202c33] border-b border-gray-200 dark:border-gray-700/40">
+        <span className="text-[18px] font-black text-indigo-600 dark:text-indigo-400 tracking-tight">Reon</span>
         <div className="flex items-center gap-1">
           <Link href="/recommendations" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pathname === "/recommendations" ? "text-indigo-600" : "text-gray-500"}`} title="Discover people">
             <Compass size={18} />
@@ -134,41 +134,28 @@ export default function Sidebar({ onNewGroup }: Props) {
           <Link href="/settings" className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pathname === "/settings" ? "text-indigo-600" : "text-gray-500"}`} title="Settings">
             <Settings size={18} />
           </Link>
-          <button onClick={logout} className="p-2 rounded-full text-gray-500 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Logout">
-            <LogOut size={18} />
-          </button>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="px-3 py-2">
-        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-xl px-3 py-2">
-          <Search size={15} className="text-gray-400 shrink-0" />
+      {/* Search + tabs */}
+      <div className="px-3 pt-2 pb-1 bg-gray-50/60 dark:bg-[#111b21] border-b border-gray-100 dark:border-gray-700/30">
+        <div className="flex items-center gap-2 bg-gray-100 dark:bg-[#202c33] rounded-full px-3 py-2 mb-2">
+          <Search size={14} className="text-gray-400 shrink-0" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search conversations…"
-            className="bg-transparent text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 focus:outline-none flex-1"
+            placeholder="Search or start new chat"
+            className="bg-transparent text-sm text-gray-700 dark:text-gray-300 placeholder-gray-400 flex-1"
           />
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex px-3 gap-1 mb-2">
-        <button
-          onClick={() => setTab("dms")}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${tab === "dms" ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-        >
-          <MessageSquare size={14} className="inline mr-1" />
-          Chats
-        </button>
-        <button
-          onClick={() => setTab("groups")}
-          className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors ${tab === "groups" ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-        >
-          <Users size={14} className="inline mr-1" />
-          Groups
-        </button>
+        <div className="flex gap-1">
+          {(["dms", "groups"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${t === tab ? "bg-indigo-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-200/60 dark:hover:bg-gray-700/40"}`}>
+              {t === "dms" ? "Chats" : "Groups"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* List */}
@@ -184,23 +171,22 @@ export default function Sidebar({ onNewGroup }: Props) {
                 <li key={chat._id}>
                   <Link
                     href={`/chat/${chat._id}`}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${active ? "bg-indigo-50 dark:bg-indigo-900/30" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                    className={`flex items-center gap-3 px-3 py-3 transition-colors border-b border-gray-100/70 dark:border-gray-700/20 last:border-0 ${active ? "bg-indigo-50 dark:bg-indigo-900/20" : "hover:bg-gray-50 dark:hover:bg-[#1f2c33]"}`}
                   >
-                    <Avatar src={chat.profilePic} name={chat.fullName} size={42} isOnline={onlineUsers.has(chat._id)} />
+                    <Avatar src={chat.profilePic} name={chat.fullName} size={46} isOnline={onlineUsers.has(chat._id)} />
                     <div className="flex-1 overflow-hidden">
-                      <div className="flex items-center justify-between">
-                        <p className={`text-sm font-medium truncate ${active ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className={`text-[14.5px] font-semibold truncate ${active ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-[#e9edef]"}`}>
                           {chat.fullName}
                         </p>
                         <span className="text-[11px] text-gray-400 shrink-0 ml-1">{formatTime(chat.lastMessage?.sentAt)}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-500 truncate">
-                          {chat.lastMessage?.contentType !== "text" ? `[${chat.lastMessage?.contentType}]` : ""}
-                          {!chat.lastMessage && "No messages yet"}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                          {chat.lastMessage?.contentType && chat.lastMessage.contentType !== "text" ? `📎 ${chat.lastMessage.contentType}` : !chat.lastMessage ? "No messages yet" : ""}
                         </p>
                         {(chat.unreadCount || 0) > 0 && (
-                          <span className="bg-indigo-600 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 font-bold">
+                          <span className="bg-green-500 text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 font-bold shrink-0 ml-1">
                             {chat.unreadCount}
                           </span>
                         )}
@@ -253,14 +239,17 @@ export default function Sidebar({ onNewGroup }: Props) {
         )}
       </div>
 
-      {/* User info */}
+      {/* Me */}
       {user && (
-        <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-          <Avatar src={user.profilePic} name={user.fullName} size={36} isOnline />
+        <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 dark:bg-[#202c33] border-t border-gray-200 dark:border-gray-700/40">
+          <Avatar src={user.profilePic} name={user.fullName} size={38} isOnline />
           <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.fullName}</p>
-            <p className="text-xs text-gray-400 truncate">@{user.username || user.email}</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-[#e9edef] truncate">{user.fullName}</p>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">@{user.username || "me"}</p>
           </div>
+          <button onClick={logout} title="Logout" className="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+            <LogOut size={16} />
+          </button>
         </div>
       )}
     </aside>
