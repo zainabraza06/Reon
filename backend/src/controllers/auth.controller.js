@@ -196,7 +196,7 @@ export async function logout(req, res) {
 export async function googleCallback(req, res) {
   // 1. If Google authentication failed
   if (!req.user) {
-    return res.redirect(`${FRONTEND_URL}/auth/login`);
+    return res.redirect(`${FRONTEND_URL}/login`);
   }
 
   // 2. Generate the token
@@ -219,7 +219,7 @@ export async function googleCallback(req, res) {
 
   if (!user.onboarded && !user.isOnboarded) {
     // some users use onboarded, some use isOnboarded
-    return res.redirect(`${FRONTEND_URL}/auth/onboard`);
+    return res.redirect(`${FRONTEND_URL}/onboarding`);
   }
 
   if (hasFriends && hasChats) {

@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, Shield, Zap, Users, Paperclip } from "lucide-react";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -28,71 +28,119 @@ export default function LoginPage() {
     }
   };
 
+  const features = [
+    { icon: Lock,      label: "End-to-end encryption",  desc: "Only you & your contacts can read messages" },
+    { icon: Zap,       label: "Voice & video calls",     desc: "Crystal-clear HD calls, always encrypted" },
+    { icon: Users,     label: "Group chats",             desc: "Secure group conversations up to 500 members" },
+    { icon: Paperclip, label: "Secure file sharing",     desc: "Share files without exposing your data" },
+  ];
+
   return (
     <div className="min-h-full flex flex-col md:flex-row">
-      {/* Left branding panel */}
-      <div className="hidden md:flex md:w-2/5 bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 flex-col items-center justify-center p-12 text-white">
-        <div className="w-20 h-20 rounded-3xl bg-white/15 backdrop-blur flex items-center justify-center mb-6 shadow-xl">
-          <span className="text-4xl font-black text-white">R</span>
-        </div>
-        <h1 className="text-4xl font-black mb-3 tracking-tight">Reon</h1>
-        <p className="text-indigo-200 text-center text-base leading-relaxed max-w-xs">
-          End-to-end encrypted messaging. Your conversations, truly private.
-        </p>
-        <div className="mt-10 grid grid-cols-1 gap-3 w-full max-w-xs">
-          {["🔐 End-to-end encryption", "📞 Voice & video calls", "👥 Group chats", "📎 Secure file sharing"].map((f) => (
-            <div key={f} className="flex items-center gap-2 text-sm text-indigo-100">
-              <span>{f}</span>
-            </div>
-          ))}
+
+      {/* ── Left branding panel ──────────────────────────── */}
+      <div className="hidden md:flex md:w-[44%] auth-left-panel relative overflow-hidden flex-col justify-center p-14 text-white">
+
+        {/* Ambient orbs */}
+        <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full opacity-25 animate-float-slow auth-orb-violet" />
+        <div className="absolute -bottom-16 -left-16 w-[360px] h-[360px] rounded-full opacity-20 animate-float-medium auth-orb-cyan" />
+        <div className="absolute top-1/2 right-1/3 w-48 h-48 rounded-full opacity-10 animate-float-fast auth-orb-purple" />
+
+        {/* Subtle grid overlay */}
+        <div className="absolute inset-0 opacity-[0.04] auth-grid-overlay" />
+
+        <div className="relative z-10 max-w-sm">
+          {/* Logo */}
+          <div className="w-14 h-14 rounded-2xl auth-logo-icon flex items-center justify-center mb-8 shadow-2xl">
+            <span className="text-2xl font-black text-white">R</span>
+          </div>
+
+          <h1 className="text-5xl font-black tracking-tight leading-none mb-3">Reon</h1>
+          <p className="text-purple-300/80 text-[15px] leading-relaxed mb-10">
+            The only messenger where{" "}
+            <span className="text-cyan-300 font-semibold">privacy is not optional</span>.
+          </p>
+
+          {/* Feature list */}
+          <ul className="space-y-5">
+            {features.map(({ icon: Icon, label, desc }) => (
+              <li key={label} className="flex items-start gap-3.5">
+                <div className="w-8 h-8 rounded-lg feature-icon-wrap flex items-center justify-center shrink-0 mt-0.5">
+                  <Icon size={14} className="text-violet-300" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white leading-tight">{label}</p>
+                  <p className="text-xs text-purple-300/60 mt-0.5">{desc}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {/* Trust badge */}
+          <div className="mt-10 flex items-center gap-3 glass-panel rounded-xl px-4 py-3">
+            <Shield size={16} className="text-cyan-400 shrink-0" />
+            <p className="text-xs text-purple-200/75 leading-snug">
+              256-bit AES encryption · Zero-knowledge architecture
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-50 dark:bg-gray-950">
+      {/* ── Right form panel ────────────────────────────── */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-[#f8f7ff] dark:bg-[#08081a]">
         <div className="w-full max-w-sm">
+
           {/* Mobile logo */}
           <div className="flex justify-center mb-8 md:hidden">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg">
+            <div className="w-14 h-14 rounded-2xl auth-logo-icon flex items-center justify-center shadow-lg">
               <span className="text-white text-2xl font-black">R</span>
             </div>
           </div>
 
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Welcome back</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-7">Sign in to continue to Reon</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Sign in to continue to Reon</p>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Email</label>
-              <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
-                placeholder="you@example.com" autoComplete="email"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Password</label>
+              <label className="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">
+                Email
+              </label>
               <div className="relative">
+                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                  placeholder="you@example.com" autoComplete="email"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-[#12122e] border border-gray-200 dark:border-white/[0.07] text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required
                   placeholder="••••••••" autoComplete="current-password"
-                  className="w-full px-4 py-3 pr-11 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+                  className="w-full pl-10 pr-11 py-3 rounded-xl bg-white dark:bg-[#12122e] border border-gray-200 dark:border-white/[0.07] text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                 />
                 <button type="button" onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                  {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-red-600 dark:text-red-400 text-sm px-4 py-2.5 rounded-xl">
-                <span className="text-red-500">⚠</span> {error}
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 text-sm px-4 py-2.5 rounded-xl">
+                <span>⚠</span> {error}
               </div>
             )}
 
             <button type="submit" disabled={loading}
-              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-sm disabled:opacity-50 transition-all shadow-md shadow-indigo-600/20">
+              className="btn-gradient w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-50 shadow-lg shadow-violet-600/25">
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
@@ -104,27 +152,29 @@ export default function LoginPage() {
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
+              <div className="w-full border-t border-gray-200 dark:border-white/6" />
             </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-50 dark:bg-gray-950 text-gray-500 dark:text-gray-400">Or continue with</span>
+            <div className="relative flex justify-center">
+              <span className="px-3 bg-[#f8f7ff] dark:bg-[#08081a] text-xs text-gray-400">Or continue with</span>
             </div>
           </div>
 
           <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001"}/auth/google`}
-            className="w-full py-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm">
+            className="w-full py-3 rounded-xl bg-white dark:bg-[#12122e] border border-gray-200 dark:border-white/[0.07] hover:bg-gray-50 dark:hover:bg-[#1a1a40] text-gray-900 dark:text-white font-semibold text-sm transition-all flex items-center justify-center gap-2.5 shadow-sm">
             <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"></path>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"></path>
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
             </svg>
-            Google
+            Continue with Google
           </a>
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             No account?{" "}
-            <Link href="/signup" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">Create one</Link>
+            <Link href="/signup" className="font-semibold text-violet-600 dark:text-violet-400 hover:underline">
+              Create one
+            </Link>
           </p>
         </div>
       </div>
