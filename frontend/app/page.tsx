@@ -19,8 +19,8 @@ export default function RootPage() {
   }, [user, loading, router]);
 
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="w-8 h-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+    <div className="flex h-full items-center justify-center bg-[#f8f7ff] dark:bg-[#08081a]">
+      <div className="w-8 h-8 rounded-full border-2 border-violet-600 border-t-transparent animate-spin" />
     </div>
   );
 }
