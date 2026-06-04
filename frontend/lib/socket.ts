@@ -1,6 +1,9 @@
 import { io, Socket } from "socket.io-client";
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5001";
+// Derive the socket origin from the API URL so only one env var is needed in production.
+// NEXT_PUBLIC_API_URL is typically "https://host/api" → strip "/api" to get the socket host.
+const _apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001/api";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? _apiBase.replace(/\/api\/?$/, "");
 
 type Listener = (data: unknown) => void;
 

@@ -30,8 +30,8 @@ export const api = {
 
   // ── Keys ───────────────────────────────────────────────────────────────────
   keys: {
-    upload: (publicKey: JsonWebKey) =>
-      request("/keys/uploadPublicKey", { method: "POST", body: JSON.stringify({ publicKey }) }),
+    upload: (publicKey: JsonWebKey, userId: string) =>
+      request("/keys/uploadPublicKey", { method: "POST", body: JSON.stringify({ publicKey, userId }) }),
     get: (userId: string) =>
       request<{ publicKey: JsonWebKey }>(`/keys/publicKey/${userId}`),
   },

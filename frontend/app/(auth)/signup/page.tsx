@@ -3,10 +3,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { generateKeyPair } from "@/lib/crypto";
+import { useAuth } from "@/context/AuthContext";
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 
 export default function SignupPage() {
+  const { login } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({ fullName: "", email: "", password: "" });
   const [showPw, setShowPw] = useState(false);
@@ -22,8 +23,9 @@ export default function SignupPage() {
     setError(""); setLoading(true);
     try {
       await api.auth.signup(form);
-      const { publicKey } = await generateKeyPair();
-      await api.keys.upload(publicKey);
+      // Auto-login so the JWT cookie is set before onboarding (which is a protected route).
+      // login() also calls setupKeys(userId) which uploads the public key with the correct userId.
+      await login(form.email, form.password);
       router.replace("/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
@@ -44,8 +46,8 @@ export default function SignupPage() {
 
       {/* ── Left branding panel ──────────────────────────── */}
       <div className="hidden md:flex md:w-[44%] auth-left-panel relative overflow-hidden flex-col justify-center p-14 text-white">
-        <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full opacity-25 animate-float-slow auth-orb-violet" />
-        <div className="absolute -bottom-16 -left-16 w-[360px] h-[360px] rounded-full opacity-20 animate-float-medium auth-orb-cyan" />
+        <div className="absolute -top-24 -right-24 w-105 h-105 rounded-full opacity-25 animate-float-slow auth-orb-violet" />
+        <div className="absolute -bottom-16 -left-16 w-90 h-90 rounded-full opacity-20 animate-float-medium auth-orb-cyan" />
         <div className="absolute top-1/2 right-1/3 w-48 h-48 rounded-full opacity-10 animate-float-fast auth-orb-purple" />
         <div className="absolute inset-0 opacity-[0.04] auth-grid-overlay" />
 

@@ -23,7 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (await hasKeyPair()) return;
       const { publicKey } = await generateKeyPair();
-      await api.keys.upload(publicKey);
+      await api.keys.upload(publicKey, userId);
     } catch (err) {
       console.error("Key setup error:", err);
     }
