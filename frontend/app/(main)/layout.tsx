@@ -20,14 +20,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   if (loading || !user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <div className="w-8 h-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+      <div className="flex h-screen items-center justify-center bg-[#f8f7ff] dark:bg-[#08081a]">
+        <div className="w-8 h-8 rounded-full border-2 border-violet-600 border-t-transparent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
+    <div className="flex h-screen overflow-hidden bg-[#f8f7ff] dark:bg-[#08081a]">
       {/* Sidebar — desktop only */}
       <div className="hidden md:flex h-full shrink-0">
         <Sidebar

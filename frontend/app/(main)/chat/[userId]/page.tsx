@@ -165,9 +165,9 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   if (!me) return null;
 
   return (
-    <div className="flex flex-col h-full bg-[#f0f2f5] dark:bg-gray-900">
+    <div className="flex flex-col h-full bg-[#eef2ff] dark:bg-[#080816]">
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 sm:px-4 py-2.5 border-b border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-900 shrink-0 shadow-sm">
+      <div className="chat-header flex items-center gap-3 px-3 sm:px-4 py-2.5 shrink-0 shadow-sm">
         <Link href="/chat" className="md:hidden p-1.5 -ml-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <ArrowLeft size={20} />
         </Link>
@@ -175,16 +175,16 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 dark:text-white text-[15px] truncate">{recipient?.fullName || "…"}</p>
           <p className="text-xs text-gray-500 h-4">
-            {isTyping ? <span className="text-indigo-500 font-medium">typing…</span> : isOnline ? "Online" : ""}
+            {isTyping ? <span className="text-violet-500 dark:text-violet-400 font-medium">typing…</span> : isOnline ? <span className="text-emerald-500 font-medium">Online</span> : ""}
           </p>
         </div>
         <div className="flex items-center gap-0.5">
-          <button onClick={() => startCall(userId, recipient?.fullName || "User", "audio")}
-            className="p-2.5 rounded-full text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors" title="Voice call">
+          <button type="button" onClick={() => startCall(userId, recipient?.fullName || "User", "audio")}
+            className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all" title="Voice call">
             <Phone size={19} />
           </button>
-          <button onClick={() => startCall(userId, recipient?.fullName || "User", "video")}
-            className="p-2.5 rounded-full text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors" title="Video call">
+          <button type="button" onClick={() => startCall(userId, recipient?.fullName || "User", "video")}
+            className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all" title="Video call">
             <Video size={19} />
           </button>
         </div>
@@ -194,7 +194,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-0.5 chat-bg">
         {hasMore && !loading && (
           <div className="text-center py-2">
-            <button onClick={loadMore} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full shadow-sm">
+            <button type="button" onClick={loadMore} className="text-xs text-violet-600 dark:text-violet-400 hover:underline bg-white dark:bg-[#1a1a3a] px-3 py-1.5 rounded-full shadow-sm transition-colors">
               Load earlier messages
             </button>
           </div>

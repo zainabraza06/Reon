@@ -1,14 +1,9 @@
 "use client";
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
 import { Mic, Paperclip, Send, X } from "lucide-react";
 
 function bestAudioMime(): string {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-    "audio/mp4",
-  ];
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
   for (const c of candidates) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) return c;
   }
@@ -34,16 +29,14 @@ export default function MessageInput({
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
 
-  // Voice recording
   const [recording, setRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
-  const mediaRecRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef(0);
-
-  const fileRef = useRef<HTMLInputElement>(null);
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaRecRef   = useRef<MediaRecorder | null>(null);
+  const chunksRef     = useRef<Blob[]>([]);
+  const timerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef  = useRef(0);
+  const fileRef       = useRef<HTMLInputElement>(null);
+  const typingTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
@@ -70,31 +63,29 @@ export default function MessageInput({
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); }
   };
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []);
-    setFiles((prev) => [...prev, ...selected].slice(0, 5));
+  const onFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    setFiles((prev: File[]) => [...prev, ...selected].slice(0, 5));
     e.target.value = "";
   };
-
-  // ── Voice recording ────────────────────────────────────────────────────────
 
   const startRecording = async () => {
     if (!onVoiceNote) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = bestAudioMime();
-      const mr = new MediaRecorder(stream, { mimeType: mime });
-      chunksRef.current = [];
+      const mime   = bestAudioMime();
+      const mr     = new MediaRecorder(stream, { mimeType: mime });
+      chunksRef.current    = [];
       startTimeRef.current = Date.now();
       setRecordSec(0);
 
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: mime });
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        const blob     = new Blob(chunksRef.current, { type: mime });
         const duration = Math.round((Date.now() - startTimeRef.current) / 1000);
         if (blob.size > 0) await onVoiceNote(blob, duration);
         chunksRef.current = [];
@@ -124,7 +115,7 @@ export default function MessageInput({
     if (mediaRecRef.current) {
       mediaRecRef.current.ondataavailable = null;
       mediaRecRef.current.onstop = null;
-      mediaRecRef.current.stream?.getTracks().forEach((t) => t.stop());
+      mediaRecRef.current.stream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
       mediaRecRef.current.stop();
       mediaRecRef.current = null;
     }
@@ -135,36 +126,43 @@ export default function MessageInput({
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-  // ── Recording UI ───────────────────────────────────────────────────────────
+  /* ── Recording UI ─────────────────────────────────── */
   if (recording) {
     return (
-      <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 shrink-0">
+      <div className="msg-input-bar px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={cancelRecording} className="p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Cancel">
+          <button type="button" onClick={cancelRecording} title="Cancel recording"
+            className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
             <X size={20} />
           </button>
-          <div className="flex-1 flex items-center gap-2 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-2.5">
+          <div className="flex-1 flex items-center gap-2.5 bg-red-50 dark:bg-red-900/20 rounded-2xl px-4 py-2.5">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-            <span className="text-sm font-medium text-red-600 dark:text-red-400">Recording {fmt(recordSec)}</span>
+            <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording {fmt(recordSec)}</span>
           </div>
-          <button onClick={stopRecording} className="p-2.5 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors" title="Send voice note">
-            <Send size={18} />
+          <button type="button" onClick={stopRecording} title="Send voice note"
+            className="p-2.5 rounded-xl btn-gradient text-white shadow-md shadow-violet-500/25">
+            <Send size={17} />
           </button>
         </div>
       </div>
     );
   }
 
-  // ── Normal UI ──────────────────────────────────────────────────────────────
+  /* ── Normal UI ────────────────────────────────────── */
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 shrink-0">
+    <div className="msg-input-bar px-4 py-3 shrink-0">
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap gap-2 mb-2.5">
           {files.map((f, i) => (
-            <div key={i} className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg px-2 py-1 text-xs">
-              <span className="max-w-[120px] truncate text-gray-700 dark:text-gray-300">{f.name}</span>
-              <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 ml-1">
-                <X size={12} />
+            <div key={i} className="flex items-center gap-1.5 bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-lg px-2.5 py-1 text-xs">
+              <span className="max-w-[120px] truncate text-violet-700 dark:text-violet-300 font-medium">{f.name}</span>
+              <button
+                type="button"
+                title={`Remove ${f.name}`}
+                onClick={() => setFiles((prev: File[]) => prev.filter((_, j) => j !== i))}
+                className="text-violet-400 hover:text-red-500 ml-0.5 transition-colors"
+              >
+                <X size={11} />
               </button>
             </div>
           ))}
@@ -172,7 +170,9 @@ export default function MessageInput({
       )}
 
       <div className="flex items-end gap-2">
-        <button onClick={() => fileRef.current?.click()} disabled={disabled} className="p-2 rounded-full text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-40" title="Attach file">
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled}
+          title="Attach file"
+          className="p-2 rounded-xl text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all disabled:opacity-40">
           <Paperclip size={20} />
         </button>
         <input ref={fileRef} type="file" multiple
@@ -186,18 +186,21 @@ export default function MessageInput({
           onKeyDown={onKey}
           placeholder={placeholder}
           disabled={disabled || sending}
-          className="flex-1 resize-none bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-h-32 overflow-y-auto"
-          style={{ lineHeight: "1.5" }}
+          className="flex-1 resize-none bg-gray-100 dark:bg-white/[0.06] rounded-2xl px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white dark:focus:bg-white/[0.09] max-h-32 overflow-y-auto transition-all leading-[1.5]"
         />
 
-        {/* Show mic when idle, send when there's content */}
         {!text.trim() && files.length === 0 && onVoiceNote ? (
-          <button onClick={startRecording} disabled={disabled} className="p-2.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 hover:text-indigo-600 disabled:opacity-40 transition-colors" title="Record voice note">
+          <button type="button" onClick={startRecording} disabled={disabled}
+            title="Record voice note"
+            className="p-2.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-gray-400 hover:bg-violet-100 dark:hover:bg-violet-500/15 hover:text-violet-600 dark:hover:text-violet-400 disabled:opacity-40 transition-all">
             <Mic size={18} />
           </button>
         ) : (
-          <button onClick={send} disabled={disabled || sending || (!text.trim() && files.length === 0)} className="p-2.5 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            <Send size={18} />
+          <button type="button" onClick={() => { void send(); }}
+            disabled={disabled || sending || (!text.trim() && files.length === 0)}
+            title="Send message"
+            className="p-2.5 rounded-xl btn-gradient text-white disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-violet-500/25 transition-all">
+            <Send size={17} />
           </button>
         )}
       </div>

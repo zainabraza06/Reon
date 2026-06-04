@@ -12,16 +12,14 @@ interface Props {
   onRetry?: () => void;
 }
 
-// ── Tick icon ─────────────────────────────────────────────────────────────────
 function Tick({ status }: { status?: string }) {
-  if (status === "sending") return <Clock size={13} className="text-white/50 animate-pulse" />;
-  if (status === "failed")  return <AlertCircle size={13} className="text-red-300" />;
-  if (status === "read")    return <CheckCheck size={13} className="text-blue-300" />;
-  if (status === "delivered") return <CheckCheck size={13} className="text-white/60" />;
-  return <Check size={13} className="text-white/50" />;
+  if (status === "sending")   return <Clock       size={12} className="text-white/50 animate-pulse" />;
+  if (status === "failed")    return <AlertCircle size={12} className="text-red-300" />;
+  if (status === "read")      return <CheckCheck  size={12} className="text-cyan-300" />;
+  if (status === "delivered") return <CheckCheck  size={12} className="text-white/60" />;
+  return <Check size={12} className="text-white/50" />;
 }
 
-// ── Decrypt helper ────────────────────────────────────────────────────────────
 async function fetchAndDecrypt(url: string, key?: string, iv?: string): Promise<string | null> {
   try {
     const pk = await getStoredPrivateKey();
@@ -39,7 +37,6 @@ async function fetchAndDecrypt(url: string, key?: string, iv?: string): Promise<
   } catch { return null; }
 }
 
-// ── Voice note ────────────────────────────────────────────────────────────────
 function VoiceNote({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,24 +58,43 @@ function VoiceNote({ file, isMine }: { file: MediaFile; isMine: boolean }) {
     else          { a.pause(); setPlaying(false); }
   };
 
+  const BAR_H: Record<number, string> = {
+    5: "h-[5px]", 6: "h-[6px]", 7: "h-[7px]", 8: "h-[8px]",
+    9: "h-[9px]", 10: "h-[10px]", 11: "h-[11px]", 12: "h-[12px]",
+    13: "h-[13px]", 14: "h-[14px]", 16: "h-[16px]",
+  };
+  const BAR_DELAY: Record<number, string> = {
+    0: "", 1: "[animation-delay:50ms]", 2: "[animation-delay:100ms]",
+    3: "[animation-delay:150ms]", 4: "[animation-delay:200ms]",
+    5: "[animation-delay:250ms]", 6: "[animation-delay:300ms]",
+    7: "[animation-delay:350ms]", 8: "[animation-delay:400ms]",
+    9: "[animation-delay:450ms]", 10: "[animation-delay:500ms]",
+    11: "[animation-delay:550ms]", 12: "[animation-delay:600ms]",
+    13: "[animation-delay:650ms]", 14: "[animation-delay:700ms]",
+    15: "[animation-delay:750ms]", 16: "[animation-delay:800ms]",
+    17: "[animation-delay:850ms]", 18: "[animation-delay:900ms]",
+    19: "[animation-delay:950ms]",
+  };
   const bars = [5, 9, 14, 10, 16, 11, 7, 13, 9, 6, 12, 14, 8, 11, 6, 10, 8, 14, 9, 6];
 
   return (
     <div className="flex items-center gap-3 min-w-[190px] py-0.5">
-      <button onClick={toggle} disabled={busy}
+      <button type="button" onClick={toggle} disabled={busy}
         className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-95 ${
-          isMine ? "bg-white/25 hover:bg-white/35" : "bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-300"
+          isMine ? "bg-white/20 hover:bg-white/30" : "bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/25"
         }`}>
         {busy
           ? <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin block" />
-          : playing ? <Pause size={17} /> : <Play size={17} />
+          : playing ? <Pause size={16} /> : <Play size={16} />
         }
       </button>
-      <div className="flex items-end gap-[2px] flex-1 h-8">
+      <div className="flex items-end gap-[2px] flex-1 h-7">
         {bars.map((h, i) => (
-          <div key={i} className={`rounded-full transition-all ${
-            playing ? (isMine ? "bg-white/80 animate-pulse" : "bg-indigo-500 animate-pulse") : (isMine ? "bg-white/45" : "bg-indigo-400/60 dark:bg-indigo-500/60")
-          }`} style={{ width: 2.5, height: h, animationDelay: `${i * 50}ms` }} />
+          <div key={i} className={`w-[2.5px] rounded-full transition-all ${BAR_H[h]} ${BAR_DELAY[i]} ${
+            playing
+              ? isMine ? "bg-white/80 animate-pulse" : "bg-violet-500 animate-pulse"
+              : isMine ? "bg-white/45" : "bg-violet-400/60 dark:bg-violet-500/60"
+          }`} />
         ))}
       </div>
       <audio ref={ref} onEnded={() => setPlaying(false)} className="hidden" />
@@ -86,7 +102,6 @@ function VoiceNote({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   );
 }
 
-// ── Media ─────────────────────────────────────────────────────────────────────
 function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,9 +123,16 @@ function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   };
 
   const Placeholder = ({ icon }: { icon: React.ReactNode }) => (
-    <div className={`flex flex-col items-center justify-center gap-2 p-8 rounded-xl min-w-[160px] min-h-[100px] cursor-pointer ${isMine ? "bg-white/10" : "bg-gray-200/70 dark:bg-gray-700/50"}`} onClick={load}>
-      {busy ? <span className="w-6 h-6 rounded-full border-2 border-current border-t-transparent animate-spin opacity-60 block" /> : <>{icon}<span className="text-[11px] opacity-60">Tap to reveal</span></>}
-    </div>
+    <button type="button"
+      className={`flex flex-col items-center justify-center gap-2 p-8 rounded-xl min-w-[160px] min-h-[100px] transition-colors ${
+        isMine ? "bg-white/15 hover:bg-white/20" : "bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/10"
+      }`}
+      onClick={load}>
+      {busy
+        ? <span className="w-6 h-6 rounded-full border-2 border-current border-t-transparent animate-spin opacity-60 block" />
+        : <>{icon}<span className="text-[11px] opacity-60">Tap to reveal</span></>
+      }
+    </button>
   );
 
   if (file.type === "image") return url
@@ -123,33 +145,45 @@ function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
 
   if (file.type === "audio") return url
     ? <audio controls src={url} className="max-w-[220px]" />
-    : <button onClick={load} className={`text-xs px-3 py-1.5 rounded-xl ${isMine ? "bg-white/15" : "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"}`}>{busy ? "Decrypting…" : "Load audio"}</button>;
+    : <button type="button" onClick={load}
+        className={`text-xs px-3 py-1.5 rounded-xl transition-colors ${
+          isMine ? "bg-white/15 hover:bg-white/25" : "bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 hover:bg-violet-100"
+        }`}>
+        {busy ? "Decrypting…" : "Load audio"}
+      </button>;
 
   const sz = file.fileSize ? `${(file.fileSize / 1024).toFixed(0)} KB` : "";
   return (
-    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 max-w-[240px] ${isMine ? "bg-white/10" : "bg-gray-100 dark:bg-gray-700/60"}`}>
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isMine ? "bg-white/20" : "bg-indigo-100 dark:bg-indigo-900/40"}`}>
-        <FileText size={18} className={isMine ? "text-white/80" : "text-indigo-600 dark:text-indigo-300"} />
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 max-w-[240px] ${
+      isMine ? "bg-white/15" : "bg-gray-100 dark:bg-white/[0.06]"
+    }`}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+        isMine ? "bg-white/20" : "bg-violet-100 dark:bg-violet-900/40"
+      }`}>
+        <FileText size={17} className={isMine ? "text-white/80" : "text-violet-600 dark:text-violet-300"} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate leading-tight">{file.originalName || file.fileName || "Document"}</p>
-        {sz && <p className={`text-xs ${isMine ? "text-white/50" : "text-gray-400"}`}>{sz}</p>}
+        {sz && <p className={`text-xs ${isMine ? "text-white/55" : "text-gray-400"}`}>{sz}</p>}
       </div>
-      <button onClick={download} disabled={busy} className={`p-1.5 rounded-full shrink-0 hover:bg-black/10 ${isMine ? "text-white/70" : "text-gray-500"}`}>
-        {busy ? <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin block" /> : <Download size={15} />}
+      <button type="button" onClick={download} disabled={busy}
+        className={`p-1.5 rounded-full shrink-0 hover:bg-black/10 transition-colors ${isMine ? "text-white/70" : "text-gray-500"}`}>
+        {busy
+          ? <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin block" />
+          : <Download size={14} />
+        }
       </button>
     </div>
   );
 }
 
-// ── Call-log bubble ───────────────────────────────────────────────────────────
 function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean }) {
   const log = message.callLog;
-  const isVideo   = log?.callType === "video";
-  const missed    = log?.outcome === "missed" || log?.outcome === "declined";
-  const duration  = log?.duration;
-  const label     =
-    log?.outcome === "completed" ? `${isVideo ? "Video" : "Voice"} call${duration ? ` · ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}` : ""}` :
+  const isVideo = log?.callType === "video";
+  const missed  = log?.outcome === "missed" || log?.outcome === "declined";
+  const dur     = log?.duration;
+  const label   =
+    log?.outcome === "completed" ? `${isVideo ? "Video" : "Voice"} call${dur ? ` · ${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}` : ""}` :
     log?.outcome === "missed"    ? `Missed ${isVideo ? "video" : "voice"} call` :
     log?.outcome === "declined"  ? `Declined ${isVideo ? "video" : "voice"} call` :
     log?.outcome === "busy"      ? "Busy" :
@@ -161,15 +195,11 @@ function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean 
     <div className={`flex ${isMine ? "justify-end" : "justify-start"} mb-1 px-1`}>
       <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
         missed
-          ? isMine
-            ? "bg-red-500/15 text-red-300 dark:text-red-400"
-            : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-          : isMine
-            ? "bg-indigo-600 text-white"
-            : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          ? isMine ? "bg-red-500/15 text-red-300" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+          : isMine ? "bubble-gradient text-white"  : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100"
       }`}>
-        <Icon size={16} className={missed ? "text-red-400" : ""} />
-        <span className="font-medium text-sm">{label}</span>
+        <Icon size={15} className={missed ? "text-red-400" : ""} />
+        <span className="font-medium">{label}</span>
         <span className={`text-[11px] ${isMine ? "text-white/50" : "text-gray-400"}`}>
           {new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
@@ -178,56 +208,49 @@ function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean 
   );
 }
 
-// ── Main bubble ───────────────────────────────────────────────────────────────
 export default function MessageBubble({ message, isMine, onRetry }: Props) {
   if (message.contentType === "call-log") {
     return <CallLogBubble message={message} isMine={isMine} />;
   }
 
-  const time  = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const text  = message.plaintext || (!message.media?.length ? message.ciphertext : undefined);
+  const time    = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const text    = message.plaintext || (!message.media?.length ? message.ciphertext : undefined);
   const isVoice = !!(message.isVoiceMessage || (message.contentType === "audio" && message.media?.length));
   const isFailed  = message.status === "failed";
   const isSending = message.status === "sending";
 
   return (
-    <div className={`flex ${isMine ? "justify-end" : "justify-start"} mb-0.5 px-1 group`}>
+    <div className={`flex ${isMine ? "justify-end" : "justify-start"} mb-0.5 px-2 group`}>
       <div className="flex flex-col items-end gap-1 max-w-[74%]">
-        <div className={`relative rounded-2xl px-3.5 py-2 shadow-sm transition-opacity ${
-          isSending ? "opacity-70" : ""
+        <div className={`relative rounded-2xl px-3.5 py-2 shadow-md transition-opacity ${
+          isSending ? "opacity-65" : ""
         } ${
           isMine
-            ? "bg-indigo-600 text-white rounded-br-[4px]"
-            : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-[4px]"
+            ? "bubble-gradient text-white rounded-br-[4px] shadow-violet-500/20"
+            : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-[4px] shadow-black/5 dark:shadow-black/30"
         }`}>
-          {/* Voice note */}
+
           {isVoice && message.media?.[0] && <VoiceNote file={message.media[0]} isMine={isMine} />}
 
-          {/* Media */}
           {!isVoice && message.media && message.media.length > 0 && (
             <div className={`space-y-1 ${text ? "mb-2" : ""}`}>
               {message.media.map((f, i) => <Media key={i} file={f} isMine={isMine} />)}
             </div>
           )}
 
-          {/* Text */}
           {text && !isVoice && (
-            <p className="text-[14.5px] leading-[1.45] whitespace-pre-wrap break-words">{text}</p>
+            <p className="text-[14.5px] leading-[1.5] whitespace-pre-wrap break-words">{text}</p>
           )}
 
-          {/* Footer */}
           <div className={`flex items-center gap-1 justify-end mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"}`}>
             <span className="text-[11px]">{time}</span>
             {isMine && <Tick status={message.status} />}
           </div>
         </div>
 
-        {/* Retry button for failed messages */}
         {isFailed && onRetry && (
-          <button
-            onClick={onRetry}
-            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20 px-2.5 py-1 rounded-full"
-          >
+          <button type="button" onClick={onRetry}
+            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20 px-2.5 py-1 rounded-full transition-colors">
             <RotateCcw size={11} />
             Retry
           </button>
