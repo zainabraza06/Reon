@@ -134,8 +134,7 @@ export const validateResetPassword = [
 
 export const changePasswordValidator = [
   body("currentPassword")
-    .notEmpty()
-    .withMessage("Current password is required"),
+    .optional(),
   
   body("newPassword")
     .isLength({ min: 8 })

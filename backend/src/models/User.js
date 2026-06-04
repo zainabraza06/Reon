@@ -89,6 +89,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // Hide sensitive fields when returning user object
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
+  obj.hasPassword = Boolean(this.password);
   delete obj.password;
   delete obj.verificationToken;
   delete obj.verificationTokenExpires;

@@ -75,18 +75,22 @@ export const changePassword = async (req, res) => {
 
     const { currentPassword, newPassword } = req.body;
 
-    // Verify current password
+  if (user.password) {
+    if (!currentPassword) {
+      return res.status(400).json({ message: "Current password is required" });
+    }
+
     const isMatch = await user.comparePassword(currentPassword);
-    console.log(isMatch);
     if (!isMatch) {
       return res.status(401).json({ message: "Current password is incorrect" });
     }
+  }
 
-    // Update password
-    user.password = newPassword;
-    await user.save();
+  // Update password for both existing password users and Google users who never set one.
+  user.password = newPassword;
+  await user.save();
 
-    // // Send notification email
+  // // Send notification email
     // await sendEmail({
     //   to: user.email,
     //   subject: "Your Password Has Been Changed",

@@ -18,6 +18,7 @@ export interface User {
   isOnboarded: boolean;
   isVerified: boolean;
   friends: string[];
+  hasPassword?: boolean;
   createdAt?: string;
 }
 

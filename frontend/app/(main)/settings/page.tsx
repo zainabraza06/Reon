@@ -51,14 +51,18 @@ export default function SettingsPage() {
     }
   };
 
+  const hasPassword = user.hasPassword ?? true;
+
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPw.length < 8) { setPwMsg("Password must be at least 8 characters"); return; }
+    if (hasPassword && !curPw) { setPwMsg("Current password is required"); return; }
+
     setPwSaving(true);
     setPwMsg("");
     try {
       await api.settings.changePassword({ currentPassword: curPw, newPassword: newPw });
-      setPwMsg("Password changed!");
+      setPwMsg(hasPassword ? "Password changed!" : "Password set successfully!");
       setCurPw("");
       setNewPw("");
     } catch (err) {
@@ -146,13 +150,20 @@ export default function SettingsPage() {
         {/* Password section */}
         <section>
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Lock size={14} />Change Password
+            <Lock size={14} />{hasPassword ? "Change Password" : "Set Password"}
           </h2>
+          {!hasPassword && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              You signed in with Google and do not have a password yet. Set one here to enable email/password login.
+            </p>
+          )}
           <form onSubmit={changePassword} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Current Password</label>
-              <input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} required placeholder="Enter current password" className={inputCls} />
-            </div>
+            {hasPassword && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Current Password</label>
+                <input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="Enter current password" className={inputCls} />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">New Password</label>
               <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} required placeholder="Min. 8 characters" className={inputCls} />
@@ -167,7 +178,7 @@ export default function SettingsPage() {
             <button type="submit" disabled={pwSaving}
               className="btn-gradient flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 shadow-md shadow-violet-500/25 transition-all">
               <Lock size={15} />
-              {pwSaving ? "Updating…" : "Update Password"}
+              {pwSaving ? "Updating…" : hasPassword ? "Update Password" : "Set Password"}
             </button>
           </form>
         </section>
