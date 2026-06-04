@@ -12,6 +12,7 @@ export default function OnboardingPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [username, setUsername] = useState("");
+  const [nativeLanguage, setNativeLanguage] = useState("");
   const [bio, setBio]           = useState("");
   const [location, setLocation] = useState("");
   const [avatar, setAvatar]     = useState<File | null>(null);
@@ -34,6 +35,7 @@ export default function OnboardingPage() {
     try {
       const fd = new FormData();
       fd.append("username", username.trim());
+      fd.append("nativeLanguage", nativeLanguage.trim());
       fd.append("bio", bio);
       fd.append("location", location);
       if (avatar) fd.append("profilePic", avatar);
@@ -95,6 +97,14 @@ export default function OnboardingPage() {
             </label>
             <input value={username} onChange={(e) => setUsername(e.target.value)} required
               placeholder="johndoe" className={inputCls} />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">
+              Native language <span className="text-red-500">*</span>
+            </label>
+            <input value={nativeLanguage} onChange={(e) => setNativeLanguage(e.target.value)} required
+              placeholder="English" className={inputCls} />
           </div>
 
           <div>
