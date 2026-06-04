@@ -24,7 +24,12 @@ export const api = {
     me: () => request<{ user: import("@/types").User }>("/auth/me"),
     onboard: (data: FormData) =>
       fetch(`${BASE_URL}/auth/onboard`, { method: "POST", credentials: "include", body: data }).then(
-        (r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.message))))
+        async (r) => {
+          if (r.ok) return r.json();
+          const e = await r.json().catch(() => ({}));
+          const msg = e?.message || (Array.isArray(e?.errors) ? e.errors.map(err => err.msg || err.message || JSON.stringify(err)).join(", ") : r.statusText);
+          return Promise.reject(new Error(msg));
+        }
       ),
   },
 
