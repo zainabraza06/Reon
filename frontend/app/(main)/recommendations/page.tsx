@@ -104,7 +104,11 @@ export default function RecommendationsPage() {
       setUsers((prev) => prev.filter((u) => u._id !== senderId));
     };
     socketService.on("friend-request-accepted", onAccepted);
-    return () => socketService.off("friend-request-accepted", onAccepted);
+    socketService.on("friend-request-accepted-realtime", onAccepted);
+    return () => {
+      socketService.off("friend-request-accepted", onAccepted);
+      socketService.off("friend-request-accepted-realtime", onAccepted);
+    };
   }, []);
 
   const hasMore = users.length < total;

@@ -23,13 +23,22 @@ export default function MobileNav() {
     const onRequest  = () => setPendingCount((c) => c + 1);
     const onAccepted = () => setPendingCount((c) => Math.max(0, c - 1));
     const onRejected = () => setPendingCount((c) => Math.max(0, c - 1));
+    const onCountUpdated = (data: unknown) => {
+      const payload = data as { count: number };
+      if (typeof payload.count === "number") setPendingCount(payload.count);
+    };
+
     socketService.on("friend-request-received", onRequest);
     socketService.on("friend-request-accepted", onAccepted);
+    socketService.on("friend-request-accepted-realtime", onAccepted);
     socketService.on("friend-request-rejected", onRejected);
+    socketService.on("pending-requests-count-updated", onCountUpdated);
     return () => {
       socketService.off("friend-request-received", onRequest);
       socketService.off("friend-request-accepted", onAccepted);
+      socketService.off("friend-request-accepted-realtime", onAccepted);
       socketService.off("friend-request-rejected", onRejected);
+      socketService.off("pending-requests-count-updated", onCountUpdated);
     };
   }, []);
 

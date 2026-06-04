@@ -75,6 +75,14 @@ export default function Sidebar({ onNewGroup }: Props) {
       );
     };
 
+    const onFriendRequestReceived = () => setPendingCount((c) => c + 1);
+    const onFriendRequestAccepted = () => setPendingCount((c) => Math.max(0, c - 1));
+    const onFriendRequestRejected = () => setPendingCount((c) => Math.max(0, c - 1));
+    const onPendingCountUpdated = (data: unknown) => {
+      const payload = data as { count: number };
+      if (typeof payload.count === "number") setPendingCount(payload.count);
+    };
+
     socketService.on("user-status-changed", onStatus);
     socketService.on("group-added", onGroupAdded);
     socketService.on("group-updated", onGroupUpdated);
@@ -82,6 +90,11 @@ export default function Sidebar({ onNewGroup }: Props) {
     socketService.on("group-removed", onGroupRemoved);
     socketService.on("new-message", onNewMsg);
     socketService.on("new-group-message", onNewGroupMsg);
+    socketService.on("friend-request-received", onFriendRequestReceived);
+    socketService.on("friend-request-accepted", onFriendRequestAccepted);
+    socketService.on("friend-request-accepted-realtime", onFriendRequestAccepted);
+    socketService.on("friend-request-rejected", onFriendRequestRejected);
+    socketService.on("pending-requests-count-updated", onPendingCountUpdated);
 
     return () => {
       socketService.off("user-status-changed", onStatus);
@@ -91,6 +104,11 @@ export default function Sidebar({ onNewGroup }: Props) {
       socketService.off("group-removed", onGroupRemoved);
       socketService.off("new-message", onNewMsg);
       socketService.off("new-group-message", onNewGroupMsg);
+      socketService.off("friend-request-received", onFriendRequestReceived);
+      socketService.off("friend-request-accepted", onFriendRequestAccepted);
+      socketService.off("friend-request-accepted-realtime", onFriendRequestAccepted);
+      socketService.off("friend-request-rejected", onFriendRequestRejected);
+      socketService.off("pending-requests-count-updated", onPendingCountUpdated);
     };
   }, []);
 
