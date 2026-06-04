@@ -423,8 +423,8 @@ export const sendMessage = async (req, res) => {
     if (hasText) {
       if (!encryptedKey || !senderEncryptedKey) {
         console.error(" Text message missing encryption keys");
-        return res.status(400).json({ 
-          message: "Text messages require both encryptedKey and senderEncryptedKey" 
+        return res.status(400).json({
+          message: "Text messages require both encryptedKey and senderEncryptedKey"
         });
       }
     }

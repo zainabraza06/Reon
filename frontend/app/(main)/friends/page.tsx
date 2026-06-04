@@ -4,6 +4,7 @@ import { UserPlus, UserCheck, UserX, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
+import { socketService } from "@/lib/socket";
 import { useRouter } from "next/navigation";
 import type { User, FriendRequest } from "@/types";
 
@@ -34,6 +35,25 @@ export default function FriendsPage() {
   };
 
   useEffect(() => { loadAll(); }, []);
+
+  // Real-time socket listeners — refresh data when any friend event fires
+  useEffect(() => {
+    const refresh = () => { void loadAll(); };
+    socketService.on("friend-request-received", refresh);
+    socketService.on("friend-request-sent-realtime", refresh);
+    socketService.on("friend-request-accepted-realtime", refresh);
+    socketService.on("friend-request-rejected", refresh);
+    socketService.on("friend-request-withdrawn", refresh);
+    socketService.on("friend-removed", refresh);
+    return () => {
+      socketService.off("friend-request-received", refresh);
+      socketService.off("friend-request-sent-realtime", refresh);
+      socketService.off("friend-request-accepted-realtime", refresh);
+      socketService.off("friend-request-rejected", refresh);
+      socketService.off("friend-request-withdrawn", refresh);
+      socketService.off("friend-removed", refresh);
+    };
+  }, []);
 
   const accept = async (id: string) => {
     setPendingIds((p) => new Set(p).add(id));

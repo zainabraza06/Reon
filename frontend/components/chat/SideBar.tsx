@@ -82,6 +82,12 @@ export default function Sidebar({ onNewGroup }: Props) {
       const payload = data as { count: number };
       if (typeof payload.count === "number") setPendingCount(payload.count);
     };
+    const onFriendRemoved = (data: unknown) => {
+      const { userId: removerId, friendId } = data as { userId: string; friendId: string };
+      // Remove whoever is NOT the current user from the chat list
+      const removedId = user && removerId === user._id ? friendId : removerId;
+      setChats((prev) => prev.filter((c) => c._id !== removedId));
+    };
 
     socketService.on("user-status-changed", onStatus);
     socketService.on("group-added", onGroupAdded);
@@ -95,6 +101,7 @@ export default function Sidebar({ onNewGroup }: Props) {
     socketService.on("friend-request-accepted-realtime", onFriendRequestAccepted);
     socketService.on("friend-request-rejected", onFriendRequestRejected);
     socketService.on("pending-requests-count-updated", onPendingCountUpdated);
+    socketService.on("friend-removed", onFriendRemoved);
 
     return () => {
       socketService.off("user-status-changed", onStatus);
@@ -109,8 +116,9 @@ export default function Sidebar({ onNewGroup }: Props) {
       socketService.off("friend-request-accepted-realtime", onFriendRequestAccepted);
       socketService.off("friend-request-rejected", onFriendRequestRejected);
       socketService.off("pending-requests-count-updated", onPendingCountUpdated);
+      socketService.off("friend-removed", onFriendRemoved);
     };
-  }, []);
+  }, [user]);
 
   const filteredChats = (chats ?? []).filter((c) =>
     !search || c.fullName.toLowerCase().includes(search.toLowerCase()) || c.username?.toLowerCase().includes(search.toLowerCase())

@@ -21,9 +21,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setupKeys = async (userId: string) => {
     try {
-      if (await hasKeyPair()) return;
-      const { publicKey } = await generateKeyPair();
-      await api.keys.upload(publicKey, userId);
+      const localExists = await hasKeyPair();
+      // Always verify the public key is also on the server — a previous upload may have
+      // failed silently while local keys were already saved to IndexedDB.
+      const serverKey = await api.keys.get(userId).catch(() => null);
+
+      if (localExists && serverKey?.publicKey) return; // local + server both good
+
+      if (!localExists) {
+        // New device/browser — generate a fresh key pair
+        const { publicKey } = await generateKeyPair();
+        await api.keys.upload(publicKey, userId);
+      } else {
+        // Local keys exist but the server doesn't have them — re-upload
+        const localPublicKey = await getStoredPublicKey();
+        if (localPublicKey) await api.keys.upload(localPublicKey, userId);
+      }
     } catch (err) {
       console.error("Key setup error:", err);
     }

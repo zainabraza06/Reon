@@ -85,34 +85,31 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
     setMessages((prev: Message[]) => [...prev, optimistic]);
 
     try {
-      const myPublicKey = await getStoredPublicKey();
-      const recipientKeyRes = await api.keys.get(userId).catch(() => null);
-      const privateKey = await getStoredPrivateKey();
+      const [myPublicKey, recipientKeyRes, privateKey] = await Promise.all([
+        getStoredPublicKey(),
+        api.keys.get(userId).catch(() => null),
+        getStoredPrivateKey(),
+      ]);
+
+      if (!myPublicKey) throw new Error("Your encryption keys are missing. Please refresh the page.");
+      if (!recipientKeyRes?.publicKey) throw new Error("Recipient has no encryption key yet. Ask them to log in first.");
+
       const fd = new FormData();
       const jsonData: Record<string, unknown> = { sender: me._id, receiver: userId, contentType: file ? guessFileType(file.type) : "text" };
 
       if (text) {
-        if (myPublicKey && recipientKeyRes?.publicKey) {
-          const enc = await encryptText(text, recipientKeyRes.publicKey, myPublicKey);
-          Object.assign(jsonData, enc);
-        } else {
-          jsonData.ciphertext = text; jsonData.encryptedKey = ""; jsonData.senderEncryptedKey = "";
-        }
+        const enc = await encryptText(text, recipientKeyRes.publicKey, myPublicKey);
+        Object.assign(jsonData, enc);
       }
 
       if (file) {
         const buf = await file.arrayBuffer();
         const fType = guessFileType(file.type);
-        if (myPublicKey && recipientKeyRes?.publicKey) {
-          const enc = await encryptFile(buf, recipientKeyRes.publicKey, myPublicKey);
-          fd.append("files", new Blob([enc.encryptedBuffer]), file.name);
-          fd.append("mediaEncryptedKey", enc.encryptedKey);
-          fd.append("mediaSenderEncryptedKey", enc.senderEncryptedKey);
-          fd.append("encryptionIV", enc.encryptionIV);
-        } else {
-          fd.append("files", file, file.name);
-          fd.append("mediaEncryptedKey", ""); fd.append("mediaSenderEncryptedKey", ""); fd.append("encryptionIV", "");
-        }
+        const enc = await encryptFile(buf, recipientKeyRes.publicKey, myPublicKey);
+        fd.append("files", new Blob([enc.encryptedBuffer]), file.name);
+        fd.append("mediaEncryptedKey", enc.encryptedKey);
+        fd.append("mediaSenderEncryptedKey", enc.senderEncryptedKey);
+        fd.append("encryptionIV", enc.encryptionIV);
         fd.append("mediaType", fType);
         fd.append("originalName", file.name);
         if (isVoice) fd.append("isVoiceMessage", "true");
