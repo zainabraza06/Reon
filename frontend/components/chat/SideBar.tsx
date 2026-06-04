@@ -24,8 +24,8 @@ export default function Sidebar({ onNewGroup }: Props) {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    api.messages.sidebar().then(({ chats: c }) => setChats(c)).catch(() => {});
-    api.groups.list().then(({ groups: g }) => setGroups(g)).catch(() => {});
+    api.messages.sidebar().then(({ chats: c }) => setChats(c ?? [])).catch(() => {});
+    api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {});
     api.friends.pendingCount().then(({ count }) => setPendingCount(count)).catch(() => {});
   }, []);
 
@@ -94,10 +94,10 @@ export default function Sidebar({ onNewGroup }: Props) {
     };
   }, []);
 
-  const filteredChats = chats.filter((c) =>
+  const filteredChats = (chats ?? []).filter((c) =>
     !search || c.fullName.toLowerCase().includes(search.toLowerCase()) || c.username?.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredGroups = groups.filter((g) =>
+  const filteredGroups = (groups ?? []).filter((g) =>
     !search || g.name.toLowerCase().includes(search.toLowerCase())
   );
 

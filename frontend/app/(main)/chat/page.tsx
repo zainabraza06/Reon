@@ -26,8 +26,8 @@ export default function ChatLandingPage() {
 
   useEffect(() => {
     Promise.all([
-      api.messages.sidebar().then(({ chats: c }) => setChats(c)).catch(() => {}),
-      api.groups.list().then(({ groups: g }) => setGroups(g)).catch(() => {}),
+      api.messages.sidebar().then(({ chats: c }) => setChats(c ?? [])).catch(() => {}),
+      api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -71,8 +71,8 @@ export default function ChatLandingPage() {
   }, []);
 
   const q = search.toLowerCase();
-  const filteredChats  = chats.filter((c)  => !q || c.fullName.toLowerCase().includes(q) || c.username?.toLowerCase().includes(q));
-  const filteredGroups = groups.filter((g) => !q || g.name.toLowerCase().includes(q));
+  const filteredChats  = (chats ?? []).filter((c)  => !q || c.fullName.toLowerCase().includes(q) || c.username?.toLowerCase().includes(q));
+  const filteredGroups = (groups ?? []).filter((g) => !q || g.name.toLowerCase().includes(q));
 
   return (
     <>
