@@ -17,6 +17,7 @@ interface Props {
 export default function Sidebar({ onNewGroup }: Props) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
   const [tab, setTab] = useState<"dms" | "groups">("dms");
   const [search, setSearch] = useState("");
   const [chats, setChats] = useState<ChatListItem[]>([]);
@@ -56,6 +57,24 @@ export default function Sidebar({ onNewGroup }: Props) {
       })
     );
   };
+
+  // Keep pathnameRef in sync so socket handlers can read latest route
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  // When navigating into a chat, immediately zero the unread badge in state
+  // and ensure the DB is also marked read (handles messages received while away)
+  useEffect(() => {
+    const match = pathname.match(/^\/chat\/([^/]+)$/);
+    if (!match) return;
+    const chatUserId = match[1];
+    setChats((prev) =>
+      prev.map((c) => (c._id === chatUserId ? { ...c, unreadCount: 0 } : c))
+    );
+    // Belt-and-suspenders: re-mark as read in DB in case any arrived while away
+    api.messages.markRead(chatUserId).catch(() => {});
+  }, [pathname]);
 
   useEffect(() => {
     api.messages.sidebar().then(async ({ chats: c }) => {
@@ -159,8 +178,16 @@ export default function Sidebar({ onNewGroup }: Props) {
         } catch {}
       }
 
+      const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
+      const isMine = String(msg.sender) === String(user?._id);
+
+      // If this chat is currently open, mark as read immediately so DB stays in sync
+      const chatIsOpen = pathnameRef.current === `/chat/${otherParticipantId}`;
+      if (!isMine && chatIsOpen) {
+        api.messages.markRead(otherParticipantId).catch(() => {});
+      }
+
       setChats((prev) => {
-        const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
         const exists = prev.some((c) => c._id === otherParticipantId);
         
         const lastMsgData = {
@@ -172,13 +199,16 @@ export default function Sidebar({ onNewGroup }: Props) {
           content: content || undefined,
         };
 
+        // Only increment unread if: message is from the other person AND that chat is NOT currently open
+        const shouldIncrement = !isMine && !chatIsOpen;
+
         if (exists) {
           const updated = prev.map((c) =>
             c._id === otherParticipantId
               ? { 
                   ...c, 
                   lastMessage: lastMsgData, 
-                  unreadCount: String(msg.sender) === String(user?._id) ? c.unreadCount : (c.unreadCount || 0) + 1 
+                  unreadCount: shouldIncrement ? (c.unreadCount || 0) + 1 : c.unreadCount
                 }
               : c
           );
@@ -199,7 +229,7 @@ export default function Sidebar({ onNewGroup }: Props) {
             username: msg.senderInfo.username,
             profilePic: msg.senderInfo.profilePic,
             lastMessage: lastMsgData,
-            unreadCount: String(msg.sender) === String(user?._id) ? 0 : 1,
+            unreadCount: shouldIncrement ? 1 : 0,
           };
           return [newEntry, ...prev];
         }
