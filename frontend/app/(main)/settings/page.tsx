@@ -58,8 +58,12 @@ export default function SettingsPage() {
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPw.length < 8) { setPwMsg("Password must be at least 8 characters"); return; }
     if (hasPassword && !curPw) { setPwMsg("Current password is required"); return; }
+    if (newPw.length < 8 || newPw.length > 14) { setPwMsg("Password must be 8-14 characters long"); return; }
+    if (!/[A-Z]/.test(newPw)) { setPwMsg("Password must contain at least one uppercase letter"); return; }
+    if (!/[a-z]/.test(newPw)) { setPwMsg("Password must contain at least one lowercase letter"); return; }
+    if (!/\d/.test(newPw)) { setPwMsg("Password must contain at least one number"); return; }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPw)) { setPwMsg("Password must contain at least one special character"); return; }
 
     setPwSaving(true);
     setPwMsg("");
@@ -193,7 +197,17 @@ export default function SettingsPage() {
               You signed in with Google and do not have a password yet. Set one here to enable email/password login.
             </p>
           )}
-          <form onSubmit={changePassword} className="space-y-4">
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-lg">
+            <p className="text-xs font-semibold text-blue-900 dark:text-blue-300 mb-2">Password Requirements:</p>
+            <ul className="text-xs text-blue-800 dark:text-blue-400 space-y-1">
+              <li>• 8-14 characters long</li>
+              <li>• At least one uppercase letter (A-Z)</li>
+              <li>• At least one lowercase letter (a-z)</li>
+              <li>• At least one number (0-9)</li>
+              <li>• At least one special character (!@#$%^&*etc)</li>
+            </ul>
+          </div>
+          <form onSubmit={changePassword} className="space-y-4\">
             {hasPassword && (
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Current Password</label>
@@ -202,7 +216,7 @@ export default function SettingsPage() {
             )}
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">New Password</label>
-              <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} required placeholder="Min. 8 characters" className={inputCls} />
+              <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} required placeholder="8-14 chars: A-z, 0-9, special char" className={inputCls} />
             </div>
 
             {pwMsg && (

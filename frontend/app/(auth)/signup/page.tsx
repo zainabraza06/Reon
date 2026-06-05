@@ -17,9 +17,30 @@ export default function SignupPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
 
+  const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,14}$/;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (form.password.length < 8 || form.password.length > 14) {
+      setError("Password must be 8-14 characters long");
+      return;
+    }
+    if (!/[A-Z]/.test(form.password)) {
+      setError("Password must contain at least one uppercase letter");
+      return;
+    }
+    if (!/[a-z]/.test(form.password)) {
+      setError("Password must contain at least one lowercase letter");
+      return;
+    }
+    if (!/\d/.test(form.password)) {
+      setError("Password must contain at least one number");
+      return;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(form.password)) {
+      setError("Password must contain at least one special character (!@#$%^&*()_+-=[]{};\':\"\\|,.<>/?)");
+      return;
+    }
     setError(""); setLoading(true);
     try {
       await api.auth.signup(form);
@@ -34,10 +55,20 @@ export default function SignupPage() {
     }
   };
 
-  const strength = form.password.length === 0 ? 0 : form.password.length < 8 ? 1 : form.password.length < 12 ? 2 : 3;
-  const strengthLabel = ["", "Weak", "Good", "Strong"];
-  const strengthColor = ["", "bg-red-500", "bg-yellow-400", "bg-emerald-500"];
-  const strengthText  = ["", "text-red-500", "text-yellow-500", "text-emerald-500"];
+  const getStrength = () => {
+    if (form.password.length === 0) return 0;
+    if (form.password.length < 8 || form.password.length > 14) return 1;
+    let strength = 1;
+    if (/[A-Z]/.test(form.password)) strength++;
+    if (/[a-z]/.test(form.password)) strength++;
+    if (/\d/.test(form.password)) strength++;
+    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(form.password)) strength++;
+    return Math.min(strength, 4);
+  };
+  const strength = getStrength();
+  const strengthLabel = ["", "Weak", "Fair", "Good", "Strong"];
+  const strengthColor = ["", "bg-red-500", "bg-orange-500", "bg-yellow-400", "bg-emerald-500"];
+  const strengthText  = ["", "text-red-500", "text-orange-500", "text-yellow-500", "text-emerald-500"];
 
   const fieldIcons = { fullName: User, email: Mail, password: Lock };
 
@@ -118,9 +149,15 @@ export default function SignupPage() {
             {/* Password */}
             <div>
               <label className="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Password</label>
+              <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-lg">
+                <p className="text-[10px] font-semibold text-blue-900 dark:text-blue-300 mb-1">Requirements:</p>
+                <ul className="text-[9px] text-blue-800 dark:text-blue-400 space-y-0.5">
+                  <li>• 8-14 chars • 1 uppercase • 1 lowercase • 1 number • 1 special</li>
+                </ul>
+              </div>
               <div className="relative">
                 <fieldIcons.password size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} required placeholder="Min. 8 characters"
+                <input type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} required placeholder="8-14 chars: A-z, 0-9, special char"
                   className="w-full pl-10 pr-11 py-3 rounded-xl bg-white dark:bg-[#12122e] border border-gray-200 dark:border-white/[0.07] text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                 />
                 <button type="button" onClick={() => setShowPw((v) => !v)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
@@ -130,7 +167,7 @@ export default function SignupPage() {
               {form.password.length > 0 && (
                 <div className="flex items-center gap-2 mt-2">
                   <div className="flex gap-1 flex-1">
-                    {[1, 2, 3].map((l) => (
+                    {[1, 2, 3, 4].map((l) => (
                       <div key={l} className={`h-1 flex-1 rounded-full transition-all ${strength >= l ? strengthColor[strength] : "bg-gray-200 dark:bg-gray-700"}`} />
                     ))}
                   </div>

@@ -12,7 +12,11 @@ export const validateSignup = [
     .isEmail().withMessage("Please provide a valid email."),
 
   body("password")
-    .isLength({ min: 8 }).withMessage("Password must be at least 8 characters long."),
+    .isLength({ min: 8, max: 14 }).withMessage("Password must be 8-14 characters long.")
+    .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter.")
+    .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter.")
+    .matches(/\d/).withMessage("Password must contain at least one number.")
+    .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/).withMessage("Password must contain at least one special character (!@#$%^&*()_+-=[]{};\':\"\\|,.<>/?)"),
 
   // Handle errors
   validateRequest,
@@ -125,8 +129,11 @@ export const validateResetPassword = [
     .withMessage("Reset token is required"),
   
   body("password")
-    .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters long"),
+    .isLength({ min: 8, max: 14 }).withMessage("Password must be 8-14 characters long.")
+    .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter.")
+    .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter.")
+    .matches(/\d/).withMessage("Password must contain at least one number.")
+    .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/).withMessage("Password must contain at least one special character (!@#$%^&*()_+-=[]{};\':\"\\|,.<>/?)"),
   
   validateRequest,
 ];
@@ -137,8 +144,11 @@ export const changePasswordValidator = [
     .optional(),
   
   body("newPassword")
-    .isLength({ min: 8 })
-    .withMessage("New password must be at least 8 characters long"),
+    .isLength({ min: 8, max: 14 }).withMessage("Password must be 8-14 characters long.")
+    .matches(/[A-Z]/).withMessage("Password must contain at least one uppercase letter.")
+    .matches(/[a-z]/).withMessage("Password must contain at least one lowercase letter.")
+    .matches(/\d/).withMessage("Password must contain at least one number.")
+    .matches(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/).withMessage("Password must contain at least one special character (!@#$%^&*()_+-=[]{};\':\"\\|,.<>/?)"),
   
   validateRequest
 ];

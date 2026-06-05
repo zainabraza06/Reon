@@ -37,16 +37,16 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
 
   const loadMessages = useCallback(async (before?: string) => {
     if (!chatUserId || !myId) return;
-    console.log(\"[useMessages] loadMessages called:\", { chatUserId, myId, before });
+    console.log("[useMessages] loadMessages called:", { chatUserId, myId, before });
     setLoading(true);
     try {
       const { messages: raw } = await api.messages.get(chatUserId, { limit: 50, before });
-      console.log(\"[useMessages] Loaded \", raw.length, \" messages from API\");
+      console.log("[useMessages] Loaded ", raw.length, " messages from API");
       const decrypted = await Promise.all(raw.map(decryptMsg));
-      console.log(\"[useMessages] Decrypted all messages\");
+      console.log("[useMessages] Decrypted all messages");
       setMessages((prev) => {
         const newMessages = before ? [...decrypted, ...prev] : decrypted;
-        console.log(\"[useMessages] Messages state after load:\", newMessages.length);
+        console.log("[useMessages] Messages state after load:", newMessages.length);
         return newMessages;
       });
       setHasMore(raw.length === 50);
@@ -101,16 +101,16 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
         
         setMessages((prev) => {
           const isDuplicate = prev.find((m) => m._id === decrypted._id);
-          console.log(\"[useMessages] Message state update:\", {
+          console.log("[useMessages] Message state update:", {
             currentCount: prev.length,
             isDuplicate,
             newMessage: decrypted._id
           });
           if (isDuplicate) {
-            console.log(\"[useMessages] Skipping duplicate\");
+            console.log("[useMessages] Skipping duplicate");
             return prev;
           }
-          console.log(\"[useMessages] Adding message, new count will be:\", prev.length + 1);
+          console.log("[useMessages] Adding message, new count will be:", prev.length + 1);
           return [...prev, decrypted];
         });
         
@@ -128,7 +128,7 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     const handleSent = (data: unknown) => {
       const msg = data as Message;
       const isSender = String(msg.sender) === String(myId);
-      console.log(\"[useMessages] handleSent received:\", { msgId: msg._id, status: msg.status, isSender });
+      console.log("[useMessages] handleSent received:", { msgId: msg._id, status: msg.status, isSender });
       if (!isSender) {
         console.log("[useMessages] handleSent - ignoring, not our message");
         return;
@@ -181,7 +181,9 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     socketService.on("messages-delivered-batch", handleDeliveredBatch);
     socketService.on("message-read", handleRead);
 
-    return () => {      console.log(\"[useMessages] Cleaning up socket listeners for chat:\", { chatUserId, myId });      socketService.off("new-message", handleNew);
+    return () => {
+      console.log("[useMessages] Cleaning up socket listeners for chat:", { chatUserId, myId });
+      socketService.off("new-message", handleNew);
       socketService.off("message-sent", handleSent);
       socketService.off("message-delivered", handleDelivered);
       socketService.off("messages-delivered-batch", handleDeliveredBatch);
