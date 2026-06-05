@@ -9,10 +9,13 @@ import multer from 'multer';
 import {
   sendMessage,
   getMessages,
-
   getUserForSideBar,
-  searchUsers,downloadEncryptedFile,  markMessageAsRead, serveMediaFile,
-  markChatAsRead
+  searchUsers,
+  downloadEncryptedFile,
+  markMessageAsRead,
+  serveMediaFile,
+  markChatAsRead,
+  getMessageInfo,
 } from "../controllers/message.controller.js";
 
 
@@ -54,6 +57,7 @@ router.get('/files/:id', downloadEncryptedFile); // legacy alias
 
 // Mark message as delivered/seen
 router.post('/read/:messageId',  markMessageAsRead);
+router.get('/:messageId/info',   getMessageInfo);
 router.get("/sidebar/list", getUserForSideBar);
 router.get("/search", searchUsers);
 router.get("/:receiverId", getMessages);

@@ -13,9 +13,28 @@ class MockMessage {
   final String senderId;
   final String text;
   final DateTime sentAt;
+  final bool isDelivered;
+  final DateTime? deliveredAt;
   final bool isRead;
+  final DateTime? readAt;
 
-  const MockMessage({required this.id, required this.senderId, required this.text, required this.sentAt, this.isRead = true});
+  const MockMessage({
+    required this.id,
+    required this.senderId,
+    required this.text,
+    required this.sentAt,
+    this.isDelivered = true,
+    this.deliveredAt,
+    this.isRead = true,
+    this.readAt,
+  });
+
+  /// "sent" | "delivered" | "read"
+  String get status {
+    if (isRead)      return 'read';
+    if (isDelivered) return 'delivered';
+    return 'sent';
+  }
 }
 
 class MockChat {
@@ -40,13 +59,32 @@ final kChats = <MockChat>[
   MockChat(user: const MockUser(id: '6', name: 'Luna Park',   username: 'luna',  isOnline: true),  lastMessage: 'I'll be there in 10 mins',      lastTime: DateTime.now().subtract(const Duration(days: 2)),    unread: 3),
 ];
 
-List<MockMessage> conversationWith(String userId) => [
-  MockMessage(id: '1', senderId: userId, text: 'Hey! How are you doing?',            sentAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 30))),
-  MockMessage(id: '2', senderId: 'me',   text: 'I\'m great, thanks for asking!',      sentAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 28))),
-  MockMessage(id: '3', senderId: userId, text: 'Are you free this evening?',          sentAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 15))),
-  MockMessage(id: '4', senderId: 'me',   text: 'Yes, I should be free around 7pm. What did you have in mind?', sentAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 10))),
-  MockMessage(id: '5', senderId: userId, text: 'Thought we could grab dinner at that new place downtown 🍜', sentAt: DateTime.now().subtract(const Duration(minutes: 58))),
-  MockMessage(id: '6', senderId: 'me',   text: 'That sounds amazing! I\'ve been wanting to try it.',          sentAt: DateTime.now().subtract(const Duration(minutes: 55))),
-  MockMessage(id: '7', senderId: userId, text: 'Perfect! I\'ll make a reservation for 7:30.',                 sentAt: DateTime.now().subtract(const Duration(minutes: 10))),
-  MockMessage(id: '8', senderId: 'me',   text: 'Sounds good! See you at 6.',                                  sentAt: DateTime.now().subtract(const Duration(minutes: 3))),
-];
+List<MockMessage> conversationWith(String userId) {
+  final now = DateTime.now();
+  return [
+    MockMessage(id: '1', senderId: userId, text: 'Hey! How are you doing?',
+        sentAt: now.subtract(const Duration(hours: 1, minutes: 30))),
+    MockMessage(id: '2', senderId: 'me',   text: "I'm great, thanks for asking!",
+        sentAt: now.subtract(const Duration(hours: 1, minutes: 28)),
+        isDelivered: true, deliveredAt: now.subtract(const Duration(hours: 1, minutes: 27)),
+        isRead: true,      readAt:      now.subtract(const Duration(hours: 1, minutes: 26))),
+    MockMessage(id: '3', senderId: userId, text: 'Are you free this evening?',
+        sentAt: now.subtract(const Duration(hours: 1, minutes: 15))),
+    MockMessage(id: '4', senderId: 'me',   text: 'Yes, I should be free around 7pm. What did you have in mind?',
+        sentAt: now.subtract(const Duration(hours: 1, minutes: 10)),
+        isDelivered: true, deliveredAt: now.subtract(const Duration(hours: 1, minutes: 9)),
+        isRead: true,      readAt:      now.subtract(const Duration(hours: 1, minutes: 8))),
+    MockMessage(id: '5', senderId: userId, text: 'Thought we could grab dinner at that new place downtown 🍜',
+        sentAt: now.subtract(const Duration(minutes: 58))),
+    MockMessage(id: '6', senderId: 'me',   text: "That sounds amazing! I've been wanting to try it.",
+        sentAt: now.subtract(const Duration(minutes: 55)),
+        isDelivered: true, deliveredAt: now.subtract(const Duration(minutes: 54)),
+        isRead: true,      readAt:      now.subtract(const Duration(minutes: 52))),
+    MockMessage(id: '7', senderId: userId, text: "Perfect! I'll make a reservation for 7:30.",
+        sentAt: now.subtract(const Duration(minutes: 10))),
+    MockMessage(id: '8', senderId: 'me',   text: 'Sounds good! See you at 6.',
+        sentAt: now.subtract(const Duration(minutes: 3)),
+        isDelivered: true, deliveredAt: now.subtract(const Duration(minutes: 2)),
+        isRead: false),
+  ];
+}

@@ -4,6 +4,7 @@ import { ArrowLeft, Info, Users, Check, CheckCheck } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
 import MessageInput from "@/components/chat/MessageInput";
+import MessageInfoSheet from "@/components/chat/info/MessageInfoSheet";
 import { useGroupMessages } from "@/hooks/useGroupMessages";
 import { useAuth } from "@/context/AuthContext";
 import { socketService } from "@/lib/socket";
@@ -12,10 +13,10 @@ import { encryptGroupText, encryptFile, getStoredPublicKey, getStoredPrivateKey 
 import type { GroupChat, GroupMessage } from "@/types";
 
 function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
-  senderId: string; readBy?: string[]; deliveredTo?: string[]; memberCount: number;
+  senderId: string; readBy?: { userId: string; at: string }[]; deliveredTo?: { userId: string; at: string }[]; memberCount: number;
 }) {
-  const otherDelivered = (deliveredTo ?? []).filter((id) => id !== senderId).length;
-  const otherRead      = (readBy     ?? []).filter((id) => id !== senderId).length;
+  const otherDelivered = (deliveredTo ?? []).filter((r) => r.userId !== senderId).length;
+  const otherRead      = (readBy     ?? []).filter((r) => r.userId !== senderId).length;
   const allRead        = memberCount > 0 && otherRead >= memberCount;
   const anyDelivered   = otherDelivered > 0;
 
@@ -24,13 +25,19 @@ function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
   return               <Check     size={13} className="text-white/45" />;
 }
 
-function GroupMessageBubble({ message, isMine, memberCount }: {
-  message: GroupMessage; isMine: boolean; memberCount: number;
+function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
+  message: GroupMessage; isMine: boolean; memberCount: number; onInfoPress?: () => void;
 }) {
   const time       = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const text       = message.plaintext || message.ciphertext;
   const senderName = typeof message.sender === "object" ? message.sender.fullName : "";
   const senderId   = typeof message.sender === "object" ? message.sender._id : message.sender;
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!isMine || !onInfoPress) return;
+    e.preventDefault();
+    onInfoPress();
+  };
 
   return (
     <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} mb-1`}>
@@ -40,12 +47,16 @@ function GroupMessageBubble({ message, isMine, memberCount }: {
           <span className="text-xs font-semibold text-violet-600 dark:text-violet-400">{senderName}</span>
         </div>
       )}
-      <div className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm ${
-        isMine
-          ? "bubble-gradient text-white rounded-br-[4px] shadow-violet-500/20"
-          : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-[4px]"
-      }`}>
-        {text && <p className="text-sm whitespace-pre-wrap break-words leading-[1.5]">{text}</p>}
+      <div
+        onContextMenu={handleContextMenu}
+        className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm ${
+          isMine ? "cursor-context-menu" : ""
+        } ${
+          isMine
+            ? "bubble-gradient text-white rounded-br-sm shadow-violet-500/20"
+            : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-sm"
+        }`}>
+        {text && <p className="text-sm whitespace-pre-wrap wrap-break-word leading-normal">{text}</p>}
         {message.media && message.media.length > 0 && (
           <p className="text-xs italic opacity-70">[{message.media[0].type} attachment]</p>
         )}
@@ -71,6 +82,7 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
   const { messages, loading, hasMore, loadMore, setMessages } = useGroupMessages(groupId, me?._id ?? null);
   const [group, setGroup] = useState<GroupChat | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [infoMsgId, setInfoMsgId] = useState<string | null>(null);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -173,6 +185,7 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
         </div>
         <button
           type="button"
+          title="Group info"
           onClick={() => setShowInfo((v) => !v)}
           className={`p-2 rounded-xl transition-colors ${showInfo ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10" : "text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"}`}
         >
@@ -193,14 +206,26 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
               </div>
             )}
 
-            {messages.map((msg) => (
-              <GroupMessageBubble
-                key={msg._id}
-                message={msg}
-                isMine={typeof msg.sender === "object" ? msg.sender._id === me._id : msg.sender === me._id}
-                memberCount={(group?.members.length ?? 1) - 1}
+            {infoMsgId && (
+              <MessageInfoSheet
+                messageId={infoMsgId}
+                type="group"
+                onClose={() => setInfoMsgId(null)}
               />
-            ))}
+            )}
+
+            {messages.map((msg) => {
+              const isMine = typeof msg.sender === "object" ? msg.sender._id === me._id : msg.sender === me._id;
+              return (
+                <GroupMessageBubble
+                  key={msg._id}
+                  message={msg}
+                  isMine={isMine}
+                  memberCount={(group?.members.length ?? 1) - 1}
+                  onInfoPress={isMine ? () => setInfoMsgId(msg._id) : undefined}
+                />
+              );
+            })}
 
             {typingUsers.length > 0 && (
               <div className="flex justify-start mb-1 pl-1">

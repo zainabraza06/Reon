@@ -50,9 +50,9 @@ export interface Message {
   media?: MediaFile[];
   sentAt: string;
   delivered?: boolean;
-  deliveredAt?: string;
+  deliveredAt?: string | null;
   read?: boolean;
-  readAt?: string;
+  readAt?: string | null;
   status?: "sending" | "sent" | "delivered" | "read" | "failed";
   isVoiceMessage?: boolean;
   // populated when contentType === "call-log"
@@ -91,6 +91,11 @@ export interface GroupMediaKey {
   encryptedKey: string;
 }
 
+export interface GroupReceiptEntry {
+  user: { _id: string; fullName: string; username?: string; profilePic?: string };
+  at: string;
+}
+
 export interface GroupMessage {
   _id: string;
   groupId: string;
@@ -101,8 +106,24 @@ export interface GroupMessage {
   encryptedKey?: string; // caller's key extracted from memberKeys
   media?: (MediaFile & { memberKeys?: GroupMediaKey[] })[];
   sentAt: string;
-  readBy?: string[];
-  deliveredTo?: string[];
+  // stored as {userId, at} on the server; frontend receives flattened counts for tick display
+  readBy?: { userId: string; at: string }[];
+  deliveredTo?: { userId: string; at: string }[];
+}
+
+export interface PersonalMessageInfo {
+  sentAt: string;
+  delivered: boolean;
+  deliveredAt: string | null;
+  read: boolean;
+  readAt: string | null;
+  receiver: { _id: string; fullName: string; username?: string; profilePic?: string };
+}
+
+export interface GroupMessageInfo {
+  readBy: GroupReceiptEntry[];
+  deliveredTo: GroupReceiptEntry[];
+  memberCount: number;
 }
 
 // ── Friends ───────────────────────────────────────────────────────────────────

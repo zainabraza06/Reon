@@ -106,8 +106,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 itemCount: _messages.length,
                 itemBuilder: (_, i) => MessageBubble(
-                  message: _messages[i],
-                  isMine: _messages[i].senderId == 'me',
+                  message:   _messages[i],
+                  isMine:    _messages[i].senderId == 'me',
+                  recipient: widget.chat.user,
                 ),
               ),
             ),

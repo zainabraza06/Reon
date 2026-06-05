@@ -80,6 +80,8 @@ export const api = {
     sidebar: () => request<{ chats: import("@/types").ChatListItem[] }>("/messages/sidebar/list"),
     search: (q: string) => request<{ users: import("@/types").ChatListItem[] }>(`/messages/search?q=${encodeURIComponent(q)}`),
     markRead: (userId: string) => request(`/messages/chat/read/${userId}`, { method: "PUT" }),
+    info: (messageId: string) =>
+      request<import("@/types").PersonalMessageInfo>(`/messages/${messageId}/info`),
   },
 
   // ── Groups ─────────────────────────────────────────────────────────────────
@@ -108,6 +110,8 @@ export const api = {
       return request<{ messages: import("@/types").GroupMessage[]; hasMore: boolean }>(`/groups/${id}/messages?${q}`);
     },
     markRead: (id: string) => request(`/groups/${id}/read`, { method: "PUT" }),
+    messageInfo: (messageId: string) =>
+      request<import("@/types").GroupMessageInfo>(`/groups/messages/${messageId}/info`),
   },
 
   // ── Friends ────────────────────────────────────────────────────────────────

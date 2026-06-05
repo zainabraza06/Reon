@@ -789,8 +789,10 @@ export const getMessages = async (req, res) => {
         media: [], // Media will be processed below
         sentAt: msg.sentAt,
         delivered: msg.delivered || false,
+        deliveredAt: msg.deliveredAt ?? null,
         read: msg.read || false,
-        status: msg.delivered ? 'delivered' : 'sent'
+        readAt: msg.readAt ?? null,
+        status: msg.read ? 'read' : msg.delivered ? 'delivered' : 'sent'
       };
 
       // Process media files
@@ -1301,10 +1303,48 @@ export const markChatAsRead = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error marking chat as read:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message 
+      error: error.message
     });
+  }
+};
+
+// ── Personal message info (delivery + read timestamps) ────────────────────────
+export const getMessageInfo = async (req, res) => {
+  try {
+    const currentUserId = req.user._id.toString();
+    const { messageId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(messageId))
+      return res.status(400).json({ message: "Invalid message ID" });
+
+    const msg = await Message.findById(messageId)
+      .populate("sender",   "fullName username profilePic")
+      .populate("receiver", "fullName username profilePic");
+
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    // Only sender can view info
+    if (msg.sender._id.toString() !== currentUserId)
+      return res.status(403).json({ message: "Only the sender can view message info" });
+
+    res.json({
+      sentAt:      msg.sentAt,
+      delivered:   msg.delivered || false,
+      deliveredAt: msg.deliveredAt ?? null,
+      read:        msg.read || false,
+      readAt:      msg.readAt ?? null,
+      receiver: {
+        _id:        msg.receiver._id,
+        fullName:   msg.receiver.fullName,
+        username:   msg.receiver.username,
+        profilePic: msg.receiver.profilePic,
+      },
+    });
+  } catch (err) {
+    console.error("getMessageInfo error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

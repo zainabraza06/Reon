@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 import { Check, CheckCheck, Download, FileText, Play, Pause, RotateCcw, Phone, Video, PhoneMissed, Clock, AlertCircle } from "lucide-react";
 import type { Message, MediaFile } from "@/types";
 import { decryptFile, getStoredPrivateKey } from "@/lib/crypto";
+import MessageInfoSheet from "@/components/chat/info/MessageInfoSheet";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001/api").replace(/\/api$/, "");
 
@@ -209,6 +210,8 @@ function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean 
 }
 
 export default function MessageBubble({ message, isMine, onRetry }: Props) {
+  const [showInfo, setShowInfo] = useState(false);
+
   if (message.contentType === "call-log") {
     return <CallLogBubble message={message} isMine={isMine} />;
   }
@@ -219,16 +222,34 @@ export default function MessageBubble({ message, isMine, onRetry }: Props) {
   const isFailed  = message.status === "failed";
   const isSending = message.status === "sending";
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!isMine || isSending || isFailed || message._id.startsWith("temp")) return;
+    e.preventDefault();
+    setShowInfo(true);
+  };
+
   return (
+    <>
+    {showInfo && (
+      <MessageInfoSheet
+        messageId={message._id}
+        type="personal"
+        onClose={() => setShowInfo(false)}
+      />
+    )}
     <div className={`flex ${isMine ? "justify-end" : "justify-start"} mb-0.5 px-2 group`}>
       <div className="flex flex-col items-end gap-1 max-w-[74%]">
-        <div className={`relative rounded-2xl px-3.5 py-2 shadow-md transition-opacity ${
-          isSending ? "opacity-65" : ""
-        } ${
-          isMine
-            ? "bubble-gradient text-white rounded-br-[4px] shadow-violet-500/20"
-            : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-[4px] shadow-black/5 dark:shadow-black/30"
-        }`}>
+        <div
+          onContextMenu={handleContextMenu}
+          className={`relative rounded-2xl px-3.5 py-2 shadow-md transition-opacity ${
+            isMine ? "cursor-context-menu" : ""
+          } ${
+            isSending ? "opacity-65" : ""
+          } ${
+            isMine
+              ? "bubble-gradient text-white rounded-br-[4px] shadow-violet-500/20"
+              : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-[4px] shadow-black/5 dark:shadow-black/30"
+          }`}>
 
           {isVoice && message.media?.[0] && <VoiceNote file={message.media[0]} isMine={isMine} />}
 
@@ -257,5 +278,6 @@ export default function MessageBubble({ message, isMine, onRetry }: Props) {
         )}
       </div>
     </div>
+    </>
   );
 }

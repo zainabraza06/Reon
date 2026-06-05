@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { UserPlus, UserCheck, UserX, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
@@ -8,31 +8,66 @@ import { socketService } from "@/lib/socket";
 import { useRouter } from "next/navigation";
 import type { User, FriendRequest } from "@/types";
 
+const FRIENDS_PAGE_SIZE = 12;
 type Tab = "friends" | "requests";
 
 export default function FriendsPage() {
   const router = useRouter();
   const [tab, setTab]         = useState<Tab>("friends");
   const [friends, setFriends] = useState<User[]>([]);
+  const [friendsTotal, setFriendsTotal] = useState(0);
+  const [friendsPage, setFriendsPage] = useState(1);
   const [received, setReceived] = useState<FriendRequest[]>([]);
   const [sent, setSent]         = useState<FriendRequest[]>([]);
   const [loading, setLoading]   = useState(false);
+  const [loadingMoreFriends, setLoadingMoreFriends] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
-  const loadAll = async () => {
+  const loadFriends = useCallback(async (page: number, replace: boolean = false) => {
+    if (page === 1) setLoading(true); else setLoadingMoreFriends(true);
+    try {
+      const res = await api.friends.list({ page, limit: FRIENDS_PAGE_SIZE });
+      if (replace) setFriends(res.friends);
+      else setFriends((prev) => [...prev, ...res.friends]);
+      setFriendsTotal(res.total);
+      setFriendsPage(page);
+    } catch (err) {
+      console.error("Friends fetch error:", err);
+    } finally {
+      setLoading(false);
+      setLoadingMoreFriends(false);
+    }
+  }, []);
+
+  const loadRequests = async () => {
+    try {
+      const [reqs, sentReqs] = await Promise.all([
+        api.friends.received(),
+        api.friends.sent(),
+      ]);
+      setReceived(reqs.requests);
+      setSent(sentReqs.requests);
+    } catch (err) {
+      console.error("Requests fetch error:", err);
+    }
+  };
+
+  const loadAll = useCallback(async () => {
     setLoading(true);
     try {
       const [fr, reqs, sentReqs] = await Promise.all([
-        api.friends.list(),
+        api.friends.list({ page: 1, limit: FRIENDS_PAGE_SIZE }),
         api.friends.received(),
         api.friends.sent(),
       ]);
       setFriends(fr.friends);
+      setFriendsTotal(fr.total);
+      setFriendsPage(1);
       setReceived(reqs.requests);
       setSent(sentReqs.requests);
     } catch {}
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -110,39 +145,54 @@ export default function FriendsPage() {
 
         {/* Friends */}
         {!loading && tab === "friends" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {friends.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center py-16 gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-violet-100 dark:bg-violet-500/10 flex items-center justify-center">
-                  <Users size={26} className="text-violet-500" />
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {friends.length === 0 ? (
+                <div className="col-span-full flex flex-col items-center py-16 gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-violet-100 dark:bg-violet-500/10 flex items-center justify-center">
+                    <Users size={26} className="text-violet-500" />
+                  </div>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">No friends yet</p>
+                  <Link href="/recommendations" className="text-sm text-violet-600 dark:text-violet-400 font-semibold hover:underline">
+                    Discover people to add →
+                  </Link>
                 </div>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">No friends yet</p>
-                <Link href="/recommendations" className="text-sm text-violet-600 dark:text-violet-400 font-semibold hover:underline">
-                  Discover people to add →
-                </Link>
+              ) : (
+                friends.map((f) => (
+                  <div key={f._id} className={cardCls}>
+                    <Avatar src={f.profilePic} name={f.fullName} size={44} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{f.fullName}</p>
+                      <p className="text-xs text-gray-400 truncate">@{f.username || f.email}</p>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button type="button" onClick={() => router.push(`/chat/${f._id}`)} title="Message"
+                        className="p-2 rounded-xl text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors">
+                        <MessageSquare size={16} />
+                      </button>
+                      <button type="button" onClick={() => removeFriend(f._id)} title="Remove friend"
+                        className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                        <UserX size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {friends.length > 0 && friends.length < friendsTotal && (
+              <div className="mt-6 text-center">
+                <button
+                  type="button"
+                  onClick={() => loadFriends(friendsPage + 1, false)}
+                  disabled={loadingMoreFriends}
+                  className="px-6 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 text-sm font-semibold hover:bg-violet-100 dark:hover:bg-violet-500/20 disabled:opacity-50 transition-colors"
+                >
+                  {loadingMoreFriends ? "Loading…" : `Load more (${friendsTotal - friends.length} remaining)`}
+                </button>
               </div>
-            ) : (
-              friends.map((f) => (
-                <div key={f._id} className={cardCls}>
-                  <Avatar src={f.profilePic} name={f.fullName} size={44} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{f.fullName}</p>
-                    <p className="text-xs text-gray-400 truncate">@{f.username || f.email}</p>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button type="button" onClick={() => router.push(`/chat/${f._id}`)} title="Message"
-                      className="p-2 rounded-xl text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors">
-                      <MessageSquare size={16} />
-                    </button>
-                    <button type="button" onClick={() => removeFriend(f._id)} title="Remove friend"
-                      className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-                      <UserX size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))
             )}
-          </div>
+          </>
         )}
 
         {/* Requests */}

@@ -71,7 +71,7 @@ export function useGroupMessages(groupId: string | null, myId: string | null) {
       setMessages((prev) =>
         prev.map((m) =>
           m._id === messageId
-            ? { ...m, deliveredTo: Array.from({ length: deliveredCount + 1 }, (_, i) => i === 0 ? myId! : `member_${i}`) }
+            ? { ...m, deliveredTo: Array.from({ length: deliveredCount + 1 }, (_, i) => ({ userId: i === 0 ? myId! : `member_${i}`, at: new Date().toISOString() })) }
             : m
         )
       );
@@ -88,8 +88,8 @@ export function useGroupMessages(groupId: string | null, myId: string | null) {
         prev.map((m) => {
           if (!ids.has(m._id)) return m;
           const existing = m.readBy ?? [];
-          if (existing.includes(readBy)) return m;
-          return { ...m, readBy: [...existing, readBy] };
+          if (existing.some((r) => r.userId === readBy)) return m;
+          return { ...m, readBy: [...existing, { userId: readBy, at: new Date().toISOString() }] };
         })
       );
     };

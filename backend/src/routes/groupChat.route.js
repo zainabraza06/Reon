@@ -5,6 +5,7 @@ import {
   createGroup, getMyGroups, getGroupById, updateGroup,
   addMembers, removeMember, promoteAdmin, deleteGroup,
   sendGroupMessage, getGroupMessages, markGroupMessagesRead,
+  getGroupMessageInfo,
   serveGroupMedia, downloadGroupFile,
 } from "../controllers/groupChat.controller.js";
 
@@ -32,6 +33,7 @@ router.patch("/:groupId/admins/:memberId", promoteAdmin);
 router.post("/:groupId/messages", upload.array("files", 10), sendGroupMessage);
 router.get("/:groupId/messages", getGroupMessages);
 router.put("/:groupId/read", markGroupMessagesRead);
+router.get("/messages/:messageId/info", getGroupMessageInfo);
 
 // File serving (no auth required so <img> tags work)
 router.get("/media/:id", serveGroupMedia);
