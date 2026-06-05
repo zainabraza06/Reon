@@ -1,0 +1,98 @@
+import 'package:flutter/foundation.dart';
+import '../models/user.dart';
+import '../services/api_service.dart';
+import '../services/socket_service.dart';
+import '../services/crypto_service.dart';
+
+enum AuthStatus { unknown, unauthenticated, authenticated }
+
+class AuthProvider extends ChangeNotifier {
+  AuthStatus _status = AuthStatus.unknown;
+  ReonUser?  _user;
+  String?    _error;
+
+  AuthStatus get status => _status;
+  ReonUser?  get user   => _user;
+  String?    get error  => _error;
+  bool get isAuthenticated => _status == AuthStatus.authenticated;
+
+  Future<void> checkAuth() async {
+    try {
+      _user = await ApiService.instance.me();
+      _status = AuthStatus.authenticated;
+      await _postLogin();
+    } catch (_) {
+      _status = AuthStatus.unauthenticated;
+    }
+    notifyListeners();
+  }
+
+  Future<bool> login(String email, String password) async {
+    _error = null;
+    try {
+      _user = await ApiService.instance.login(email, password);
+      _status = AuthStatus.authenticated;
+      await _postLogin();
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> signup(String fullName, String email, String password) async {
+    _error = null;
+    try {
+      await ApiService.instance.signup(fullName, email, password);
+      return await login(email, password);
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> logout() async {
+    await ApiService.instance.logout();
+    SocketService.instance.disconnect();
+    await CryptoService.instance.clearKeys();
+    _user   = null;
+    _status = AuthStatus.unauthenticated;
+    notifyListeners();
+  }
+
+  void updateOnlineStatus(String userId, bool isOnline) {
+    if (_user?.id == userId) {
+      _user = _user!.copyWith(isOnline: isOnline);
+      notifyListeners();
+    }
+  }
+
+  /// Called after successful auth: connect socket + ensure crypto keys are set up.
+  Future<void> _postLogin() async {
+    SocketService.instance.connect(_user!.id);
+    await _ensureKeys();
+  }
+
+  Future<void> _ensureKeys() async {
+    final crypto = CryptoService.instance;
+    final api    = ApiService.instance;
+    final userId = _user!.id;
+
+    final localExists  = await crypto.hasKeyPair();
+    final serverKeyRaw = await api.tryGetPublicKey(userId);
+
+    if (localExists && serverKeyRaw != null) return; // all good
+
+    if (!localExists) {
+      final pubJwk = await crypto.generateKeyPair();
+      await api.uploadPublicKey(pubJwk, userId);
+    } else {
+      // Local key exists but not on server — re-upload
+      final pubJwk = await crypto.getStoredPublicKey();
+      if (pubJwk != null) await api.uploadPublicKey(pubJwk, userId);
+    }
+  }
+}

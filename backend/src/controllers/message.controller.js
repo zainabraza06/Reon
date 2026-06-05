@@ -656,9 +656,10 @@ export const sendMessage = async (req, res) => {
           status: 'delivered'
         };
         
-     
+        console.log(`📤 Emitting to receiver ${receiver}: new-message with msgId: ${msg._id}`);
         emitToUser(receiver.toString(), "new-message", receiverPayload);
         
+        console.log(`📤 Emitting to sender ${sender}: message-sent with msgId: ${msg._id}, status: delivered`);
         // ALWAYS emit to sender, even if they're the current user
         emitToUser(sender.toString(), "message-sent", senderPayload);
         
@@ -682,7 +683,7 @@ export const sendMessage = async (req, res) => {
           status: 'sent'
         };
         
-     
+        console.log(`📤 Emitting to sender ${sender}: message-sent with msgId: ${msg._id}, status: sent (receiver offline)`);
         // ALWAYS emit to sender
         emitToUser(sender.toString(), "message-sent", senderPayload);
     }

@@ -206,7 +206,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
           <MessageBubble
             key={msg.tempId ?? msg._id}
             message={msg}
-            isMine={msg.sender === me._id}
+            isMine={String(msg.sender) === String(me._id)}
             onRetry={msg.status === "failed" ? () => handleRetry(msg) : undefined}
           />
         ))}

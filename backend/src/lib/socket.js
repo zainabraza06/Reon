@@ -395,12 +395,14 @@ export const initSocket = (server) => {
       try {
         socket.userId = userId;
         socket.join(userId);
+        console.log(`[socket.authenticate] User ${userId} authenticated, socketId: ${socket.id}`);
 
         const wasDisconnectedDueToTimeout = disconnectedDueToHeartbeat.has(userId);
         const isReconnection = await markUserAsOnline(userId, socket.id, wasDisconnectedDueToTimeout);
         const onlineFriends = await getOnlineFriends(userId);
 
         if (isReconnection || userSockets.get(userId).size === 1) {
+          console.log(`[socket.authenticate] Delivering pending messages for user ${userId}`);
           await deliverPendingMessages(userId, socket);
         }
 
@@ -812,11 +814,13 @@ export const emitToUser = (userId, event, data) => {
   
   if (userSockets.has(userIdStr)) {
     const sockets = userSockets.get(userIdStr);
+    console.log(`[emitToUser] Emitting "${event}" to user ${userIdStr} on ${sockets.size} socket(s)`);
     sockets.forEach(socketId => {
       io.to(socketId).emit(event, data);
     });
   } else {
     // Fallback to room (for backward compatibility)
+    console.log(`[emitToUser] User ${userIdStr} not in userSockets map, using room fallback`);
     io.to(userIdStr).emit(event, data);
   }
 };

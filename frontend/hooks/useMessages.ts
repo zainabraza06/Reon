@@ -37,11 +37,18 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
 
   const loadMessages = useCallback(async (before?: string) => {
     if (!chatUserId || !myId) return;
+    console.log(\"[useMessages] loadMessages called:\", { chatUserId, myId, before });
     setLoading(true);
     try {
       const { messages: raw } = await api.messages.get(chatUserId, { limit: 50, before });
+      console.log(\"[useMessages] Loaded \", raw.length, \" messages from API\");
       const decrypted = await Promise.all(raw.map(decryptMsg));
-      setMessages((prev) => before ? [...decrypted, ...prev] : decrypted);
+      console.log(\"[useMessages] Decrypted all messages\");
+      setMessages((prev) => {
+        const newMessages = before ? [...decrypted, ...prev] : decrypted;
+        console.log(\"[useMessages] Messages state after load:\", newMessages.length);
+        return newMessages;
+      });
       setHasMore(raw.length === 50);
     } catch (err) {
       console.error("loadMessages error:", err);
@@ -63,26 +70,70 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     // New message from socket (received from other user)
     const handleNew = async (data: unknown) => {
       const msg = data as Message;
+      const senderStr = String(msg.sender);
+      const receiverStr = String(msg.receiver);
+      const chatUserIdStr = String(chatUserId);
+      const myIdStr = String(myId);
+      
+      console.log("[useMessages] handleNew received:", { 
+        msgId: msg._id, 
+        sender: senderStr, 
+        receiver: receiverStr, 
+        chatUserId: chatUserIdStr, 
+        myId: myIdStr,
+        matches: {
+          fromOther: senderStr === chatUserIdStr && receiverStr === myIdStr,
+          fromMe: senderStr === myIdStr && receiverStr === chatUserIdStr
+        }
+      });
+      
       if (
-        (msg.sender === chatUserId && msg.receiver === myId) ||
-        (msg.sender === myId && msg.receiver === chatUserId)
+        (senderStr === chatUserIdStr && receiverStr === myIdStr) ||
+        (senderStr === myIdStr && receiverStr === chatUserIdStr)
       ) {
+        console.log("[useMessages] Message matches, decrypting...");
         const decrypted = await decryptMsg(msg);
+        console.log("[useMessages] Decrypted message:", { 
+          id: decrypted._id, 
+          plaintext: decrypted.plaintext?.substring(0, 50),
+          hasPlaintext: !!decrypted.plaintext
+        });
+        
         setMessages((prev) => {
-          if (prev.find((m) => m._id === decrypted._id)) return prev;
+          const isDuplicate = prev.find((m) => m._id === decrypted._id);
+          console.log(\"[useMessages] Message state update:\", {
+            currentCount: prev.length,
+            isDuplicate,
+            newMessage: decrypted._id
+          });
+          if (isDuplicate) {
+            console.log(\"[useMessages] Skipping duplicate\");
+            return prev;
+          }
+          console.log(\"[useMessages] Adding message, new count will be:\", prev.length + 1);
           return [...prev, decrypted];
         });
-        if (msg.sender !== myId) {
+        
+        if (String(msg.sender) !== String(myId)) {
+          console.log("[useMessages] Receiver - marking as read");
           api.messages.markRead(chatUserId).catch(() => {});
           socketService.emit("message-read", { messageId: msg._id, senderId: msg.sender });
         }
+      } else {
+        console.log("[useMessages] Message doesn't match chat context, ignoring");
       }
     };
 
     // Server confirms our sent message — just update status, never remove other messages
     const handleSent = (data: unknown) => {
       const msg = data as Message;
-      if (msg.sender !== myId) return;
+      const isSender = String(msg.sender) === String(myId);
+      console.log(\"[useMessages] handleSent received:\", { msgId: msg._id, status: msg.status, isSender });
+      if (!isSender) {
+        console.log("[useMessages] handleSent - ignoring, not our message");
+        return;
+      }
+      console.log("[useMessages] handleSent - updating status to:", msg.status);
       setMessages((prev) =>
         prev.map((m) => m._id === msg._id ? { ...m, status: msg.status ?? m.status ?? "sent" } : m)
       );
@@ -91,6 +142,7 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     // Delivery receipt for one message
     const handleDelivered = (data: unknown) => {
       const { messageId } = data as { messageId: string };
+      console.log("[useMessages] handleDelivered:", { messageId });
       setMessages((prev) =>
         prev.map((m) => m._id === messageId ? { ...m, status: "delivered" as const, delivered: true } : m)
       );
@@ -99,6 +151,7 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     // Batch delivery receipts
     const handleDeliveredBatch = (data: unknown) => {
       const { messages: batch } = data as { messages: { messageId: string }[] };
+      console.log("[useMessages] handleDeliveredBatch:", { count: batch?.length });
       if (!batch?.length) return;
       const ids = new Set(batch.map((b) => b.messageId));
       setMessages((prev) =>
@@ -109,6 +162,7 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     // Read receipt — mark all MY messages up to and including this one as read
     const handleRead = (data: unknown) => {
       const { messageId } = data as { messageId: string };
+      console.log("[useMessages] handleRead:", { messageId });
       setMessages((prev) => {
         const target = prev.find((m) => m._id === messageId);
         const cutoff = target ? new Date(target.sentAt).getTime() : 0;
@@ -120,14 +174,14 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
       });
     };
 
+    console.log("[useMessages] Attaching socket listeners for chat:", { chatUserId, myId });
     socketService.on("new-message", handleNew);
     socketService.on("message-sent", handleSent);
     socketService.on("message-delivered", handleDelivered);
     socketService.on("messages-delivered-batch", handleDeliveredBatch);
     socketService.on("message-read", handleRead);
 
-    return () => {
-      socketService.off("new-message", handleNew);
+    return () => {      console.log(\"[useMessages] Cleaning up socket listeners for chat:\", { chatUserId, myId });      socketService.off("new-message", handleNew);
       socketService.off("message-sent", handleSent);
       socketService.off("message-delivered", handleDelivered);
       socketService.off("messages-delivered-batch", handleDeliveredBatch);
