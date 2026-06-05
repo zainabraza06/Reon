@@ -897,7 +897,7 @@ export const markMessageAsRead = async (req, res) => {
     });
 
 
-    console.log9("EVen emeited message read");
+    console.log("Event emitted message-read");
 
     res.json({
       success: true,
@@ -1300,6 +1300,7 @@ export const markChatAsRead = async (req, res) => {
     //  Emit events ONCE
     const payload = {
       messageIds,
+      senderId: userId.toString(),
       readerId: currentUserId.toString(),
       readAt: new Date(),
       status: "read"

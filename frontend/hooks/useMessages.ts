@@ -159,19 +159,15 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
       );
     };
 
-    // Read receipt — mark all MY messages up to and including this one as read
+    // Read receipt — supports both single messageId and batch messageIds
     const handleRead = (data: unknown) => {
-      const { messageId } = data as { messageId: string };
-      console.log("[useMessages] handleRead:", { messageId });
-      setMessages((prev) => {
-        const target = prev.find((m) => m._id === messageId);
-        const cutoff = target ? new Date(target.sentAt).getTime() : 0;
-        return prev.map((m) =>
-          m.sender === myId && new Date(m.sentAt).getTime() <= cutoff
-            ? { ...m, status: "read" as const, read: true }
-            : m
-        );
-      });
+      const payload = data as { messageId?: string; messageIds?: string[] };
+      const ids = new Set(payload.messageIds ?? (payload.messageId ? [payload.messageId] : []));
+      if (ids.size === 0) return;
+      console.log("[useMessages] handleRead:", { count: ids.size });
+      setMessages((prev) =>
+        prev.map((m) => ids.has(m._id) ? { ...m, status: "read" as const, read: true } : m)
+      );
     };
 
     console.log("[useMessages] Attaching socket listeners for chat:", { chatUserId, myId });

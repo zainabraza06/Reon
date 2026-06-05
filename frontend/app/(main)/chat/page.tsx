@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { MessageSquare, Search, Users } from "lucide-react";
+import { MessageSquare, Search, Users, Plus } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
+import CreateGroupModal from "@/components/chat/CreateGroupModal";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import type { ChatListItem, GroupChat } from "@/types";
@@ -23,6 +24,7 @@ export default function ChatLandingPage() {
   const [groups, setGroups] = useState<GroupChat[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -136,8 +138,8 @@ export default function ChatLandingPage() {
                         <div className="flex items-center justify-between gap-1 mt-0.5">
                           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
                             {chat.lastMessage?.contentType && chat.lastMessage.contentType !== "text"
-                              ? `[${chat.lastMessage.contentType}]`
-                              : !chat.lastMessage ? "No messages yet" : ""}
+                              ? `📎 ${chat.lastMessage.contentType}`
+                              : chat.lastMessage ? "Message" : "No messages yet"}
                           </p>
                           {(chat.unreadCount || 0) > 0 && (
                             <span className="btn-gradient text-white text-[10px] font-bold rounded-full min-w-4.5 h-4.5 flex items-center justify-center px-1 shrink-0">
@@ -152,25 +154,37 @@ export default function ChatLandingPage() {
               </ul>
             )
           ) : (
-            filteredGroups.length === 0 ? <EmptyState type="groups" /> : (
-              <ul className="px-2 py-1">
-                {filteredGroups.map((g) => (
-                  <li key={g._id}>
-                    <Link href={`/group/${g._id}`}
-                      className="flex items-center gap-3 mx-1 px-3 py-3 rounded-xl hover:bg-white dark:hover:bg-white/4 transition-colors">
-                      <Avatar src={g.avatar} name={g.name} size={46} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{g.name}</p>
-                          <span className="text-[11px] text-gray-400 shrink-0">{formatTime(g.lastMessage?.sentAt)}</span>
+            <>
+              <div className="px-3 pt-3 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateGroup(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl btn-gradient text-white text-sm font-semibold shadow-md shadow-violet-500/25"
+                >
+                  <Plus size={15} />
+                  New Group
+                </button>
+              </div>
+              {filteredGroups.length === 0 ? <EmptyState type="groups" /> : (
+                <ul className="px-2 py-1">
+                  {filteredGroups.map((g) => (
+                    <li key={g._id}>
+                      <Link href={`/group/${g._id}`}
+                        className="flex items-center gap-3 mx-1 px-3 py-3 rounded-xl hover:bg-white dark:hover:bg-white/4 transition-colors">
+                        <Avatar src={g.avatar} name={g.name} size={46} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{g.name}</p>
+                            <span className="text-[11px] text-gray-400 shrink-0">{formatTime(g.lastMessage?.sentAt)}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{g.members.length} members</p>
                         </div>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">{g.members.length} members</p>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -185,6 +199,16 @@ export default function ChatLandingPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select a conversation to start messaging</p>
         </div>
       </div>
+
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onCreated={() => {
+            api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {});
+            setShowCreateGroup(false);
+          }}
+        />
+      )}
     </>
   );
 }

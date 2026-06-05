@@ -110,6 +110,13 @@ export default function Sidebar({ onNewGroup }: Props) {
       );
     };
 
+    const onMsgRead = (data: unknown) => {
+      const { senderId, readerId } = data as { senderId?: string; readerId?: string };
+      if (senderId && readerId === user?._id) {
+        setChats((prev) => prev.map((c) => c._id === senderId ? { ...c, unreadCount: 0 } : c));
+      }
+    };
+
     const onFriendRequestReceived = () => setPendingCount((c) => c + 1);
     const onFriendRequestAccepted = () => setPendingCount((c) => Math.max(0, c - 1));
     const onFriendRequestRejected = () => setPendingCount((c) => Math.max(0, c - 1));
@@ -125,6 +132,7 @@ export default function Sidebar({ onNewGroup }: Props) {
     };
 
     socketService.on("user-status-changed", onStatus);
+    socketService.on("message-read", onMsgRead);
     socketService.on("group-added", onGroupAdded);
     socketService.on("group-updated", onGroupUpdated);
     socketService.on("group-deleted", onGroupDeleted);
@@ -142,6 +150,7 @@ export default function Sidebar({ onNewGroup }: Props) {
       socketService.off("authenticated", onAuthenticated);
       socketService.off("online-friends-response", onOnlineFriends);
       socketService.off("user-status-changed", onStatus);
+      socketService.off("message-read", onMsgRead);
       socketService.off("group-added", onGroupAdded);
       socketService.off("group-updated", onGroupUpdated);
       socketService.off("group-deleted", onGroupDeleted);
@@ -181,7 +190,7 @@ export default function Sidebar({ onNewGroup }: Props) {
     }`;
 
   return (
-    <aside className="sidebar-root flex h-full w-[300px] flex-col">
+    <aside className="sidebar-root flex h-full w-[260px] lg:w-[300px] flex-col">
 
       {/* Header */}
       <div className="sidebar-header flex items-center justify-between px-4 py-3">
@@ -240,6 +249,7 @@ export default function Sidebar({ onNewGroup }: Props) {
             )}
             {filteredChats.map((chat) => {
               const active = pathname === `/chat/${chat._id}`;
+              const displayUnread = active ? 0 : (chat.unreadCount || 0);
               return (
                 <li key={chat._id}>
                   <Link
@@ -262,11 +272,11 @@ export default function Sidebar({ onNewGroup }: Props) {
                         <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
                           {chat.lastMessage?.contentType && chat.lastMessage.contentType !== "text"
                             ? `📎 ${chat.lastMessage.contentType}`
-                            : !chat.lastMessage ? "No messages yet" : ""}
+                            : chat.lastMessage ? "Message" : "No messages yet"}
                         </p>
-                        {(chat.unreadCount || 0) > 0 && (
+                        {displayUnread > 0 && (
                           <span className="btn-gradient text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 font-bold shrink-0 ml-1">
-                            {chat.unreadCount}
+                            {displayUnread}
                           </span>
                         )}
                       </div>
