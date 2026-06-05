@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { MessageSquare, Users, Compass, Settings } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { MessageSquare, Users, Compass, Settings, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
+import { useAuth } from "@/context/AuthContext";
 
 const tabs = [
   { href: "/chat",            icon: MessageSquare, label: "Chats"    },
@@ -15,6 +16,8 @@ const tabs = [
 
 export default function MobileNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
@@ -42,9 +45,15 @@ export default function MobileNav() {
     };
   }, []);
 
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
+
   return (
     <nav className="mobile-nav-root md:hidden fixed bottom-0 left-0 right-0 z-40 safe-area-bottom">
-      <div className="flex items-center justify-around h-14">
+      <div className="flex items-center justify-between h-14 px-2">
+        <div className="flex items-center justify-around flex-1">
         {tabs.map(({ href, icon: Icon, label }) => {
           const isActive =
             href === "/chat"
@@ -82,6 +91,18 @@ export default function MobileNav() {
             </Link>
           );
         })}
+        </div>
+        
+        {/* Logout button */}
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex flex-col items-center justify-center gap-0.5 h-full p-1.5 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+          title="Logout"
+        >
+          <LogOut size={21} />
+          <span className="text-[10px] font-semibold">Logout</span>
+        </button>
       </div>
     </nav>
   );

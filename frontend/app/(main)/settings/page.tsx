@@ -2,15 +2,13 @@
 import { useState, useRef, ChangeEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Camera, Save, Lock, Smartphone, Link as LinkIcon, LogOut } from "lucide-react";
+import { Camera, Save, Lock, Smartphone, Link as LinkIcon } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 export default function SettingsPage() {
-  const { user, refreshUser, logout } = useAuth();
-  const router = useRouter();
+  const { user, refreshUser } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name, setName]         = useState(user?.fullName || "");
@@ -77,11 +75,6 @@ export default function SettingsPage() {
     } finally {
       setPwSaving(false);
     }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/login");
   };
 
   if (!user) return null;
@@ -231,18 +224,6 @@ export default function SettingsPage() {
               {pwSaving ? "Updating…" : hasPassword ? "Update Password" : "Set Password"}
             </button>
           </form>
-        </section>
-
-        {/* Logout section */}
-        <section>
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">Account</h2>
-          <button
-            onClick={handleLogout}
-            className="btn-gradient-red flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md transition-all w-full justify-center bg-red-500 hover:bg-red-600"
-          >
-            <LogOut size={15} />
-            Logout
-          </button>
         </section>
       </div>
     </div>
