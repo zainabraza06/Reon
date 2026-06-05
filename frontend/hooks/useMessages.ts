@@ -79,23 +79,20 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
       }
     };
 
-    // Server confirms our sent message (replaces temp optimistic entry)
-    const handleSent = async (data: unknown) => {
-      const msg = data as Message & { tempId?: string };
+    // Server confirms our sent message — just update status, never remove other messages
+    const handleSent = (data: unknown) => {
+      const msg = data as Message;
       if (msg.sender !== myId) return;
-      const decrypted = await decryptMsg(msg);
-      setMessages((prev) => {
-        // Replace the temp optimistic entry by tempId or by _id duplicate check
-        const withoutTemp = prev.filter((m) => m.tempId !== msg.tempId && m._id !== msg._id);
-        return [...withoutTemp, { ...decrypted, status: msg.status ?? "sent" }];
-      });
+      setMessages((prev) =>
+        prev.map((m) => m._id === msg._id ? { ...m, status: msg.status ?? m.status ?? "sent" } : m)
+      );
     };
 
     // Delivery receipt for one message
     const handleDelivered = (data: unknown) => {
       const { messageId } = data as { messageId: string };
       setMessages((prev) =>
-        prev.map((m) => m._id === messageId ? { ...m, status: "delivered", delivered: true } : m)
+        prev.map((m) => m._id === messageId ? { ...m, status: "delivered" as const, delivered: true } : m)
       );
     };
 
@@ -105,16 +102,22 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
       if (!batch?.length) return;
       const ids = new Set(batch.map((b) => b.messageId));
       setMessages((prev) =>
-        prev.map((m) => ids.has(m._id) ? { ...m, status: "delivered", delivered: true } : m)
+        prev.map((m) => ids.has(m._id) ? { ...m, status: "delivered" as const, delivered: true } : m)
       );
     };
 
-    // Read receipt
+    // Read receipt — mark all MY messages up to and including this one as read
     const handleRead = (data: unknown) => {
       const { messageId } = data as { messageId: string };
-      setMessages((prev) =>
-        prev.map((m) => m._id === messageId ? { ...m, status: "read", read: true } : m)
-      );
+      setMessages((prev) => {
+        const target = prev.find((m) => m._id === messageId);
+        const cutoff = target ? new Date(target.sentAt).getTime() : 0;
+        return prev.map((m) =>
+          m.sender === myId && new Date(m.sentAt).getTime() <= cutoff
+            ? { ...m, status: "read" as const, read: true }
+            : m
+        );
+      });
     };
 
     socketService.on("new-message", handleNew);

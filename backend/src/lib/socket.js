@@ -615,6 +615,17 @@ export const initSocket = (server) => {
       }
     });
 
+    // READ RECEIPT — receiver tells us they read a message; forward to original sender
+    socket.on("message-read", async ({ messageId, senderId }) => {
+      if (!socket.userId || !senderId || !messageId) return;
+      // Tell the sender their message was read
+      emitToUser(senderId, "message-read", { messageId, readBy: socket.userId });
+      // Persist read status
+      try {
+        await Message.findByIdAndUpdate(messageId, { read: true, readAt: new Date() });
+      } catch {}
+    });
+
     // MESSAGE DELIVERY CONFIRMATION
     socket.on("confirm-message-delivery", async (data) => {
       try {

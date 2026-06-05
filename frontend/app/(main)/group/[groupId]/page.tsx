@@ -1,6 +1,6 @@
 "use client";
 import { use, useState, useEffect, useRef } from "react";
-import { ArrowLeft, Info, Users } from "lucide-react";
+import { ArrowLeft, Info, Users, Check } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
 import MessageInput from "@/components/chat/MessageInput";
@@ -33,7 +33,10 @@ function GroupMessageBubble({ message, isMine }: { message: GroupMessage; isMine
         {message.media && message.media.length > 0 && (
           <p className="text-xs italic opacity-70">[{message.media[0].type} attachment]</p>
         )}
-        <p className={`text-[11px] mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"} text-right`}>{time}</p>
+        <div className={`flex items-center justify-end gap-1 mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"}`}>
+          <span className="text-[11px]">{time}</span>
+          {isMine && <Check size={12} className="text-white/50" />}
+        </div>
       </div>
     </div>
   );
