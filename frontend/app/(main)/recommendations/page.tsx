@@ -116,15 +116,29 @@ export default function RecommendationsPage() {
         })
       );
     };
+    const onWithdrawn = (data: unknown) => {
+      const { requestId, senderId, receiverId } = data as { requestId: string; senderId: string; receiverId: string };
+      setSentRequests((prev) => prev.filter((r) => r._id !== requestId));
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u._id === receiverId) {
+            return { ...u, friendRequestSent: false };
+          }
+          return u;
+        })
+      );
+    };
     socketService.on("friend-request-accepted", onAccepted);
     socketService.on("friend-request-accepted-realtime", onAccepted);
     socketService.on("friend-request-rejected", onRejected);
     socketService.on("friend-request-rejected-realtime", onRejected);
+    socketService.on("friend-request-withdrawn", onWithdrawn);
     return () => {
       socketService.off("friend-request-accepted", onAccepted);
       socketService.off("friend-request-accepted-realtime", onAccepted);
       socketService.off("friend-request-rejected", onRejected);
       socketService.off("friend-request-rejected-realtime", onRejected);
+      socketService.off("friend-request-withdrawn", onWithdrawn);
     };
   }, [sentRequests]);
 
@@ -259,8 +273,8 @@ function UserCard({
           </button>
         ) : hasSent ? (
           <button type="button" onClick={onWithdraw}
-            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:border-red-400 hover:text-red-500 transition-colors">
-            Sent ✓
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:border-red-400 dark:hover:border-red-500/50 transition-colors font-semibold">
+            <UserX size={13} />Withdraw
           </button>
         ) : (
           <button type="button" onClick={onAdd} disabled={isPending}
