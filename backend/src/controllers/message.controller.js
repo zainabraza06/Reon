@@ -1007,7 +1007,22 @@ export const getUserForSideBar = async (req, res) => {
       { $sort: { lastMessageTime: -1 } }
     ]);
 
-    res.status(200).json(privateChats);
+    // Shape into ChatListItem compatible format
+    const chats = privateChats.map((c) => ({
+      _id: c._id,
+      fullName: c.fullName,
+      username: c.username,
+      profilePic: c.profilePic,
+      lastMessage: c.lastMessageTime
+        ? {
+            sentAt: c.lastMessageTime,
+            contentType: c.lastMessage ? "text" : (c.lastMessageMedia?.[0]?.type ?? "document"),
+          }
+        : undefined,
+      unreadCount: c.unreadCount || 0,
+    }));
+
+    res.status(200).json({ chats });
   } catch (err) {
     console.error("❌ getUserForSideBar error:", err);
     res.status(500).json({ message: "Server error" });

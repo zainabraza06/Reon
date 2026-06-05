@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Users, Settings, Plus, LogOut, Search, Compass } from "lucide-react";
+import { Users, Settings, Plus, LogOut, Search, Compass } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
@@ -30,6 +30,22 @@ export default function Sidebar({ onNewGroup }: Props) {
   }, []);
 
   useEffect(() => {
+    // Seed initial online set from the authenticated event (fires on connect/reconnect)
+    const onAuthenticated = (data: unknown) => {
+      const { onlineFriends } = data as { onlineFriends?: string[] };
+      if (Array.isArray(onlineFriends) && onlineFriends.length > 0) {
+        setOnlineUsers(new Set(onlineFriends));
+      }
+    };
+    socketService.on("authenticated", onAuthenticated);
+    // Also request current online users immediately (covers already-connected sessions)
+    socketService.emit("request-online-friends");
+    const onOnlineFriends = (data: unknown) => {
+      const { onlineFriends } = data as { onlineFriends?: string[] };
+      if (Array.isArray(onlineFriends)) setOnlineUsers(new Set(onlineFriends));
+    };
+    socketService.on("online-friends-response", onOnlineFriends);
+
     const onStatus = (data: unknown) => {
       const { userId, isOnline } = data as { userId: string; isOnline: boolean };
       setOnlineUsers((prev) => {
@@ -123,6 +139,8 @@ export default function Sidebar({ onNewGroup }: Props) {
     socketService.on("friend-removed", onFriendRemoved);
 
     return () => {
+      socketService.off("authenticated", onAuthenticated);
+      socketService.off("online-friends-response", onOnlineFriends);
       socketService.off("user-status-changed", onStatus);
       socketService.off("group-added", onGroupAdded);
       socketService.off("group-updated", onGroupUpdated);
