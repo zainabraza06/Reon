@@ -626,6 +626,12 @@ export const sendMessage = async (req, res) => {
         const receiverPayload = {
           _id: msg._id,
           sender: msg.sender.toString(),
+          senderInfo: {
+            _id: req.user._id.toString(),
+            fullName: req.user.fullName,
+            username: req.user.username,
+            profilePic: req.user.profilePic,
+          },
           receiver: msg.receiver.toString(),
           ciphertext: msg.ciphertext,
           type: msg.type,

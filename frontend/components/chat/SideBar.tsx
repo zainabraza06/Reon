@@ -55,14 +55,33 @@ export default function Sidebar({ onNewGroup }: Props) {
       setGroups((prev) => prev.filter((g) => g._id !== groupId));
     };
     const onNewMsg = (data: unknown) => {
-      const msg = data as { sender: string; sentAt: string };
-      setChats((prev) =>
-        prev.map((c) =>
-          c._id === msg.sender
-            ? { ...c, lastMessage: { sentAt: msg.sentAt }, unreadCount: (c.unreadCount || 0) + 1 }
-            : c
-        )
-      );
+      const msg = data as {
+        sender: string; sentAt: string; contentType?: string;
+        senderInfo?: { _id: string; fullName: string; username?: string; profilePic?: string };
+      };
+      setChats((prev) => {
+        const exists = prev.some((c) => c._id === msg.sender);
+        if (exists) {
+          return prev.map((c) =>
+            c._id === msg.sender
+              ? { ...c, lastMessage: { sentAt: msg.sentAt, contentType: msg.contentType }, unreadCount: (c.unreadCount || 0) + 1 }
+              : c
+          );
+        }
+        // First message from this sender — add them to the top of the list
+        if (msg.senderInfo) {
+          const newEntry: ChatListItem = {
+            _id: msg.sender,
+            fullName: msg.senderInfo.fullName,
+            username: msg.senderInfo.username,
+            profilePic: msg.senderInfo.profilePic,
+            lastMessage: { sentAt: msg.sentAt, contentType: msg.contentType },
+            unreadCount: 1,
+          };
+          return [newEntry, ...prev];
+        }
+        return prev;
+      });
     };
     const onNewGroupMsg = (data: unknown) => {
       const { message, groupId } = data as { message: { sentAt: string }; groupId: string };
