@@ -84,7 +84,7 @@ export default function SettingsPage() {
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h1>
       </div>
 
-      <div className="max-w-lg mx-auto w-full p-4 sm:p-6 space-y-8">
+      <div className="max-w-lg mx-auto w-full p-4 sm:p-6 space-y-8 pb-8">
         {/* Profile section */}
         <section>
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">Profile</h2>

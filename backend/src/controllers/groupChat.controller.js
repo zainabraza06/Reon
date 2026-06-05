@@ -346,6 +346,7 @@ export const sendGroupMessage = async (req, res) => {
       }
     }
 
+    const now = new Date();
     const message = await GroupMessage.create({
       groupId,
       sender: senderId,
@@ -353,9 +354,9 @@ export const sendGroupMessage = async (req, res) => {
       contentType: hasFiles ? mediaArr[0]?.type || "document" : contentType,
       memberKeys,
       media: mediaArr,
-      sentAt: new Date(),
-      deliveredTo: [senderId],
-      readBy: [senderId],
+      sentAt: now,
+      deliveredTo: [{ userId: senderId, at: now }],
+      readBy:      [{ userId: senderId, at: now }],
     });
 
     // Update group's lastMessage

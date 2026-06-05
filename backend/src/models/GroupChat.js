@@ -29,8 +29,8 @@ const groupMessageSchema = new mongoose.Schema({
   }],
   media: [groupMediaSchema],
   sentAt: { type: Date, default: Date.now },
-  readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-  deliveredTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  readBy:     [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, at: { type: Date, default: Date.now } }],
+  deliveredTo:[{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, at: { type: Date, default: Date.now } }],
   deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
 }, { timestamps: true });
 
