@@ -103,13 +103,30 @@ export default function RecommendationsPage() {
       const { receiverId } = data as { receiverId: string };
       setUsers((prev) => prev.filter((u) => u._id !== receiverId));
     };
+    const onRejected = (data: unknown) => {
+      const { requestId } = data as { requestId: string };
+      setSentRequests((prev) => prev.filter((r) => r._id !== requestId));
+      // Update the UI to remove the "Sent" state from the user
+      setUsers((prev) =>
+        prev.map((u) => {
+          const req = sentRequests.find((r) =>
+            (typeof r.receiver === "object" ? r.receiver._id : r.receiver) === u._id && r._id === requestId
+          );
+          return req ? { ...u, friendRequestSent: false } : u;
+        })
+      );
+    };
     socketService.on("friend-request-accepted", onAccepted);
     socketService.on("friend-request-accepted-realtime", onAccepted);
+    socketService.on("friend-request-rejected", onRejected);
+    socketService.on("friend-request-rejected-realtime", onRejected);
     return () => {
       socketService.off("friend-request-accepted", onAccepted);
       socketService.off("friend-request-accepted-realtime", onAccepted);
+      socketService.off("friend-request-rejected", onRejected);
+      socketService.off("friend-request-rejected-realtime", onRejected);
     };
-  }, []);
+  }, [sentRequests]);
 
   const hasMore = users.length < total;
 
