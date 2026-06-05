@@ -737,9 +737,7 @@ export const getMessages = async (req, res) => {
   try {
     const currentUserId = req.user._id;
     const { receiverId } = req.params;
-    const limitParam = parseInt(req.query.limit, 10) || 50;
     const before = req.query.before; // ISO date string expected
-    const limit = Math.min(Math.max(limitParam, 5), 200); // clamp between 5 and 200
 
     // Validate receiverId
     if (!receiverId || !mongoose.Types.ObjectId.isValid(receiverId)) {
@@ -754,30 +752,65 @@ export const getMessages = async (req, res) => {
       ]
     };
 
-    let query = Message.find(baseFilter)
-      .populate('sender', 'username fullName profilePic email')
-      .populate('receiver', 'username fullName profilePic email');
+    let messages;
+    const minLimit = 20; // Ensure at least 20 messages are loaded if available
 
-    // If `before` provided, load messages older than that timestamp
     if (before) {
       const beforeDate = new Date(before);
-      if (!isNaN(beforeDate.getTime())) {
-        query = query.where('sentAt').lt(beforeDate).sort({ sentAt: -1 }).limit(limit);
-      } else {
-        // invalid before parameter
+      if (isNaN(beforeDate.getTime())) {
         return res.status(400).json({ message: 'Invalid before parameter' });
       }
-    } else {
-      // No before -> load latest `limit` messages
-      query = query.sort({ sentAt: -1 }).limit(limit);
-    }
+      
+      const twoDaysBefore = new Date(beforeDate.getTime() - 2 * 24 * 60 * 60 * 1000);
+      
+      // Attempt to load all messages in the 2-day window prior to `beforeDate`
+      messages = await Message.find({
+        ...baseFilter,
+        sentAt: { $lt: beforeDate, $gte: twoDaysBefore }
+      })
+      .sort({ sentAt: -1 })
+      .populate('sender', 'username fullName profilePic email')
+      .populate('receiver', 'username fullName profilePic email')
+      .exec();
 
-    // Execute query
-    let messages = await query.exec();
+      // If the 2-day window has fewer than minLimit messages, fetch exactly minLimit messages instead
+      if (messages.length < minLimit) {
+        messages = await Message.find({
+          ...baseFilter,
+          sentAt: { $lt: beforeDate }
+        })
+        .sort({ sentAt: -1 })
+        .limit(minLimit)
+        .populate('sender', 'username fullName profilePic email')
+        .populate('receiver', 'username fullName profilePic email')
+        .exec();
+      }
+    } else {
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      
+      // Attempt to load all messages from the last 2 days
+      messages = await Message.find({
+        ...baseFilter,
+        sentAt: { $gte: twoDaysAgo }
+      })
+      .sort({ sentAt: -1 })
+      .populate('sender', 'username fullName profilePic email')
+      .populate('receiver', 'username fullName profilePic email')
+      .exec();
+
+      // If the last 2 days have fewer than minLimit messages, fetch exactly minLimit messages instead
+      if (messages.length < minLimit) {
+        messages = await Message.find(baseFilter)
+          .sort({ sentAt: -1 })
+          .limit(minLimit)
+          .populate('sender', 'username fullName profilePic email')
+          .populate('receiver', 'username fullName profilePic email')
+          .exec();
+      }
+    }
 
     // Query returns newest-first due to sort({sentAt:-1}); normalize to ascending order
     messages = messages.reverse();
-
 
     // Normalize messages
     const normalizedMessages = messages.map(msg => {
@@ -837,10 +870,21 @@ export const getMessages = async (req, res) => {
       return response;
     });
 
-    
+    // Check if there are older messages in the database to determine hasMore
+    let hasMore = false;
+    if (messages.length > 0) {
+      const oldestMessageSentAt = messages[0].sentAt; // index 0 is oldest in this batch since we reversed it
+      const olderCount = await Message.countDocuments({
+        ...baseFilter,
+        sentAt: { $lt: oldestMessageSentAt }
+      });
+      hasMore = olderCount > 0;
+    }
+
     return res.json({
       success: true,
-      data: normalizedMessages
+      data: normalizedMessages,
+      hasMore: hasMore
     });
 
   } catch (err) {

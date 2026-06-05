@@ -70,12 +70,15 @@ export const api = {
       return (json.data ?? json.message ?? json) as import("@/types").Message;
     },
     // Returns { success, data: Message[] }
-    get: async (userId: string, params?: { limit?: number; before?: string }): Promise<{ messages: import("@/types").Message[] }> => {
+    get: async (userId: string, params?: { limit?: number; before?: string }): Promise<{ messages: import("@/types").Message[]; hasMore: boolean }> => {
       const q = new URLSearchParams();
       if (params?.limit) q.set("limit", String(params.limit));
       if (params?.before) q.set("before", params.before);
-      const json = await request<{ success: boolean; data?: import("@/types").Message[]; messages?: import("@/types").Message[] }>(`/messages/${userId}?${q}`);
-      return { messages: json.data ?? json.messages ?? [] };
+      const json = await request<{ success: boolean; data?: import("@/types").Message[]; messages?: import("@/types").Message[]; hasMore?: boolean }>(`/messages/${userId}?${q}`);
+      return {
+        messages: json.data ?? json.messages ?? [],
+        hasMore: json.hasMore ?? false
+      };
     },
     sidebar: () => request<{ chats: import("@/types").ChatListItem[] }>("/messages/sidebar/list"),
     search: (q: string) => request<{ users: import("@/types").ChatListItem[] }>(`/messages/search?q=${encodeURIComponent(q)}`),

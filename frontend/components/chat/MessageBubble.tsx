@@ -39,7 +39,9 @@ async function fetchAndDecrypt(url: string, key?: string, iv?: string): Promise<
 }
 
 function VoiceNote({ file, isMine }: { file: MediaFile; isMine: boolean }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(
+    file.isEncrypted === false || !file.encryptedKey ? file.url : null
+  );
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const ref = useRef<HTMLAudioElement>(null);
@@ -104,7 +106,9 @@ function VoiceNote({ file, isMine }: { file: MediaFile; isMine: boolean }) {
 }
 
 function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(
+    file.isEncrypted === false || !file.encryptedKey ? file.url : null
+  );
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -137,11 +141,35 @@ function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   );
 
   if (file.type === "image") return url
-    ? <img src={url} alt={file.originalName} className="max-w-[260px] max-h-[320px] rounded-xl object-cover block cursor-zoom-in" /> // eslint-disable-line
+    ? (
+      <div className="relative group/media max-w-[260px] max-h-[320px] rounded-xl overflow-hidden">
+        <img src={url} alt={file.originalName} className="max-w-full max-h-[320px] rounded-xl object-cover block cursor-zoom-in" />
+        <button
+          type="button"
+          onClick={download}
+          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-opacity opacity-0 group-hover/media:opacity-100 shadow-md"
+          title="Download Image"
+        >
+          <Download size={14} />
+        </button>
+      </div>
+    )
     : <Placeholder icon={<span className="text-3xl">🔒</span>} />;
 
   if (file.type === "video") return url
-    ? <video controls src={url} className="max-w-[260px] rounded-xl block" />
+    ? (
+      <div className="relative group/media max-w-[260px] rounded-xl overflow-hidden">
+        <video controls src={url} className="max-w-full rounded-xl block" />
+        <button
+          type="button"
+          onClick={download}
+          className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full transition-opacity opacity-0 group-hover/media:opacity-100 shadow-md z-10"
+          title="Download Video"
+        >
+          <Download size={14} />
+        </button>
+      </div>
+    )
     : <Placeholder icon={<span className="text-3xl">▶️</span>} />;
 
   if (file.type === "audio") return url

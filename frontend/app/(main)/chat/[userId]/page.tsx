@@ -31,7 +31,13 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   const [isOnline, setIsOnline] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lastMessageIdRef = useRef<string>("");
+  const scrollHeightRef = useRef<number>(0);
+  const scrollTopRef = useRef<number>(0);
 
   useEffect(() => {
     api.friends.list().then(({ friends }) => {
@@ -61,14 +67,84 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
     return () => socketService.off("user-typing", onTyping);
   }, [userId]);
 
+  // Infinite scroll sentinel observer
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          // Record scroll position before loading more
+          const container = chatContainerRef.current;
+          if (container) {
+            scrollHeightRef.current = container.scrollHeight;
+            scrollTopRef.current = container.scrollTop;
+          }
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => {
+      observer.unobserve(sentinel);
+    };
+  }, [loadMore, hasMore, loading]);
+
+  // Adjust scroll position after prepending older messages (scroll anchoring)
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (container && scrollHeightRef.current > 0) {
+      const delta = container.scrollHeight - scrollHeightRef.current;
+      container.scrollTop = scrollTopRef.current + delta;
+      scrollHeightRef.current = 0;
+    }
   }, [messages]);
+
+  // Smart scroll-to-bottom behavior
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const lastMsg = messages[messages.length - 1];
+    const isNewMessage = lastMsg._id !== lastMessageIdRef.current;
+
+    if (isNewMessage) {
+      const prevId = lastMessageIdRef.current;
+      lastMessageIdRef.current = lastMsg._id;
+
+      const isMine = String(lastMsg.sender) === String(me?._id);
+      const container = chatContainerRef.current;
+      
+      const isNearBottom = container
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 200
+        : true;
+
+      // Scroll to bottom only if:
+      // 1. First initial load (prevId is empty)
+      // 2. Sent by me
+      // 3. User is already scrolled near the bottom
+      const isInitial = !prevId;
+      if (isMine || isInitial || isNearBottom) {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  }, [messages, me?._id]);
 
   const sendSingle = useCallback(async (text: string, file: File | null, isVoice = false) => {
     if (!me) return;
 
     const tempId = `temp-${Date.now()}-${Math.random()}`;
+
+    const tempMedia = file ? {
+      url: URL.createObjectURL(file),
+      type: guessFileType(file.type),
+      fileName: file.name,
+      originalName: file.name,
+      fileSize: file.size,
+      isEncrypted: false,
+    } : undefined;
 
     // Optimistic: add "sending" message immediately
     const optimistic: Message = {
@@ -78,6 +154,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
       receiver: userId,
       contentType: file ? guessFileType(file.type) : "text",
       plaintext: text || undefined,
+      media: tempMedia ? [tempMedia] : undefined,
       sentAt: new Date().toISOString(),
       status: "sending",
       isVoiceMessage: isVoice,
@@ -188,12 +265,13 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-0.5 chat-bg">
-        {hasMore && !loading && (
-          <div className="text-center py-2">
-            <button type="button" onClick={loadMore} className="text-xs text-violet-600 dark:text-violet-400 hover:underline bg-white dark:bg-[#1a1a3a] px-3 py-1.5 rounded-full shadow-sm transition-colors">
-              Load earlier messages
-            </button>
+      <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-0.5 chat-bg">
+        {/* Infinite Scroll Sentinel */}
+        {hasMore && (
+          <div ref={sentinelRef} className="h-6 w-full flex items-center justify-center py-2">
+            {loading && (
+              <div className="w-4 h-4 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+            )}
           </div>
         )}
         {loading && messages.length === 0 && (

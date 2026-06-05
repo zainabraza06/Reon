@@ -71,6 +71,7 @@ export function useCall(myId: string | null) {
   const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
   // Track if call was ever active (to distinguish missed from never-answered)
   const wasActivatedRef = useRef(false);
+  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
 
   const stopDurationTimer = () => {
     if (durationTimer.current) { clearInterval(durationTimer.current); durationTimer.current = null; }
@@ -83,6 +84,7 @@ export function useCall(myId: string | null) {
     pcRef.current?.close();
     pcRef.current = null;
     iceQueueRef.current = [];
+    pendingOfferRef.current = null; // Clear any pending offer
 
     // Save call log if we have a peer and reason is meaningful
     if (myId && peerId) {
@@ -99,6 +101,71 @@ export function useCall(myId: string | null) {
     // Reset to fully idle after a brief moment (enough for UI to show the reason)
     setTimeout(() => setState(INIT), 3500);
   }, [myId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video") => {
+    if (pcRef.current) return pcRef.current;
+    const { iceServers } = await api.calls.get(callId);
+    const pc = new RTCPeerConnection({ iceServers });
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) callSockRef.current?.emit("call:candidate", { callId, candidate });
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "connected") {
+        wasActivatedRef.current = true;
+        setState((s) => ({ ...s, status: "active" }));
+        // start timer
+        if (!durationTimer.current) {
+          durationTimer.current = setInterval(() =>
+            setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
+        }
+      }
+      if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+        endCallLocalRef.current?.("completed");
+      }
+    };
+    pc.ontrack = (e) => {
+      setState((s) => ({ ...s, remoteStream: e.streams[0] ?? null }));
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      setState((s) => ({ ...s, localStream: stream }));
+    } catch {
+      console.warn("Media access denied — audio/video unavailable");
+    }
+
+    pcRef.current = pc;
+    return pc;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const processOffer = useCallback(async (callId: string, offer: RTCSessionDescriptionInit, type: "audio" | "video") => {
+    await ensurePeerConnectionRef.current?.(callId, type);
+    const pc = pcRef.current!;
+    try {
+      await pc.setRemoteDescription(offer);
+      for (const c of iceQueueRef.current) await pc.addIceCandidate(c).catch(() => {});
+      iceQueueRef.current = [];
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      callSockRef.current?.emit("call:answer", { callId, answer });
+      setState((s) => ({ ...s, status: "connecting" }));
+    } catch (err) {
+      console.error("processOffer error:", err);
+      endCallLocalRef.current?.("failed");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stable refs for callbacks invoked inside socket handlers to avoid stale closures
+  const processOfferRef = useRef(processOffer);
+  processOfferRef.current = processOffer;
+
+  const endCallLocalRef = useRef(endCallLocal);
+  endCallLocalRef.current = endCallLocal;
+
+  const ensurePeerConnectionRef = useRef(ensurePeerConnection);
+  ensurePeerConnectionRef.current = ensurePeerConnection;
 
   const connectCallSocket = useCallback(() => {
     if (callSockRef.current?.connected) return;
@@ -120,19 +187,11 @@ export function useCall(myId: string | null) {
 
     sock.on("call:offer", async ({ callId, offer, type }: { callId: string; offer: RTCSessionDescriptionInit; type: string }) => {
       if (stateRef.current.callId !== callId) return;
-      await ensurePeerConnection(callId, type as "audio" | "video");
-      const pc = pcRef.current!;
-      try {
-        await pc.setRemoteDescription(offer);
-        for (const c of iceQueueRef.current) await pc.addIceCandidate(c).catch(() => {});
-        iceQueueRef.current = [];
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sock.emit("call:answer", { callId, answer });
-        setState((s) => ({ ...s, status: "connecting" }));
-      } catch (err) {
-        console.error("call:offer handling error:", err);
-        endCallLocal("failed");
+      pendingOfferRef.current = offer;
+      
+      // Only process offer if user has already accepted and we are in connecting status
+      if (stateRef.current.status === "connecting") {
+        await processOfferRef.current?.(callId, offer, type as "audio" | "video");
       }
     });
 
@@ -152,13 +211,13 @@ export function useCall(myId: string | null) {
     });
 
     sock.on("call:reject", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocal("declined");
+      if (stateRef.current.callId === callId) endCallLocalRef.current?.("declined");
     });
     sock.on("call:hangup", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocal("completed");
+      if (stateRef.current.callId === callId) endCallLocalRef.current?.("completed");
     });
     sock.on("call:busy", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocal("busy");
+      if (stateRef.current.callId === callId) endCallLocalRef.current?.("busy");
     });
 
     sock.on("call:track:update", (_: unknown) => { /* remote mute state — future */ });
@@ -168,44 +227,6 @@ export function useCall(myId: string | null) {
     if (myId) connectCallSocket();
     return () => { callSockRef.current?.disconnect(); };
   }, [myId, connectCallSocket]);
-
-  const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video") => {
-    if (pcRef.current) return pcRef.current;
-    const { iceServers } = await api.calls.get(callId);
-    const pc = new RTCPeerConnection({ iceServers });
-
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) callSockRef.current?.emit("call:candidate", { callId, candidate });
-    };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") {
-        wasActivatedRef.current = true;
-        setState((s) => ({ ...s, status: "active" }));
-        // start timer
-        if (!durationTimer.current) {
-          durationTimer.current = setInterval(() =>
-            setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
-        }
-      }
-      if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
-        endCallLocal("completed");
-      }
-    };
-    pc.ontrack = (e) => {
-      setState((s) => ({ ...s, remoteStream: e.streams[0] ?? null }));
-    };
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      setState((s) => ({ ...s, localStream: stream }));
-    } catch {
-      console.warn("Media access denied — audio/video unavailable");
-    }
-
-    pcRef.current = pc;
-    return pc;
-  }, [endCallLocal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startCall = useCallback(async (toUserId: string, peerName: string, type: "audio" | "video") => {
     if (!myId || stateRef.current.status !== "idle") return;
@@ -227,9 +248,14 @@ export function useCall(myId: string | null) {
     const { callId, type } = stateRef.current;
     if (!callId || stateRef.current.status !== "incoming") return;
     setState((s) => ({ ...s, status: "connecting" }));
-    await ensurePeerConnection(callId, type);
-    // call:offer event will arrive and complete the handshake
-  }, [ensurePeerConnection]);
+
+    if (pendingOfferRef.current) {
+      await processOffer(callId, pendingOfferRef.current, type);
+      pendingOfferRef.current = null;
+    } else {
+      await ensurePeerConnection(callId, type);
+    }
+  }, [ensurePeerConnection, processOffer]);
 
   const rejectCall = useCallback(() => {
     const { callId } = stateRef.current;

@@ -45,8 +45,8 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     console.log("[useMessages] loadMessages called:", { chatUserId, myId, before });
     setLoading(true);
     try {
-      const { messages: raw } = await api.messages.get(chatUserId, { limit: 50, before });
-      console.log("[useMessages] Loaded ", raw.length, " messages from API");
+      const { messages: raw, hasMore: rawHasMore } = await api.messages.get(chatUserId, { before });
+      console.log("[useMessages] Loaded ", raw.length, " messages from API, hasMore:", rawHasMore);
       const decrypted = await Promise.all(raw.map(decryptMsg));
       console.log("[useMessages] Decrypted all messages");
       setMessages((prev) => {
@@ -54,7 +54,7 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
         console.log("[useMessages] Messages state after load:", newMessages.length);
         return newMessages;
       });
-      setHasMore(raw.length === 50);
+      setHasMore(rawHasMore);
     } catch (err) {
       console.error("loadMessages error:", err);
     } finally {
