@@ -72,6 +72,8 @@ export function useCall(myId: string | null) {
   // Track if call was ever active (to distinguish missed from never-answered)
   const wasActivatedRef = useRef(false);
   const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
+  // Connection timeout ref — declared early so endCallLocal can reference it
+  const connTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopDurationTimer = () => {
     if (durationTimer.current) { clearInterval(durationTimer.current); durationTimer.current = null; }
@@ -80,11 +82,13 @@ export function useCall(myId: string | null) {
   const endCallLocal = useCallback((reason: CallEndReason = "completed") => {
     const { localStream, peerId, type, duration, status } = stateRef.current;
     stopDurationTimer();
+    // Clear connection timeout so it doesn't fire after the call is already over
+    if (connTimeoutRef.current) { clearTimeout(connTimeoutRef.current); connTimeoutRef.current = null; }
     localStream?.getTracks().forEach((t) => t.stop());
     pcRef.current?.close();
     pcRef.current = null;
     iceQueueRef.current = [];
-    pendingOfferRef.current = null; // Clear any pending offer
+    pendingOfferRef.current = null;
 
     // Save call log if we have a peer and reason is meaningful
     if (myId && peerId) {
@@ -98,42 +102,75 @@ export function useCall(myId: string | null) {
 
     wasActivatedRef.current = false;
     setState({ ...INIT, status: "ended", endReason: reason });
-    // Reset to fully idle after a brief moment (enough for UI to show the reason)
     setTimeout(() => setState(INIT), 3500);
   }, [myId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activateCall = useCallback(() => {
+    // Clear timeout – connection succeeded
+    if (connTimeoutRef.current) { clearTimeout(connTimeoutRef.current); connTimeoutRef.current = null; }
+    wasActivatedRef.current = true;
+    if (!durationTimer.current) {
+      durationTimer.current = setInterval(() =>
+        setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
+    }
+    setState((s) => s.status === "active" ? s : { ...s, status: "active" });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activateCallRef = useRef(activateCall);
+  activateCallRef.current = activateCall;
 
   const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video") => {
     if (pcRef.current) return pcRef.current;
     const { iceServers } = await api.calls.get(callId);
-    const pc = new RTCPeerConnection({ iceServers });
+    const pc = new RTCPeerConnection({
+      iceServers,
+      // Improves connection speed and compatibility
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require",
+    });
 
+    // ── ICE candidate handler ────────────────────────────────────────────────
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) callSockRef.current?.emit("call:candidate", { callId, candidate });
     };
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") {
-        wasActivatedRef.current = true;
-        setState((s) => ({ ...s, status: "active" }));
-        // start timer
-        if (!durationTimer.current) {
-          durationTimer.current = setInterval(() =>
-            setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
-        }
+
+    // ── Primary: iceConnectionState (most reliable across Chrome/Firefox) ────
+    pc.oniceconnectionstatechange = () => {
+      console.log("[WebRTC] iceConnectionState →", pc.iceConnectionState);
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        activateCallRef.current();
       }
-      if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+      if (pc.iceConnectionState === "failed") {
+        console.error("[WebRTC] ICE failed — ending call");
+        endCallLocalRef.current?.("failed");
+      }
+      // "disconnected" is transient (browser heartbeat missed) — don't end call
+    };
+
+    // ── Secondary: connectionState (backup, fires after ICE on most browsers) ─
+    pc.onconnectionstatechange = () => {
+      console.log("[WebRTC] connectionState →", pc.connectionState);
+      if (pc.connectionState === "connected") {
+        activateCallRef.current();
+      }
+      // Only hard-end on "failed" or "closed" — NOT "disconnected" (transient)
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         endCallLocalRef.current?.("completed");
       }
     };
+
+    // ── Remote stream ────────────────────────────────────────────────────────
     pc.ontrack = (e) => {
       setState((s) => ({ ...s, remoteStream: e.streams[0] ?? null }));
     };
 
+    // ── Local media ──────────────────────────────────────────────────────────
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       setState((s) => ({ ...s, localStream: stream }));
     } catch {
-      console.warn("Media access denied — audio/video unavailable");
+      console.warn("[WebRTC] Media access denied — audio/video unavailable");
     }
 
     pcRef.current = pc;
@@ -151,8 +188,17 @@ export function useCall(myId: string | null) {
       await pc.setLocalDescription(answer);
       callSockRef.current?.emit("call:answer", { callId, answer });
       setState((s) => ({ ...s, status: "connecting" }));
+
+      // Safety timeout — if ICE never resolves, end call after 45 s
+      if (connTimeoutRef.current) clearTimeout(connTimeoutRef.current);
+      connTimeoutRef.current = setTimeout(() => {
+        if (stateRef.current.status === "connecting") {
+          console.warn("[WebRTC] Connection timeout — ending call");
+          endCallLocalRef.current?.("failed");
+        }
+      }, 45_000);
     } catch (err) {
-      console.error("processOffer error:", err);
+      console.error("[WebRTC] processOffer error:", err);
       endCallLocalRef.current?.("failed");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -204,8 +250,18 @@ export function useCall(myId: string | null) {
         }
         iceQueueRef.current = [];
         setState((s) => ({ ...s, status: "connecting" }));
+
+        // Caller-side connection timeout — if ICE never succeeds within 45 s, end call
+        if (connTimeoutRef.current) clearTimeout(connTimeoutRef.current);
+        connTimeoutRef.current = setTimeout(() => {
+          if (stateRef.current.status === "connecting") {
+            console.warn("[WebRTC] Caller connection timeout — ending call");
+            endCallLocalRef.current?.("failed");
+          }
+        }, 45_000);
       } catch (err) {
-        console.error("Error setting remote answer description:", err);
+        console.error("[WebRTC] Error setting remote answer:", err);
+        endCallLocalRef.current?.("failed");
       }
     });
 
@@ -243,11 +299,15 @@ export function useCall(myId: string | null) {
       setState((s) => ({ ...s, status: "calling", callId, peerId: toUserId, peerName, type }));
       await ensurePeerConnection(callId, type);
       const pc = pcRef.current!;
-      const offer = await pc.createOffer();
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: type === "video",
+      });
       await pc.setLocalDescription(offer);
+      console.log("[WebRTC] Sending offer for call:", callId);
       callSockRef.current?.emit("call:offer", { callId, offer, type });
     } catch (err) {
-      console.error("startCall error:", err);
+      console.error("[WebRTC] startCall error:", err);
       endCallLocal("failed");
     }
   }, [myId, ensurePeerConnection, endCallLocal]);
