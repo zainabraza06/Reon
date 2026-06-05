@@ -118,10 +118,10 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
       fd.append("data", JSON.stringify(jsonData));
       const message = await api.messages.send(fd);
 
-      // Decrypt for display
+      // Decrypt for display — API returns `encryptedKey` resolved to the sender's key
       let plaintext = text || undefined;
-      if (message.ciphertext && privateKey && message.senderEncryptedKey) {
-        try { plaintext = await decryptText(message.ciphertext, message.senderEncryptedKey, privateKey); } catch {}
+      if (message.ciphertext && privateKey && message.encryptedKey) {
+        try { plaintext = await decryptText(message.ciphertext, message.encryptedKey, privateKey); } catch {}
       }
 
       // Replace optimistic with real message

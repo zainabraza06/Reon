@@ -22,7 +22,12 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
     }
     if (!privateKeyRef.current || !msg.ciphertext) return msg;
     try {
-      const key = msg.sender === myId ? msg.senderEncryptedKey : msg.encryptedKey;
+      // API resolves the correct key into `encryptedKey` for both sender and receiver.
+      // `senderEncryptedKey` is only present on raw DB payloads — use it when available,
+      // fall back to `encryptedKey` (which already holds the correct key for the caller).
+      const key = msg.sender === myId
+        ? (msg.senderEncryptedKey ?? msg.encryptedKey)
+        : msg.encryptedKey;
       if (!key) return msg;
       const plaintext = await decryptText(msg.ciphertext, key, privateKeyRef.current);
       return { ...msg, plaintext };
