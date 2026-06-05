@@ -377,8 +377,9 @@ export const sendGroupMessage = async (req, res) => {
       .map((m) => m.user);
 
     if (onlineMemberIds.length > 0) {
+      const deliveryDocs = onlineMemberIds.map((uid) => ({ userId: uid, at: now }));
       await GroupMessage.findByIdAndUpdate(message._id, {
-        $addToSet: { deliveredTo: { $each: onlineMemberIds } },
+        $push: { deliveredTo: { $each: deliveryDocs } },
       });
     }
 
@@ -457,15 +458,16 @@ export const markGroupMessagesRead = async (req, res) => {
     // Collect unread messages (excluding ones the user sent themselves)
     const unread = await GroupMessage.find({
       groupId,
-      readBy: { $ne: userId },
+      "readBy.userId": { $ne: userId },
       sender: { $ne: userId },
     }).select("_id sender readBy");
 
     if (unread.length === 0) return res.json({ message: "Nothing to mark" });
 
+    const now = new Date();
     await GroupMessage.updateMany(
-      { groupId, readBy: { $ne: userId }, sender: { $ne: userId } },
-      { $addToSet: { readBy: userId } }
+      { groupId, "readBy.userId": { $ne: userId }, sender: { $ne: userId } },
+      { $push: { readBy: { userId, at: now } } }
     );
 
     // Group message IDs by original sender so each sender gets one event
@@ -489,6 +491,49 @@ export const markGroupMessagesRead = async (req, res) => {
     res.json({ message: "Marked as read" });
   } catch (err) {
     console.error("markGroupMessagesRead error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ── group message info (who read / who delivered, with timestamps) ────────────
+
+export const getGroupMessageInfo = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(messageId))
+      return res.status(400).json({ message: "Invalid message ID" });
+
+    const msg = await GroupMessage.findById(messageId)
+      .populate("readBy.userId", "fullName username profilePic")
+      .populate("deliveredTo.userId", "fullName username profilePic");
+
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    const group = await GroupChat.findById(msg.groupId);
+    if (!group || !isMember(group, userId))
+      return res.status(403).json({ message: "Not a member" });
+
+    // Only sender can query info
+    if (msg.sender.toString() !== userId.toString())
+      return res.status(403).json({ message: "Only the sender can view message info" });
+
+    const senderId = msg.sender.toString();
+
+    const readBy = (msg.readBy || [])
+      .filter((r) => r.userId && r.userId._id.toString() !== senderId)
+      .map((r) => ({ user: r.userId, at: r.at }));
+
+    // deliveredTo: members who received but haven't read yet
+    const readUserIds = new Set(readBy.map((r) => r.user._id.toString()));
+    const deliveredTo = (msg.deliveredTo || [])
+      .filter((d) => d.userId && d.userId._id.toString() !== senderId && !readUserIds.has(d.userId._id.toString()))
+      .map((d) => ({ user: d.userId, at: d.at }));
+
+    res.json({ readBy, deliveredTo, memberCount: group.members.length - 1 });
+  } catch (err) {
+    console.error("getGroupMessageInfo error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

@@ -714,16 +714,16 @@ export const initSocket = (server) => {
       const userId = socket.userId;
       if (!userId || !messageId) return;
       try {
-        const msg = await GroupMessage.findByIdAndUpdate(
-          messageId,
-          { $addToSet: { deliveredTo: userId } },
+        const msg = await GroupMessage.findOneAndUpdate(
+          { _id: messageId, "deliveredTo.userId": { $ne: userId } },
+          { $push: { deliveredTo: { userId, at: new Date() } } },
           { new: true }
         );
-        if (!msg) return;
-        const group = await GroupChat.find({ _id: groupId || msg.groupId }).select("members").lean();
-        const memberCount = group[0] ? group[0].members.length - 1 : 0;
+        if (!msg) return; // already delivered or not found
+        const group = await GroupChat.findOne({ _id: groupId || msg.groupId }).select("members").lean();
+        const memberCount = group ? group.members.length - 1 : 0;
         const deliveredCount = msg.deliveredTo.filter(
-          (id) => id.toString() !== msg.sender.toString()
+          (d) => d.userId.toString() !== msg.sender.toString()
         ).length;
         emitToUser(msg.sender.toString(), "group-message-delivered", {
           messageId: msg._id.toString(),

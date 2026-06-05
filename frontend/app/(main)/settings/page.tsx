@@ -2,13 +2,13 @@
 import { useState, useRef, ChangeEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, Save, Lock, Smartphone, Link as LinkIcon, LogOut } from "lucide-react";
+import { Camera, Save, Lock, Smartphone, Link as LinkIcon } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 export default function SettingsPage() {
-  const { user, refreshUser, logout } = useAuth();
+  const { user, refreshUser } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name, setName]         = useState(user?.fullName || "");
@@ -210,20 +210,6 @@ export default function SettingsPage() {
               {pwSaving ? "Updating…" : hasPassword ? "Update Password" : "Set Password"}
             </button>
           </form>
-        </section>
-
-        <hr className="border-gray-200 dark:border-white/6" />
-
-        {/* Logout section */}
-        <section>
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">Session</h2>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-red-500 hover:bg-red-600 transition-all shadow-md shadow-red-500/25"
-          >
-            <LogOut size={15} />
-            Logout
-          </button>
         </section>
       </div>
     </div>
