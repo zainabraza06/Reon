@@ -100,8 +100,8 @@ export default function RecommendationsPage() {
 
   useEffect(() => {
     const onAccepted = (data: unknown) => {
-      const { senderId } = data as { senderId: string };
-      setUsers((prev) => prev.filter((u) => u._id !== senderId));
+      const { receiverId } = data as { receiverId: string };
+      setUsers((prev) => prev.filter((u) => u._id !== receiverId));
     };
     socketService.on("friend-request-accepted", onAccepted);
     socketService.on("friend-request-accepted-realtime", onAccepted);
