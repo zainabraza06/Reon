@@ -197,8 +197,16 @@ export function useCall(myId: string | null) {
 
     sock.on("call:answer", async ({ callId, answer }: { callId: string; answer: RTCSessionDescriptionInit }) => {
       if (stateRef.current.callId !== callId || !pcRef.current) return;
-      await pcRef.current.setRemoteDescription(answer).catch(console.error);
-      setState((s) => ({ ...s, status: "connecting" }));
+      try {
+        await pcRef.current.setRemoteDescription(answer);
+        for (const c of iceQueueRef.current) {
+          await pcRef.current.addIceCandidate(c).catch(() => {});
+        }
+        iceQueueRef.current = [];
+        setState((s) => ({ ...s, status: "connecting" }));
+      } catch (err) {
+        console.error("Error setting remote answer description:", err);
+      }
     });
 
     sock.on("call:candidate", async ({ callId, candidate }: { callId: string; candidate: RTCIceCandidateInit }) => {

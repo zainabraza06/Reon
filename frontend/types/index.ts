@@ -55,6 +55,7 @@ export interface Message {
   readAt?: string | null;
   status?: "sending" | "sent" | "delivered" | "read" | "failed";
   isVoiceMessage?: boolean;
+  senderInfo?: { fullName: string; username?: string; profilePic?: string };
   // populated when contentType === "call-log"
   callLog?: { callType: "audio" | "video"; outcome: "completed" | "missed" | "declined" | "busy"; duration?: number };
   // client-only: temp id before server confirms
@@ -146,6 +147,9 @@ export interface ChatListItem {
     contentType?: string;
     sentAt?: string;
     status?: string;
+    ciphertext?: string;
+    sender?: string;
+    encryptedKey?: string;
   };
   unreadCount?: number;
   isOnline?: boolean;

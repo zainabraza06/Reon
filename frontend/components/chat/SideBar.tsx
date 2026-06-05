@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Users, Settings, Plus, LogOut, Search, Compass } from "lucide-react";
@@ -7,6 +7,7 @@ import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
+import { decryptText, getStoredPrivateKey } from "@/lib/crypto";
 import type { ChatListItem, GroupChat } from "@/types";
 
 interface Props {
@@ -22,12 +23,81 @@ export default function Sidebar({ onNewGroup }: Props) {
   const [groups, setGroups] = useState<GroupChat[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [pendingCount, setPendingCount] = useState(0);
+  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
+  const privateKeyRef = useRef<CryptoKey | null>(null);
+
+  const decryptChatList = async (list: ChatListItem[], key: CryptoKey | null) => {
+    if (!key) return list;
+    return Promise.all(
+      list.map(async (chat) => {
+        if (!chat.lastMessage) return chat;
+        let content = "";
+        if (chat.lastMessage.contentType === "text" && chat.lastMessage.ciphertext) {
+          try {
+            content = await decryptText(chat.lastMessage.ciphertext, chat.lastMessage.encryptedKey || "", key);
+          } catch {
+            content = "[decryption failed]";
+          }
+        } else if (chat.lastMessage.contentType === "call-log" && chat.lastMessage.ciphertext) {
+          try {
+            const log = JSON.parse(chat.lastMessage.ciphertext);
+            const isVideo = log?.callType === "video";
+            const missed  = log?.outcome === "missed" || log?.outcome === "declined";
+            content = missed ? `Missed ${isVideo ? "video" : "voice"} call` : `${isVideo ? "Video" : "Voice"} call`;
+          } catch {}
+        }
+        return {
+          ...chat,
+          lastMessage: {
+            ...chat.lastMessage,
+            content: content || undefined,
+          },
+        };
+      })
+    );
+  };
 
   useEffect(() => {
-    api.messages.sidebar().then(({ chats: c }) => setChats(c ?? [])).catch(() => {});
+    api.messages.sidebar().then(async ({ chats: c }) => {
+      const k = privateKeyRef.current || await getStoredPrivateKey();
+      privateKeyRef.current = k;
+      if (k) setPrivateKey(k);
+      const decrypted = await decryptChatList(c ?? [], k);
+      setChats(decrypted);
+    }).catch(() => {});
     api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {});
     api.friends.pendingCount().then(({ count }) => setPendingCount(count)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!privateKey) {
+      const timer = setInterval(async () => {
+        const k = await getStoredPrivateKey();
+        if (k) {
+          setPrivateKey(k);
+          privateKeyRef.current = k;
+          clearInterval(timer);
+        }
+      }, 500);
+      return () => clearInterval(timer);
+    }
+  }, [privateKey]);
+
+  useEffect(() => {
+    if (privateKey && chats.length > 0) {
+      const needsDecryption = chats.some(
+        (c) =>
+          c.lastMessage &&
+          (c.lastMessage.contentType === "text" || c.lastMessage.contentType === "call-log") &&
+          !c.lastMessage.content
+      );
+      if (needsDecryption) {
+        decryptChatList(chats, privateKey).then((decrypted) => {
+          setChats(decrypted);
+        });
+      }
+    }
+  }, [privateKey, chats]);
 
   useEffect(() => {
     // Seed initial online set from the authenticated event (fires on connect/reconnect)
@@ -70,29 +140,66 @@ export default function Sidebar({ onNewGroup }: Props) {
       const { groupId } = data as { groupId: string };
       setGroups((prev) => prev.filter((g) => g._id !== groupId));
     };
-    const onNewMsg = (data: unknown) => {
-      const msg = data as {
-        sender: string; sentAt: string; contentType?: string;
-        senderInfo?: { _id: string; fullName: string; username?: string; profilePic?: string };
-      };
+    const onNewMsg = async (data: unknown) => {
+      const msg = data as import("@/types").Message;
+      
+      let content = "";
+      if (msg.contentType === "text" && msg.ciphertext && privateKeyRef.current) {
+        try {
+          content = await decryptText(msg.ciphertext, msg.encryptedKey || "", privateKeyRef.current);
+        } catch {
+          content = "[decryption failed]";
+        }
+      } else if (msg.contentType === "call-log" && msg.ciphertext) {
+        try {
+          const log = JSON.parse(msg.ciphertext);
+          const isVideo = log?.callType === "video";
+          const missed  = log?.outcome === "missed" || log?.outcome === "declined";
+          content = missed ? `Missed ${isVideo ? "video" : "voice"} call` : `${isVideo ? "Video" : "Voice"} call`;
+        } catch {}
+      }
+
       setChats((prev) => {
-        const exists = prev.some((c) => c._id === msg.sender);
+        const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
+        const exists = prev.some((c) => c._id === otherParticipantId);
+        
+        const lastMsgData = {
+          sentAt: msg.sentAt,
+          contentType: msg.contentType,
+          ciphertext: msg.ciphertext || "",
+          sender: String(msg.sender),
+          encryptedKey: msg.encryptedKey || "",
+          content: content || undefined,
+        };
+
         if (exists) {
-          return prev.map((c) =>
-            c._id === msg.sender
-              ? { ...c, lastMessage: { sentAt: msg.sentAt, contentType: msg.contentType }, unreadCount: (c.unreadCount || 0) + 1 }
+          const updated = prev.map((c) =>
+            c._id === otherParticipantId
+              ? { 
+                  ...c, 
+                  lastMessage: lastMsgData, 
+                  unreadCount: String(msg.sender) === String(user?._id) ? c.unreadCount : (c.unreadCount || 0) + 1 
+                }
               : c
           );
+          const targetIndex = updated.findIndex((c) => c._id === otherParticipantId);
+          if (targetIndex > 0) {
+            const target = updated[targetIndex];
+            const filtered = updated.filter((c) => c._id !== otherParticipantId);
+            return [target, ...filtered];
+          }
+          return updated;
         }
+
         // First message from this sender — add them to the top of the list
         if (msg.senderInfo) {
           const newEntry: ChatListItem = {
-            _id: msg.sender,
+            _id: otherParticipantId,
             fullName: msg.senderInfo.fullName,
             username: msg.senderInfo.username,
             profilePic: msg.senderInfo.profilePic,
-            lastMessage: { sentAt: msg.sentAt, contentType: msg.contentType },
-            unreadCount: 1,
+            lastMessage: lastMsgData,
+            unreadCount: String(msg.sender) === String(user?._id) ? 0 : 1,
           };
           return [newEntry, ...prev];
         }
@@ -138,6 +245,7 @@ export default function Sidebar({ onNewGroup }: Props) {
     socketService.on("group-deleted", onGroupDeleted);
     socketService.on("group-removed", onGroupRemoved);
     socketService.on("new-message", onNewMsg);
+    socketService.on("message-sent", onNewMsg);
     socketService.on("new-group-message", onNewGroupMsg);
     socketService.on("friend-request-received", onFriendRequestReceived);
     socketService.on("friend-request-accepted", onFriendRequestAccepted);
@@ -156,6 +264,7 @@ export default function Sidebar({ onNewGroup }: Props) {
       socketService.off("group-deleted", onGroupDeleted);
       socketService.off("group-removed", onGroupRemoved);
       socketService.off("new-message", onNewMsg);
+      socketService.off("message-sent", onNewMsg);
       socketService.off("new-group-message", onNewGroupMsg);
       socketService.off("friend-request-received", onFriendRequestReceived);
       socketService.off("friend-request-accepted", onFriendRequestAccepted);
@@ -269,10 +378,19 @@ export default function Sidebar({ onNewGroup }: Props) {
                         <span className="text-[11px] text-gray-400 shrink-0 ml-1">{formatTime(chat.lastMessage?.sentAt)}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                          {chat.lastMessage?.contentType && chat.lastMessage.contentType !== "text"
-                            ? `📎 ${chat.lastMessage.contentType}`
-                            : chat.lastMessage ? "Message" : "No messages yet"}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate flex-1 min-w-0 pr-1">
+                          {chat.lastMessage ? (
+                            <>
+                              {chat.lastMessage.sender === user?._id && "You: "}
+                              {chat.lastMessage.contentType && chat.lastMessage.contentType !== "text" && chat.lastMessage.contentType !== "call-log" ? (
+                                <span>📎 {chat.lastMessage.contentType}</span>
+                              ) : (
+                                chat.lastMessage.content || "Message"
+                              )}
+                            </>
+                          ) : (
+                            "No messages yet"
+                          )}
                         </p>
                         {displayUnread > 0 && (
                           <span className="btn-gradient text-white text-[10px] rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 font-bold shrink-0 ml-1">

@@ -975,6 +975,7 @@ export const getUserForSideBar = async (req, res) => {
           receiver: 1,
           ciphertext: 1,
           media: 1,
+          contentType: 1,
           sentAt: 1,
           delivered: 1, // use  boolean field
           read: 1,      // use boolean field
@@ -991,6 +992,7 @@ export const getUserForSideBar = async (req, res) => {
           _id: "$otherUser",
           lastMessage: { $first: "$ciphertext" },
           lastMessageMedia: { $first: "$media" },
+          lastMessageContentType: { $first: "$contentType" },
           lastMessageTime: { $first: "$sentAt" },
           lastMessageEncryptedKey: { $first: "$encryptedKey" },
           lastMessageEncryptedKeySender: { $first: "$senderEncryptedKey" },
@@ -1031,6 +1033,7 @@ export const getUserForSideBar = async (req, res) => {
           profilePic: "$user.profilePic",
           lastMessage: 1,
           lastMessageMedia: 1,
+          lastMessageContentType: 1,
           lastMessageTime: 1,
           lastMessageSenderId: 1,
           encryptedKey: {
@@ -1060,7 +1063,10 @@ export const getUserForSideBar = async (req, res) => {
       lastMessage: c.lastMessageTime
         ? {
             sentAt: c.lastMessageTime,
-            contentType: c.lastMessage ? "text" : (c.lastMessageMedia?.[0]?.type ?? "document"),
+            contentType: c.lastMessageContentType || (c.lastMessage ? "text" : (c.lastMessageMedia?.[0]?.type ?? "document")),
+            ciphertext: c.lastMessage || "",
+            sender: c.lastMessageSenderId ? c.lastMessageSenderId.toString() : "",
+            encryptedKey: c.encryptedKey || "",
           }
         : undefined,
       unreadCount: c.unreadCount || 0,
