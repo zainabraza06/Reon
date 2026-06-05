@@ -119,21 +119,19 @@ export default function Sidebar({ onNewGroup }: Props) {
   }, [privateKey, chats]);
 
   useEffect(() => {
-    // Seed initial online set from the authenticated event (fires on connect/reconnect)
+    // Seed initial online set — register ALL handlers before emitting the request
     const onAuthenticated = (data: unknown) => {
       const { onlineFriends } = data as { onlineFriends?: string[] };
-      if (Array.isArray(onlineFriends) && onlineFriends.length > 0) {
-        setOnlineUsers(new Set(onlineFriends));
-      }
+      if (Array.isArray(onlineFriends)) setOnlineUsers(new Set(onlineFriends));
     };
-    socketService.on("authenticated", onAuthenticated);
-    // Also request current online users immediately (covers already-connected sessions)
-    socketService.emit("request-online-friends");
     const onOnlineFriends = (data: unknown) => {
       const { onlineFriends } = data as { onlineFriends?: string[] };
       if (Array.isArray(onlineFriends)) setOnlineUsers(new Set(onlineFriends));
     };
+    socketService.on("authenticated", onAuthenticated);
     socketService.on("online-friends-response", onOnlineFriends);
+    // Emit AFTER both handlers are registered so we never miss the response
+    socketService.emit("request-online-friends");
 
     const onStatus = (data: unknown) => {
       const { userId, isOnline } = data as { userId: string; isOnline: boolean };

@@ -19,7 +19,7 @@ export default function CreateGroupModal({ onClose, onCreated }: Props) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.friends.list().then(({ friends }) => setFriends(friends)).catch(() => {});
+    api.friends.list({ limit: 1000 }).then(({ friends }) => setFriends(friends)).catch(() => {});
   }, []);
 
   const toggle = (id: string) => {

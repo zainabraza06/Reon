@@ -143,7 +143,8 @@ export const getMyFriends = async (req, res) => {
     const userId = new mongoose.Types.ObjectId(req.user._id);
     const searchQuery = req.query.search || "";
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    // Allow up to 1000 so group-creation modal can fetch all at once
+    const limit = Math.min(parseInt(req.query.limit) || 10, 1000);
     const skip = (page - 1) * limit;
 
     const user = await User.aggregate([
@@ -172,10 +173,16 @@ export const getMyFriends = async (req, res) => {
           }
         }
       },
-      { $project: { friendsData: { $slice: ["$friendsData", skip, limit] } } }
+      // Compute total BEFORE slicing so the pagination total is accurate
+      {
+        $project: {
+          total: { $size: "$friendsData" },
+          friendsData: { $slice: ["$friendsData", skip, limit] }
+        }
+      }
     ]);
 
-    const totalFriends = user[0]?.friendsData.length || 0;
+    const totalFriends = user[0]?.total || 0;
 
     res.status(200).json({ page, limit, total: totalFriends, friends: user[0]?.friendsData || [] });
   } catch (err) {

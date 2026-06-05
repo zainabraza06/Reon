@@ -13,12 +13,26 @@ interface Props {
   onRetry?: () => void;
 }
 
-function Tick({ status }: { status?: string }) {
-  if (status === "sending")   return <Clock       size={12} className="text-white/50 animate-pulse" />;
-  if (status === "failed")    return <AlertCircle size={12} className="text-red-300" />;
-  if (status === "read")      return <CheckCheck  size={12} className="text-cyan-300" />;
-  if (status === "delivered") return <CheckCheck  size={12} className="text-white/60" />;
-  return <Check size={12} className="text-white/50" />;
+function Tick({ status, deliveredAt, readAt, sentAt }: {
+  status?: string;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+  sentAt?: string;
+}) {
+  const fmt = (d?: string | null) => d ? new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  let title = "";
+  if (status === "read" && readAt)           title = `Read at ${fmt(readAt)}`;
+  else if (status === "delivered" && deliveredAt) title = `Delivered at ${fmt(deliveredAt)}`;
+  else if (sentAt)                            title = `Sent at ${fmt(sentAt)}`;
+
+  let icon: React.ReactNode;
+  if (status === "sending")   icon = <Clock       size={12} className="text-white/50 animate-pulse" />;
+  else if (status === "failed") icon = <AlertCircle size={12} className="text-red-300" />;
+  else if (status === "read") icon = <CheckCheck  size={12} className="text-cyan-300" />;
+  else if (status === "delivered") icon = <CheckCheck size={12} className="text-white/60" />;
+  else                        icon = <Check size={12} className="text-white/50" />;
+
+  return <span title={title} className="cursor-default">{icon}</span>;
 }
 
 async function fetchAndDecrypt(url: string, key?: string, iv?: string): Promise<string | null> {
@@ -293,7 +307,7 @@ export default function MessageBubble({ message, isMine, onRetry }: Props) {
 
           <div className={`flex items-center gap-1 justify-end mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"}`}>
             <span className="text-[11px]">{time}</span>
-            {isMine && <Tick status={message.status} />}
+            {isMine && <Tick status={message.status} deliveredAt={message.deliveredAt} readAt={message.readAt} sentAt={message.sentAt} />}
           </div>
         </div>
 

@@ -18,11 +18,13 @@ export default function SettingsPage() {
   const [preview, setPreview]   = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg]       = useState("");
+  const [profileOk, setProfileOk]         = useState(false);
 
   const [curPw, setCurPw]   = useState("");
   const [newPw, setNewPw]   = useState("");
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg]       = useState("");
+  const [pwOk, setPwOk]         = useState(false);
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -35,6 +37,7 @@ export default function SettingsPage() {
     e.preventDefault();
     setProfileSaving(true);
     setProfileMsg("");
+    setProfileOk(false);
     try {
       const fd = new FormData();
       fd.append("fullName", name);
@@ -43,10 +46,12 @@ export default function SettingsPage() {
       if (avatar) fd.append("profilePic", avatar);
       await api.settings.updateProfile(fd);
       await refreshUser();
-      setProfileMsg("Profile updated!");
+      setProfileMsg("Profile updated successfully.");
+      setProfileOk(true);
       setAvatar(null);
     } catch (err) {
-      setProfileMsg(err instanceof Error ? err.message : "Failed to save");
+      setProfileMsg(err instanceof Error ? err.message : "Failed to save.");
+      setProfileOk(false);
     } finally {
       setProfileSaving(false);
     }
@@ -65,13 +70,16 @@ export default function SettingsPage() {
 
     setPwSaving(true);
     setPwMsg("");
+    setPwOk(false);
     try {
       await api.settings.changePassword({ currentPassword: curPw, newPassword: newPw });
-      setPwMsg(hasPassword ? "Password changed!" : "Password set successfully!");
+      setPwMsg(hasPassword ? "Password changed successfully." : "Password set successfully.");
+      setPwOk(true);
       setCurPw("");
       setNewPw("");
     } catch (err) {
-      setPwMsg(err instanceof Error ? err.message : "Failed to change password");
+      setPwMsg(err instanceof Error ? err.message : "Failed to change password.");
+      setPwOk(false);
     } finally {
       setPwSaving(false);
     }
@@ -137,7 +145,7 @@ export default function SettingsPage() {
             </div>
 
             {profileMsg && (
-              <p className={`text-sm font-medium ${profileMsg.includes("!") ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+              <p className={`text-sm font-medium ${profileOk ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
                 {profileMsg}
               </p>
             )}
@@ -213,7 +221,7 @@ export default function SettingsPage() {
             </div>
 
             {pwMsg && (
-              <p className={`text-sm font-medium ${pwMsg.includes("!") ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+              <p className={`text-sm font-medium ${pwOk ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
                 {pwMsg}
               </p>
             )}

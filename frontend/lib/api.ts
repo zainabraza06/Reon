@@ -168,7 +168,11 @@ export const api = {
   settings: {
     updateProfile: (data: FormData) =>
       fetch(`${BASE_URL}/settings/profile`, { method: "PUT", credentials: "include", body: data }).then(
-        (r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.message))))
+        async (r) => {
+          if (r.ok) return r.json();
+          const e = await r.json().catch(() => ({}));
+          throw new Error(e.message || e.error || `${r.status}: ${r.statusText}`);
+        }
       ),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
       request("/settings/change-password", { method: "PUT", body: JSON.stringify(data) }),
