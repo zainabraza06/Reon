@@ -52,7 +52,7 @@ export default function SettingsPage() {
     }
   };
 
-  const hasPassword = user.hasPassword ?? true;
+  const hasPassword = user?.hasPassword ?? true;
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();

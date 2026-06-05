@@ -27,7 +27,7 @@ export const api = {
         async (r) => {
           if (r.ok) return r.json();
           const e = await r.json().catch(() => ({}));
-          const msg = e?.message || (Array.isArray(e?.errors) ? e.errors.map(err => err.msg || err.message || JSON.stringify(err)).join(", ") : r.statusText);
+          const msg = e?.message || (Array.isArray(e?.errors) ? e.errors.map((err: any) => err.msg || err.message || JSON.stringify(err)).join(", ") : r.statusText);
           return Promise.reject(new Error(msg));
         }
       ),

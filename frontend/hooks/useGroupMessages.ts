@@ -53,6 +53,8 @@ export function useGroupMessages(groupId: string | null, myId: string | null) {
     const handleNew = async (data: unknown) => {
       const { message, groupId: gid } = data as { message: GroupMessage; groupId: string };
       if (gid !== groupId) return;
+      // Tell the backend we received this message (triggers delivery tick for sender)
+      socketService.emit("group-message-delivered", { messageId: message._id, groupId: gid });
       const decrypted = await decryptMsg(message);
       setMessages((prev) => {
         if (prev.find((m) => m._id === decrypted._id)) return prev;
@@ -61,8 +63,45 @@ export function useGroupMessages(groupId: string | null, myId: string | null) {
       api.groups.markRead(groupId).catch(() => {});
     };
 
+    // Sender receives delivery count update
+    const handleDelivered = (data: unknown) => {
+      const { messageId, deliveredCount, memberCount } = data as {
+        messageId: string; groupId: string; deliveredCount: number; memberCount: number;
+      };
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === messageId
+            ? { ...m, deliveredTo: Array.from({ length: deliveredCount + 1 }, (_, i) => i === 0 ? myId! : `member_${i}`) }
+            : m
+        )
+      );
+      void deliveredCount; void memberCount; // suppress lint
+    };
+
+    // Sender receives read update for their messages
+    const handleRead = (data: unknown) => {
+      const { messageIds, readBy } = data as {
+        groupId: string; messageIds: string[]; readBy: string; memberCount: number;
+      };
+      const ids = new Set(messageIds);
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!ids.has(m._id)) return m;
+          const existing = m.readBy ?? [];
+          if (existing.includes(readBy)) return m;
+          return { ...m, readBy: [...existing, readBy] };
+        })
+      );
+    };
+
     socketService.on("new-group-message", handleNew);
-    return () => socketService.off("new-group-message", handleNew);
+    socketService.on("group-message-delivered", handleDelivered);
+    socketService.on("group-messages-read", handleRead);
+    return () => {
+      socketService.off("new-group-message", handleNew);
+      socketService.off("group-message-delivered", handleDelivered);
+      socketService.off("group-messages-read", handleRead);
+    };
   }, [groupId, myId, decryptMsg]);
 
   const loadMore = () => {

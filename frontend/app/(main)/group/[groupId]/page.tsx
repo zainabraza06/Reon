@@ -1,6 +1,6 @@
 "use client";
 import { use, useState, useEffect, useRef } from "react";
-import { ArrowLeft, Info, Users, Check } from "lucide-react";
+import { ArrowLeft, Info, Users, Check, CheckCheck } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
 import MessageInput from "@/components/chat/MessageInput";
@@ -11,10 +11,26 @@ import { api } from "@/lib/api";
 import { encryptGroupText, encryptFile, getStoredPublicKey, getStoredPrivateKey } from "@/lib/crypto";
 import type { GroupChat, GroupMessage } from "@/types";
 
-function GroupMessageBubble({ message, isMine }: { message: GroupMessage; isMine: boolean }) {
+function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
+  senderId: string; readBy?: string[]; deliveredTo?: string[]; memberCount: number;
+}) {
+  const otherDelivered = (deliveredTo ?? []).filter((id) => id !== senderId).length;
+  const otherRead      = (readBy     ?? []).filter((id) => id !== senderId).length;
+  const allRead        = memberCount > 0 && otherRead >= memberCount;
+  const anyDelivered   = otherDelivered > 0;
+
+  if (allRead)      return <CheckCheck size={13} className="text-cyan-300" />;
+  if (anyDelivered) return <CheckCheck size={13} className="text-white/60" />;
+  return               <Check     size={13} className="text-white/45" />;
+}
+
+function GroupMessageBubble({ message, isMine, memberCount }: {
+  message: GroupMessage; isMine: boolean; memberCount: number;
+}) {
   const time       = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const text       = message.plaintext || message.ciphertext;
   const senderName = typeof message.sender === "object" ? message.sender.fullName : "";
+  const senderId   = typeof message.sender === "object" ? message.sender._id : message.sender;
 
   return (
     <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} mb-1`}>
@@ -35,7 +51,14 @@ function GroupMessageBubble({ message, isMine }: { message: GroupMessage; isMine
         )}
         <div className={`flex items-center justify-end gap-1 mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"}`}>
           <span className="text-[11px]">{time}</span>
-          {isMine && <Check size={12} className="text-white/50" />}
+          {isMine && (
+            <GroupTick
+              senderId={senderId}
+              readBy={message.readBy}
+              deliveredTo={message.deliveredTo}
+              memberCount={memberCount}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -175,6 +198,7 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
                 key={msg._id}
                 message={msg}
                 isMine={typeof msg.sender === "object" ? msg.sender._id === me._id : msg.sender === me._id}
+                memberCount={(group?.members.length ?? 1) - 1}
               />
             ))}
 

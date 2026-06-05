@@ -278,7 +278,7 @@ export async function encryptForTransfer(
 ): Promise<{ ciphertext: string; iv: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(JSON.stringify(data));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoded);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, aesKey, encoded as unknown as BufferSource);
   return { ciphertext: uint8ToBase64(new Uint8Array(ciphertext)), iv: uint8ToBase64(iv) };
 }
 
@@ -288,9 +288,9 @@ export async function decryptFromTransfer(
   aesKey: CryptoKey,
 ): Promise<JsonWebKey> {
   const plain = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToUint8(iv) },
+    { name: "AES-GCM", iv: base64ToUint8(iv) as unknown as BufferSource },
     aesKey,
-    base64ToUint8(ciphertext),
+    base64ToUint8(ciphertext) as unknown as BufferSource,
   );
   return JSON.parse(new TextDecoder().decode(plain)) as JsonWebKey;
 }

@@ -1,7 +1,7 @@
 import { Server } from "socket.io";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
-import { GroupChat } from "../models/GroupChat.js";
+import { GroupChat, GroupMessage } from "../models/GroupChat.js";
 import * as messageController from "../controllers/message.controller.js";
 
 let io;
@@ -707,6 +707,31 @@ export const initSocket = (server) => {
           error: "Failed to check pending messages"
         });
       }
+    });
+
+    // GROUP DELIVERY RECEIPT — receiver tells us they got a group message
+    socket.on("group-message-delivered", async ({ messageId, groupId }) => {
+      const userId = socket.userId;
+      if (!userId || !messageId) return;
+      try {
+        const msg = await GroupMessage.findByIdAndUpdate(
+          messageId,
+          { $addToSet: { deliveredTo: userId } },
+          { new: true }
+        );
+        if (!msg) return;
+        const group = await GroupChat.find({ _id: groupId || msg.groupId }).select("members").lean();
+        const memberCount = group[0] ? group[0].members.length - 1 : 0;
+        const deliveredCount = msg.deliveredTo.filter(
+          (id) => id.toString() !== msg.sender.toString()
+        ).length;
+        emitToUser(msg.sender.toString(), "group-message-delivered", {
+          messageId: msg._id.toString(),
+          groupId: (groupId || msg.groupId).toString(),
+          deliveredCount,
+          memberCount,
+        });
+      } catch {}
     });
 
     // GROUP CHAT: typing indicator

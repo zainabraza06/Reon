@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { GridFSBucket } from "mongodb";
 import { GroupChat, GroupMessage } from "../models/GroupChat.js";
 import User from "../models/User.js";
-import { emitToUser } from "../lib/socket.js";
+import { emitToUser, isUserOnline } from "../lib/socket.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -369,12 +369,32 @@ export const sendGroupMessage = async (req, res) => {
       "fullName username profilePic"
     );
 
-    // Emit to all members except sender
-    for (const m of group.members) {
-      const uid = m.user.toString();
-      if (uid !== senderId.toString()) {
-        emitToUser(uid, "new-group-message", { message: populated, groupId });
-      }
+    // Find online members (excluding sender) — mark them delivered immediately
+    const otherMembers = group.members.filter((m) => m.user.toString() !== senderId.toString());
+    const onlineMemberIds = otherMembers
+      .filter((m) => isUserOnline(m.user.toString()))
+      .map((m) => m.user);
+
+    if (onlineMemberIds.length > 0) {
+      await GroupMessage.findByIdAndUpdate(message._id, {
+        $addToSet: { deliveredTo: { $each: onlineMemberIds } },
+      });
+    }
+
+    const memberCount = otherMembers.length;
+    const deliveredCount = onlineMemberIds.length;
+
+    // Notify sender with initial delivery count
+    emitToUser(senderId.toString(), "group-message-delivered", {
+      messageId: message._id.toString(),
+      groupId,
+      deliveredCount,
+      memberCount,
+    });
+
+    // Emit new-message to all other members
+    for (const m of otherMembers) {
+      emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId });
     }
 
     res.status(201).json({ message: populated });
@@ -433,10 +453,37 @@ export const markGroupMessagesRead = async (req, res) => {
     if (!group) return res.status(404).json({ message: "Group not found" });
     if (!isMember(group, userId)) return res.status(403).json({ message: "Not a member" });
 
+    // Collect unread messages (excluding ones the user sent themselves)
+    const unread = await GroupMessage.find({
+      groupId,
+      readBy: { $ne: userId },
+      sender: { $ne: userId },
+    }).select("_id sender readBy");
+
+    if (unread.length === 0) return res.json({ message: "Nothing to mark" });
+
     await GroupMessage.updateMany(
-      { groupId, readBy: { $ne: userId } },
+      { groupId, readBy: { $ne: userId }, sender: { $ne: userId } },
       { $addToSet: { readBy: userId } }
     );
+
+    // Group message IDs by original sender so each sender gets one event
+    const memberCount = group.members.length - 1; // total non-sender members per msg varies, use group size
+    const bySender = new Map();
+    for (const msg of unread) {
+      const sid = msg.sender.toString();
+      if (!bySender.has(sid)) bySender.set(sid, []);
+      bySender.get(sid).push(msg._id.toString());
+    }
+
+    for (const [sid, messageIds] of bySender.entries()) {
+      emitToUser(sid, "group-messages-read", {
+        groupId,
+        messageIds,
+        readBy: userId.toString(),
+        memberCount,
+      });
+    }
 
     res.json({ message: "Marked as read" });
   } catch (err) {
