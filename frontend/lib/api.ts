@@ -39,6 +39,24 @@ export const api = {
       request("/keys/uploadPublicKey", { method: "POST", body: JSON.stringify({ publicKey, userId }) }),
     get: (userId: string) =>
       request<{ publicKey: JsonWebKey }>(`/keys/publicKey/${userId}`),
+
+    // Device-linking session
+    createLinkSession: (ecdhPublicKey: JsonWebKey) =>
+      request<{ sessionId: string }>("/keys/link-session/create", {
+        method: "POST", body: JSON.stringify({ ecdhPublicKey }),
+      }),
+    claimLinkSession: (sessionId: string, ecdhPublicKey: JsonWebKey) =>
+      request<{ ecdhPublicKey_A: JsonWebKey }>(`/keys/link-session/${sessionId}/claim`, {
+        method: "PUT", body: JSON.stringify({ ecdhPublicKey }),
+      }),
+    transferLinkKey: (sessionId: string, encryptedPrivateKey: string, iv: string) =>
+      request(`/keys/link-session/${sessionId}/transfer`, {
+        method: "PUT", body: JSON.stringify({ encryptedPrivateKey, iv }),
+      }),
+    getLinkSession: (sessionId: string) =>
+      request<{ status: "pending" | "ready"; encryptedPrivateKey: string | null; iv: string | null }>(
+        `/keys/link-session/${sessionId}`,
+      ),
   },
 
   // ── Messages (1:1) ─────────────────────────────────────────────────────────

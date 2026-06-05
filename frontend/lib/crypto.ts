@@ -229,6 +229,72 @@ export async function decryptFile(
   return plain.buffer as ArrayBuffer;
 }
 
+// ── Device-linking key transfer (ECDH handshake) ─────────────────────────────
+// Device A and B each generate a temporary ECDH key pair.
+// They exchange public keys via the server and derive the same AES-GCM key.
+// Device A encrypts its RSA private key JWK with that AES key and uploads it.
+// Device B downloads, decrypts, and imports the RSA private key.
+
+export async function generateECDHKeyPair(): Promise<{ publicKey: JsonWebKey; privateKey: CryptoKey }> {
+  const pair = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveKey"],
+  );
+  const publicKey = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  return { publicKey, privateKey: pair.privateKey };
+}
+
+export async function importECDHPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
+  return crypto.subtle.importKey("jwk", jwk, { name: "ECDH", namedCurve: "P-256" }, false, []);
+}
+
+export async function deriveTransferAESKey(myPrivateKey: CryptoKey, theirPublicKey: CryptoKey): Promise<CryptoKey> {
+  return crypto.subtle.deriveKey(
+    { name: "ECDH", public: theirPublicKey },
+    myPrivateKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+export async function exportRSAPrivateKey(privateKey: CryptoKey): Promise<JsonWebKey> {
+  return crypto.subtle.exportKey("jwk", privateKey);
+}
+
+export async function importRSAPrivateKey(jwk: JsonWebKey): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "jwk", jwk,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    true,
+    ["decrypt"],
+  );
+}
+
+export async function encryptForTransfer(
+  data: JsonWebKey,
+  aesKey: CryptoKey,
+): Promise<{ ciphertext: string; iv: string }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, encoded);
+  return { ciphertext: uint8ToBase64(new Uint8Array(ciphertext)), iv: uint8ToBase64(iv) };
+}
+
+export async function decryptFromTransfer(
+  ciphertext: string,
+  iv: string,
+  aesKey: CryptoKey,
+): Promise<JsonWebKey> {
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64ToUint8(iv) },
+    aesKey,
+    base64ToUint8(ciphertext),
+  );
+  return JSON.parse(new TextDecoder().decode(plain)) as JsonWebKey;
+}
+
 // ── Group message encryption ──────────────────────────────────────────────────
 
 export interface GroupEncryptedText {

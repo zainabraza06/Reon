@@ -1,13 +1,14 @@
 "use client";
 import { useState, useRef, ChangeEvent } from "react";
 import Image from "next/image";
-import { Camera, Save, Lock } from "lucide-react";
+import Link from "next/link";
+import { Camera, Save, Lock, Smartphone, Link as LinkIcon, LogOut } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 export default function SettingsPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name, setName]         = useState(user?.fullName || "");
@@ -147,6 +148,34 @@ export default function SettingsPage() {
 
         <hr className="border-gray-200 dark:border-white/6" />
 
+        {/* Linked devices section */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Smartphone size={14} />Linked Devices
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Use your account on another browser or device. Your encryption keys transfer securely via QR code — the server never sees your private key.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Link
+              href="/settings/link-device"
+              className="btn-gradient flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md shadow-violet-500/25 transition-all"
+            >
+              <LinkIcon size={15} />
+              Link New Device
+            </Link>
+            <Link
+              href="/link-device"
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+            >
+              <Smartphone size={15} />
+              This is My New Device
+            </Link>
+          </div>
+        </section>
+
+        <hr className="border-gray-200 dark:border-white/6" />
+
         {/* Password section */}
         <section>
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -181,6 +210,20 @@ export default function SettingsPage() {
               {pwSaving ? "Updating…" : hasPassword ? "Update Password" : "Set Password"}
             </button>
           </form>
+        </section>
+
+        <hr className="border-gray-200 dark:border-white/6" />
+
+        {/* Logout section */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4">Session</h2>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-red-500 hover:bg-red-600 transition-all shadow-md shadow-red-500/25"
+          >
+            <LogOut size={15} />
+            Logout
+          </button>
         </section>
       </div>
     </div>
