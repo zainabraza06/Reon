@@ -7,10 +7,16 @@ import { emitToUser, isUserOnline } from "../lib/socket.js";
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const isMember = (group, userId) =>
-  group.members.some((m) => m.user.toString() === userId.toString());
+  group.members.some((m) => {
+    const id = m.user?._id ?? m.user;
+    return id.toString() === userId.toString();
+  });
 
 const isAdmin = (group, userId) =>
-  group.admins.some((id) => id.toString() === userId.toString());
+  group.admins.some((a) => {
+    const id = a?._id ?? a;
+    return id.toString() === userId.toString();
+  });
 
 const getMimeType = (extension, fileType) => {
   const ext = (extension || "").toLowerCase();
