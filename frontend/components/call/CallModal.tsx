@@ -31,14 +31,23 @@ function endReasonLabel(reason: CallEndReason) {
 export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggleMute, onToggleCamera, peerProfilePic }: Props) {
   const localVideoRef  = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     if (localVideoRef.current  && call.localStream)  localVideoRef.current.srcObject  = call.localStream;
   }, [call.localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
-  }, [call.remoteStream]);
+    if (call.type === "video") {
+      if (remoteVideoRef.current && call.remoteStream) remoteVideoRef.current.srcObject = call.remoteStream;
+    } else {
+      // Audio-only call: play remote stream through a hidden audio element
+      if (remoteAudioRef.current && call.remoteStream) {
+        remoteAudioRef.current.srcObject = call.remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }
+  }, [call.remoteStream, call.type]);
 
   if (call.status === "idle") return null;
 
@@ -74,7 +83,7 @@ export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggle
 
         <div className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-xs overflow-hidden">
           {/* Top section */}
-          <div className="bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 pt-8 pb-6 flex flex-col items-center gap-3">
+          <div className="bg-linear-to-b from-indigo-600 to-indigo-700 px-6 pt-8 pb-6 flex flex-col items-center gap-3">
             <div className="relative">
               {/* Ripple rings */}
               <div className="absolute inset-0 rounded-full bg-white/20 animate-ping scale-125" />
@@ -90,6 +99,7 @@ export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggle
           {/* Buttons */}
           <div className="flex justify-center gap-16 py-7 bg-white dark:bg-gray-900">
             <button
+              type="button"
               onClick={onReject}
               className="flex flex-col items-center gap-2"
             >
@@ -99,6 +109,7 @@ export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggle
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Decline</span>
             </button>
             <button
+              type="button"
               onClick={onAnswer}
               className="flex flex-col items-center gap-2"
             >
@@ -147,8 +158,9 @@ export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggle
           </div>
         </div>
       ) : (
-        // Audio call
-        <div className="flex-1 flex flex-col items-center justify-center relative bg-gradient-to-b from-indigo-900 to-gray-950">
+        // Audio call — hidden audio element plays remote stream
+        <div className="flex-1 flex flex-col items-center justify-center relative bg-linear-to-b from-indigo-900 to-gray-950">
+          <audio ref={remoteAudioRef} autoPlay hidden />
           {/* Animated rings */}
           {(isCalling || call.status === "connecting") && (
             <>
@@ -192,6 +204,7 @@ export default function CallModal({ call, onAnswer, onReject, onHangUp, onToggle
 
         {/* End call */}
         <button
+          type="button"
           onClick={onHangUp}
           className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white flex items-center justify-center shadow-lg transition-all"
           title="End call"
@@ -209,8 +222,9 @@ function ControlBtn({ active, activeLabel, inactiveLabel, onClick, icon, activeI
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex flex-col items-center gap-1.5`}
+      className="flex flex-col items-center gap-1.5"
     >
       <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 ${active ? activeClass : "bg-white/10 text-white hover:bg-white/20"}`}>
         {active ? activeIcon : icon}

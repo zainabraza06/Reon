@@ -13,7 +13,7 @@ const CallContext = createContext<CallCtx>({ startCall: async () => {} });
 export function CallProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { state, startCall, answerCall, rejectCall, hangUp, toggleMute, toggleCamera } =
-    useCall(user?._id ?? null);
+    useCall(user?._id ?? null, user?.fullName ?? null);
 
   return (
     <CallContext.Provider value={{ startCall }}>

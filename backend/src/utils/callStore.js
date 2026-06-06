@@ -5,13 +5,14 @@ const callSessions = new Map(); // callId → session data
 const userCalls = new Map(); // userId → Set(callIds)
 
 // Call session management
-export const createSession = ({ callId, fromUserId, toUserId, type = "audio", icePolicy = "all" }) => {
+export const createSession = ({ callId, fromUserId, toUserId, type = "audio", icePolicy = "all", roomName = null }) => {
   const session = {
     callId,
     fromUserId: fromUserId.toString(),
     toUserId: toUserId.toString(),
     type,
     icePolicy,
+    roomName,  // Metered room name
     status: "created",
     createdAt: Date.now(),
     updatedAt: Date.now(),

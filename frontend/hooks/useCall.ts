@@ -3,43 +3,56 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { api } from "@/lib/api";
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:5001";
+const SOCKET_URL    = process.env.NEXT_PUBLIC_SOCKET_URL  ?? "http://localhost:5001";
+const METERED_DOMAIN = process.env.NEXT_PUBLIC_METERED_DOMAIN ?? "";
 
-export type CallStatus = "idle" | "calling" | "incoming" | "connecting" | "active" | "ended";
+// ── Metered SDK loader (CDN, singleton) ────────────────────────────────────
+let meteredSdkPromise: Promise<void> | null = null;
+function loadMeteredSDK(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((window as any).Metered) return Promise.resolve();
+  if (meteredSdkPromise) return meteredSdkPromise;
+  meteredSdkPromise = new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = "https://cdn.metered.ca/sdk/video/1.4.6/sdk.min.js";
+    el.onload  = () => resolve();
+    el.onerror = () => { meteredSdkPromise = null; reject(new Error("Failed to load Metered SDK")); };
+    document.body.appendChild(el);
+  });
+  return meteredSdkPromise;
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
+export type CallStatus    = "idle" | "calling" | "incoming" | "connecting" | "active" | "ended";
 export type CallEndReason = "completed" | "declined" | "missed" | "busy" | "failed" | null;
 
 export interface CallState {
-  status: CallStatus;
-  callId: string | null;
-  peerId: string | null;
-  peerName: string | null;
-  type: "audio" | "video";
+  status:      CallStatus;
+  callId:      string | null;
+  roomName:    string | null;
+  peerId:      string | null;
+  peerName:    string | null;
+  type:        "audio" | "video";
   localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
-  isMuted: boolean;
+  remoteStream:MediaStream | null;
+  isMuted:     boolean;
   isCameraOff: boolean;
-  duration: number;
-  endReason: CallEndReason;
+  duration:    number;
+  endReason:   CallEndReason;
 }
 
 const INIT: CallState = {
-  status: "idle",
-  callId: null,
-  peerId: null,
-  peerName: null,
-  type: "audio",
-  localStream: null,
-  remoteStream: null,
-  isMuted: false,
-  isCameraOff: false,
-  duration: 0,
-  endReason: null,
+  status: "idle", callId: null, roomName: null,
+  peerId: null, peerName: null, type: "audio",
+  localStream: null, remoteStream: null,
+  isMuted: false, isCameraOff: false,
+  duration: 0, endReason: null,
 };
 
 // Save a call-log message in the conversation so both sides see it
 async function saveCallLog(
-  myId: string,
-  peerId: string,
+  myId: string, peerId: string,
   callType: "audio" | "video",
   outcome: "completed" | "missed" | "declined" | "busy",
   duration: number
@@ -47,56 +60,64 @@ async function saveCallLog(
   try {
     const fd = new FormData();
     fd.append("data", JSON.stringify({
-      sender: myId,
-      receiver: peerId,
-      contentType: "call-log",
+      sender: myId, receiver: peerId, contentType: "call-log",
       ciphertext: JSON.stringify({ callType, outcome, duration }),
-      encryptedKey: "",
-      senderEncryptedKey: "",
+      encryptedKey: "", senderEncryptedKey: "",
     }));
     await api.messages.send(fd);
-  } catch {
-    // Non-critical — don't crash if call log fails
-  }
+  } catch { /* non-critical */ }
 }
 
-export function useCall(myId: string | null) {
+// ── Hook ───────────────────────────────────────────────────────────────────
+export function useCall(myId: string | null, myName?: string | null) {
   const [state, setState] = useState<CallState>(INIT);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const stateRef          = useRef(state);
+  stateRef.current        = state;
 
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const callSockRef = useRef<Socket | null>(null);
-  const durationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const iceQueueRef = useRef<RTCIceCandidateInit[]>([]);
-  // Track if call was ever active (to distinguish missed from never-answered)
-  const wasActivatedRef = useRef(false);
-  const pendingOfferRef = useRef<RTCSessionDescriptionInit | null>(null);
-  // Connection timeout ref — declared early so endCallLocal can reference it
-  const connTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meetingRef        = useRef<any>(null); // Metered.Meeting instance
+  const remoteStreamRef   = useRef<MediaStream | null>(null);
+  const callSockRef       = useRef<Socket | null>(null);
+  const durationTimer     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasActivatedRef   = useRef(false);
+  const ringTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const stopDurationTimer = () => {
+  // ── Duration timer ───────────────────────────────────────────────────────
+  const stopTimer = () => {
     if (durationTimer.current) { clearInterval(durationTimer.current); durationTimer.current = null; }
   };
 
+  const activateCall = useCallback(() => {
+    wasActivatedRef.current = true;
+    if (!durationTimer.current) {
+      durationTimer.current = setInterval(
+        () => setState((s) => ({ ...s, duration: s.duration + 1 })), 1000
+      );
+    }
+    setState((s) => s.status === "active" ? s : { ...s, status: "active" });
+  }, []);
+  const activateCallRef = useRef(activateCall);
+  activateCallRef.current = activateCall;
+
+  // ── End call ─────────────────────────────────────────────────────────────
   const endCallLocal = useCallback((reason: CallEndReason = "completed") => {
     const { localStream, peerId, type, duration, status } = stateRef.current;
-    stopDurationTimer();
-    // Clear connection timeout so it doesn't fire after the call is already over
-    if (connTimeoutRef.current) { clearTimeout(connTimeoutRef.current); connTimeoutRef.current = null; }
-    localStream?.getTracks().forEach((t) => t.stop());
-    pcRef.current?.close();
-    pcRef.current = null;
-    iceQueueRef.current = [];
-    pendingOfferRef.current = null;
+    stopTimer();
+    if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
 
-    // Save call log if we have a peer and reason is meaningful
+    localStream?.getTracks().forEach((t) => t.stop());
+    if (meetingRef.current) {
+      try { meetingRef.current.leaveMeeting(); } catch {}
+      meetingRef.current = null;
+    }
+    remoteStreamRef.current = null;
+
     if (myId && peerId) {
       const outcome =
         reason === "declined" ? "declined" :
         reason === "missed"   ? "missed" :
         reason === "busy"     ? "busy" :
-        status === "active" || wasActivatedRef.current ? "completed" : "missed";
+        (status === "active" || wasActivatedRef.current) ? "completed" : "missed";
       saveCallLog(myId, peerId, type, outcome, duration);
     }
 
@@ -105,225 +126,132 @@ export function useCall(myId: string | null) {
     setTimeout(() => setState(INIT), 3500);
   }, [myId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const activateCall = useCallback(() => {
-    // Clear timeout – connection succeeded
-    if (connTimeoutRef.current) { clearTimeout(connTimeoutRef.current); connTimeoutRef.current = null; }
-    wasActivatedRef.current = true;
-    if (!durationTimer.current) {
-      durationTimer.current = setInterval(() =>
-        setState((s) => ({ ...s, duration: s.duration + 1 })), 1000);
-    }
-    setState((s) => s.status === "active" ? s : { ...s, status: "active" });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const activateCallRef = useRef(activateCall);
-  activateCallRef.current = activateCall;
-
-  const ensurePeerConnection = useCallback(async (callId: string, type: "audio" | "video") => {
-    if (pcRef.current) return pcRef.current;
-    const { iceServers } = await api.calls.get(callId);
-    const pc = new RTCPeerConnection({
-      iceServers,
-      // Improves connection speed and compatibility
-      bundlePolicy: "max-bundle",
-      rtcpMuxPolicy: "require",
-    });
-
-    // ── ICE candidate handler ────────────────────────────────────────────────
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate) callSockRef.current?.emit("call:candidate", { callId, candidate });
-    };
-
-    // ── Primary: iceConnectionState (most reliable across Chrome/Firefox) ────
-    pc.oniceconnectionstatechange = () => {
-      console.log("[WebRTC] iceConnectionState →", pc.iceConnectionState);
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        activateCallRef.current();
-      }
-      if (pc.iceConnectionState === "failed") {
-        console.error("[WebRTC] ICE failed — ending call");
-        endCallLocalRef.current?.("failed");
-      }
-      // "disconnected" is transient (browser heartbeat missed) — don't end call
-    };
-
-    // ── Secondary: connectionState (backup, fires after ICE on most browsers) ─
-    pc.onconnectionstatechange = () => {
-      console.log("[WebRTC] connectionState →", pc.connectionState);
-      if (pc.connectionState === "connected") {
-        activateCallRef.current();
-      }
-      // Only hard-end on "failed" or "closed" — NOT "disconnected" (transient)
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-        endCallLocalRef.current?.("completed");
-      }
-    };
-
-    // ── Remote stream ────────────────────────────────────────────────────────
-    pc.ontrack = (e) => {
-      setState((s) => ({ ...s, remoteStream: e.streams[0] ?? null }));
-    };
-
-    // ── Local media ──────────────────────────────────────────────────────────
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      setState((s) => ({ ...s, localStream: stream }));
-    } catch {
-      console.warn("[WebRTC] Media access denied — audio/video unavailable");
-    }
-
-    pcRef.current = pc;
-    return pc;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const processOffer = useCallback(async (callId: string, offer: RTCSessionDescriptionInit, type: "audio" | "video") => {
-    await ensurePeerConnectionRef.current?.(callId, type);
-    const pc = pcRef.current!;
-    try {
-      await pc.setRemoteDescription(offer);
-      for (const c of iceQueueRef.current) await pc.addIceCandidate(c).catch(() => {});
-      iceQueueRef.current = [];
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      callSockRef.current?.emit("call:answer", { callId, answer });
-      setState((s) => ({ ...s, status: "connecting" }));
-
-      // Safety timeout — if ICE never resolves, end call after 45 s
-      if (connTimeoutRef.current) clearTimeout(connTimeoutRef.current);
-      connTimeoutRef.current = setTimeout(() => {
-        if (stateRef.current.status === "connecting") {
-          console.warn("[WebRTC] Connection timeout — ending call");
-          endCallLocalRef.current?.("failed");
-        }
-      }, 45_000);
-    } catch (err) {
-      console.error("[WebRTC] processOffer error:", err);
-      endCallLocalRef.current?.("failed");
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Stable refs for callbacks invoked inside socket handlers to avoid stale closures
-  const processOfferRef = useRef(processOffer);
-  processOfferRef.current = processOffer;
-
   const endCallLocalRef = useRef(endCallLocal);
   endCallLocalRef.current = endCallLocal;
 
-  const ensurePeerConnectionRef = useRef(ensurePeerConnection);
-  ensurePeerConnectionRef.current = ensurePeerConnection;
+  // ── Join Metered room ─────────────────────────────────────────────────────
+  const joinRoom = useCallback(async (roomName: string, type: "audio" | "video") => {
+    await loadMeteredSDK();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meeting = new (window as any).Metered.Meeting();
+    meetingRef.current = meeting;
 
-  const connectCallSocket = useCallback(() => {
-    if (callSockRef.current?.connected) return;
+    const displayName = myName || "User";
+    await meeting.join({
+      roomURL: `${METERED_DOMAIN}/${roomName}`,
+      name:    displayName,
+    });
+
+    // ── Local tracks ────────────────────────────────────────────────────────
+    try {
+      await meeting.startAudio();
+    } catch (e) {
+      console.warn("[Metered] startAudio failed:", e);
+    }
+    if (type === "video") {
+      try {
+        await meeting.startVideo();
+      } catch (e) {
+        console.warn("[Metered] startVideo failed:", e);
+      }
+    }
+
+    const localStream = new MediaStream();
+
+    meeting.on("localTrackStarted", (item: { type: string; track: MediaStreamTrack }) => {
+      localStream.addTrack(item.track);
+      setState((s) => ({ ...s, localStream }));
+    });
+
+    // ── Remote tracks ────────────────────────────────────────────────────────
+    meeting.on("remoteTrackStarted", (item: { type: string; track: MediaStreamTrack }) => {
+      if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream();
+      // Remove stale tracks of the same kind to avoid duplicates
+      const stale = item.type === "video"
+        ? remoteStreamRef.current.getVideoTracks()
+        : remoteStreamRef.current.getAudioTracks();
+      stale.forEach((t) => remoteStreamRef.current!.removeTrack(t));
+      remoteStreamRef.current.addTrack(item.track);
+      setState((s) => ({ ...s, remoteStream: remoteStreamRef.current }));
+      activateCallRef.current();
+    });
+
+    meeting.on("remoteTrackStopped", (item: { type: string; track: MediaStreamTrack }) => {
+      remoteStreamRef.current?.removeTrack(item.track);
+    });
+
+    // ── Participant left / meeting ended → hang up ───────────────────────────
+    meeting.on("participantLeft", () => {
+      endCallLocalRef.current("completed");
+    });
+    meeting.on("meetingEnded", () => {
+      endCallLocalRef.current("completed");
+    });
+  }, [myName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Socket: incoming call signaling ──────────────────────────────────────
+  useEffect(() => {
+    if (!myId) return;
+
     const sock = io(`${SOCKET_URL}/calls`, {
       withCredentials: true,
       transports: ["websocket", "polling"],
     });
     callSockRef.current = sock;
 
-    sock.on("call:initiate", ({ callId, fromUserId, fromUserName, type }: {
-      callId: string; fromUserId: string; fromUserName: string; type: "audio" | "video";
-    }) => {
+    sock.on("call:initiate", ({
+      callId, fromUserId, fromUserName, type, roomName
+    }: { callId: string; fromUserId: string; fromUserName: string; type: "audio" | "video"; roomName: string }) => {
       if (stateRef.current.status !== "idle") {
         sock.emit("call:busy", { callId, reason: "busy" });
         return;
       }
-      setState((s) => ({ ...s, status: "incoming", callId, peerId: fromUserId, peerName: fromUserName, type }));
-    });
-
-    sock.on("call:offer", async ({ callId, offer, type }: { callId: string; offer: RTCSessionDescriptionInit; type: string }) => {
-      if (stateRef.current.callId !== callId) return;
-      pendingOfferRef.current = offer;
-      
-      // Only process offer if user has already accepted and we are in connecting status
-      if (stateRef.current.status === "connecting") {
-        await processOfferRef.current?.(callId, offer, type as "audio" | "video");
-      }
-    });
-
-    sock.on("call:answer", async ({ callId, answer }: { callId: string; answer: RTCSessionDescriptionInit }) => {
-      if (stateRef.current.callId !== callId || !pcRef.current) return;
-      try {
-        await pcRef.current.setRemoteDescription(answer);
-        for (const c of iceQueueRef.current) {
-          await pcRef.current.addIceCandidate(c).catch(() => {});
-        }
-        iceQueueRef.current = [];
-        setState((s) => ({ ...s, status: "connecting" }));
-
-        // Caller-side connection timeout — if ICE never succeeds within 45 s, end call
-        if (connTimeoutRef.current) clearTimeout(connTimeoutRef.current);
-        connTimeoutRef.current = setTimeout(() => {
-          if (stateRef.current.status === "connecting") {
-            console.warn("[WebRTC] Caller connection timeout — ending call");
-            endCallLocalRef.current?.("failed");
-          }
-        }, 45_000);
-      } catch (err) {
-        console.error("[WebRTC] Error setting remote answer:", err);
-        endCallLocalRef.current?.("failed");
-      }
-    });
-
-    sock.on("call:candidate", async ({ callId, candidate }: { callId: string; candidate: RTCIceCandidateInit }) => {
-      if (stateRef.current.callId !== callId) return;
-      if (pcRef.current?.remoteDescription) {
-        await pcRef.current.addIceCandidate(candidate).catch(() => {});
-      } else {
-        iceQueueRef.current.push(candidate);
-      }
+      // Auto-miss after 45 s of no answer
+      ringTimeoutRef.current = setTimeout(() => {
+        if (stateRef.current.status === "incoming") endCallLocalRef.current("missed");
+      }, 45_000);
+      setState((s) => ({ ...s, status: "incoming", callId, roomName, peerId: fromUserId, peerName: fromUserName, type }));
     });
 
     sock.on("call:reject", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocalRef.current?.("declined");
+      if (stateRef.current.callId === callId) endCallLocalRef.current("declined");
     });
     sock.on("call:hangup", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocalRef.current?.("completed");
+      if (stateRef.current.callId === callId) endCallLocalRef.current("completed");
     });
     sock.on("call:busy", ({ callId }: { callId: string }) => {
-      if (stateRef.current.callId === callId) endCallLocalRef.current?.("busy");
+      if (stateRef.current.callId === callId) endCallLocalRef.current("busy");
     });
 
-    sock.on("call:track:update", (_: unknown) => { /* remote mute state — future */ });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { sock.disconnect(); };
+  }, [myId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (myId) connectCallSocket();
-    return () => { callSockRef.current?.disconnect(); };
-  }, [myId, connectCallSocket]);
-
+  // ── Public API ────────────────────────────────────────────────────────────
   const startCall = useCallback(async (toUserId: string, peerName: string, type: "audio" | "video") => {
     if (!myId || stateRef.current.status !== "idle") return;
     try {
-      const { callId } = await api.calls.create(toUserId, type);
-      setState((s) => ({ ...s, status: "calling", callId, peerId: toUserId, peerName, type }));
-      await ensurePeerConnection(callId, type);
-      const pc = pcRef.current!;
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: type === "video",
-      });
-      await pc.setLocalDescription(offer);
-      console.log("[WebRTC] Sending offer for call:", callId);
-      callSockRef.current?.emit("call:offer", { callId, offer, type });
+      const { callId, roomName } = await api.calls.create(toUserId, type);
+      setState((s) => ({ ...s, status: "calling", callId, roomName, peerId: toUserId, peerName, type }));
+      await joinRoom(roomName, type);
+      // Wait for callee to join (they trigger participantJoined → activateCall via remoteTrackStarted)
     } catch (err) {
-      console.error("[WebRTC] startCall error:", err);
+      console.error("[Call] startCall error:", err);
       endCallLocal("failed");
     }
-  }, [myId, ensurePeerConnection, endCallLocal]);
+  }, [myId, joinRoom, endCallLocal]);
 
   const answerCall = useCallback(async () => {
-    const { callId, type } = stateRef.current;
-    if (!callId || stateRef.current.status !== "incoming") return;
+    const { callId, roomName, type } = stateRef.current;
+    if (!callId || !roomName || stateRef.current.status !== "incoming") return;
+    if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
     setState((s) => ({ ...s, status: "connecting" }));
-
-    if (pendingOfferRef.current) {
-      await processOffer(callId, pendingOfferRef.current, type);
-      pendingOfferRef.current = null;
-    } else {
-      await ensurePeerConnection(callId, type);
+    try {
+      await joinRoom(roomName, type);
+    } catch (err) {
+      console.error("[Call] answerCall error:", err);
+      endCallLocal("failed");
     }
-  }, [ensurePeerConnection, processOffer]);
+  }, [joinRoom, endCallLocal]);
 
   const rejectCall = useCallback(() => {
     const { callId } = stateRef.current;
@@ -337,17 +265,26 @@ export function useCall(myId: string | null) {
     endCallLocal("completed");
   }, [endCallLocal]);
 
-  const toggleMute = useCallback(() => {
-    const { localStream, isMuted, callId } = stateRef.current;
-    localStream?.getAudioTracks().forEach((t) => { t.enabled = isMuted; });
-    callSockRef.current?.emit("call:track:update", { callId, trackType: "audio", enabled: isMuted });
+  const toggleMute = useCallback(async () => {
+    const { isMuted } = stateRef.current;
+    try {
+      if (isMuted) await meetingRef.current?.unmuteAudio();
+      else         await meetingRef.current?.muteAudio();
+    } catch {
+      // Fallback: mute via track directly
+      stateRef.current.localStream?.getAudioTracks().forEach((t) => { t.enabled = isMuted; });
+    }
     setState((s) => ({ ...s, isMuted: !s.isMuted }));
   }, []);
 
-  const toggleCamera = useCallback(() => {
-    const { localStream, isCameraOff, callId } = stateRef.current;
-    localStream?.getVideoTracks().forEach((t) => { t.enabled = isCameraOff; });
-    callSockRef.current?.emit("call:track:update", { callId, trackType: "video", enabled: isCameraOff });
+  const toggleCamera = useCallback(async () => {
+    const { isCameraOff } = stateRef.current;
+    try {
+      if (isCameraOff) await meetingRef.current?.startVideo();
+      else             await meetingRef.current?.stopVideo();
+    } catch {
+      stateRef.current.localStream?.getVideoTracks().forEach((t) => { t.enabled = isCameraOff; });
+    }
     setState((s) => ({ ...s, isCameraOff: !s.isCameraOff }));
   }, []);
 

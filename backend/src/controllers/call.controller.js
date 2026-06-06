@@ -43,45 +43,64 @@ export const createCallSession = async (req, res) => {
       return res.status(404).json({ message: "Caller not found" });
     }
 
-    const callId = crypto.randomUUID();
-    const session = createSession({
-      callId,
-      fromUserId,
-      toUserId,
-      type,
-      icePolicy: "all"
-    });
+    // ── Create Metered room ──────────────────────────────────────────────────
+    const meteredDomain    = process.env.METERED_DOMAIN;
+    const meteredSecretKey = process.env.METERED_SECRET_KEY;
+    let roomName = null;
 
-    const iceServers = await buildIceServers();
-    
+    if (!meteredDomain || !meteredSecretKey) {
+      return res.status(503).json({
+        message: "Calling is not configured on this server. Set METERED_DOMAIN and METERED_SECRET_KEY in the backend .env."
+      });
+    }
+
+    try {
+      const mr = await fetch(
+        `https://${meteredDomain}/api/v2/room?secretKey=${meteredSecretKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ autoCloseEnabled: true, roomMode: "conference", privacy: "private" }),
+        }
+      );
+      if (!mr.ok) throw new Error(`Metered API ${mr.status}: ${await mr.text()}`);
+      const mj = await mr.json();
+      roomName = mj.roomName;
+      console.log(`🎥 Metered room created: ${roomName}`);
+    } catch (err) {
+      console.error("Failed to create Metered room:", err.message);
+      return res.status(502).json({ message: "Failed to create call session with Metered." });
+    }
+
+    const callId = crypto.randomUUID();
+    const session = createSession({ callId, fromUserId, toUserId, type, icePolicy: "all", roomName });
+
     // Check if callee is online
     const calleeIsOnline = isUserOnline(toUserId.toString());
 
-    console.log(`📞 Call session created: ${callId}, from: ${fromUserId}, to: ${toUserId}, type: ${type}`);
+    console.log(`📞 Call session created: ${callId}, from: ${fromUserId}, to: ${toUserId}, type: ${type}, room: ${roomName}`);
 
-    // ✅ FIXED: Notify the callee via socket that an incoming call is coming
+    // Notify the callee via socket
     try {
       const io = getIO();
       const callNamespace = io.of("/calls");
-      
       callNamespace.to(toUserId.toString()).emit("call:initiate", {
         callId,
         fromUserId: fromUserId.toString(),
         fromUserName: caller.fullName || caller.username || "Unknown",
         type,
+        roomName,
         timestamp: Date.now()
       });
-      console.log(`📤 [CALL-INITIATE] Sent to ${toUserId.toString()}: callId=${callId}, caller=${caller.fullName}`);
+      console.log(`📤 [CALL-INITIATE] Sent to ${toUserId.toString()}: callId=${callId}, room=${roomName}`);
     } catch (socketErr) {
       console.error(`❌ Failed to emit call:initiate to callee:`, socketErr.message);
-      // Don't fail the request, caller still gets the callId
     }
 
     return res.status(201).json({
       callId,
       type: session.type,
-      iceServers,
-      iceTransportPolicy: session.icePolicy,
+      roomName,
       status: session.status,
       expiresAt: session.expiresAt,
       calleeStatus: calleeIsOnline ? "online" : "offline"

@@ -156,12 +156,11 @@ export const api = {
   // ── Calls ──────────────────────────────────────────────────────────────────
   calls: {
     create: (toUserId: string, type: "audio" | "video") =>
-      request<{ callId: string; type: string; iceServers: RTCIceServer[]; status: string; calleeStatus: string }>(
+      request<{ callId: string; type: string; roomName: string; status: string; calleeStatus: string }>(
         "/calls", { method: "POST", body: JSON.stringify({ toUserId, type }) }
       ),
     get: (callId: string) =>
-      request<{ callId: string; type: string; status: string; iceServers: RTCIceServer[] }>(`/calls/${callId}`),
-    turn: (callId: string) => request<{ iceServers: RTCIceServer[] }>(`/calls/${callId}/turn`),
+      request<{ callId: string; type: string; status: string; roomName: string }>(`/calls/${callId}`),
   },
 
   // ── Settings ───────────────────────────────────────────────────────────────
