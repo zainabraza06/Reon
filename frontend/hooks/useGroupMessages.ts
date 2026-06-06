@@ -53,9 +53,16 @@ export function useGroupMessages(groupId: string | null, myId: string | null) {
     const handleNew = async (data: unknown) => {
       const { message, groupId: gid } = data as { message: GroupMessage; groupId: string };
       if (gid !== groupId) return;
-      // Tell the backend we received this message (triggers delivery tick for sender)
+
+      // The socket payload carries memberKeys[] but not the per-user encryptedKey.
+      // Extract this user's key before attempting decryption.
+      const myKey = message.memberKeys?.find(
+        (k) => k.userId === myId || k.userId?.toString() === myId
+      )?.encryptedKey;
+      const msgWithKey: GroupMessage = myKey ? { ...message, encryptedKey: myKey } : message;
+
       socketService.emit("group-message-delivered", { messageId: message._id, groupId: gid });
-      const decrypted = await decryptMsg(message);
+      const decrypted = await decryptMsg(msgWithKey);
       setMessages((prev) => {
         if (prev.find((m) => m._id === decrypted._id)) return prev;
         return [...prev, decrypted];

@@ -3,6 +3,7 @@ import { use, useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft, Info, Users, Check, CheckCheck, X,
   Crown, Shield, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader, AlertTriangle,
+  Clock, AlertCircle, RotateCcw,
 } from "lucide-react";
 
 // ── Confirm dialog ─────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ import { useGroupMessages } from "@/hooks/useGroupMessages";
 import { useAuth } from "@/context/AuthContext";
 import { socketService } from "@/lib/socket";
 import { api } from "@/lib/api";
-import { encryptGroupText, getStoredPrivateKey } from "@/lib/crypto";
+import { encryptGroupText } from "@/lib/crypto";
 import type { GroupChat, GroupMessage } from "@/types";
 
 // ── Tick ───────────────────────────────────────────────────────────────────────
@@ -80,8 +81,8 @@ function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
 
 // ── Message bubble ─────────────────────────────────────────────────────────────
 
-function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
-  message: GroupMessage; isMine: boolean; memberCount: number; onInfoPress?: () => void;
+function GroupMessageBubble({ message, isMine, memberCount, onInfoPress, onRetry }: {
+  message: GroupMessage; isMine: boolean; memberCount: number; onInfoPress?: () => void; onRetry?: () => void;
 }) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,9 +101,12 @@ function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
   const text       = message.plaintext || message.ciphertext;
   const senderName = typeof message.sender === "object" ? message.sender.fullName : "";
   const senderId   = typeof message.sender === "object" ? message.sender._id : message.sender;
+  const isSending  = message.status === "sending";
+  const isFailed   = message.status === "failed";
+  const canInfo    = isMine && !isSending && !isFailed;
 
   const handleTouchStart = () => {
-    if (!isMine || !onInfoPress) return;
+    if (!canInfo || !onInfoPress) return;
     longPressTimer.current = setTimeout(() => onInfoPress(), 500);
   };
   const cancelLongPress = () => {
@@ -121,11 +125,13 @@ function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
         </div>
       )}
       <div
-        onContextMenu={(e) => { if (!isMine || !onInfoPress) return; e.preventDefault(); onInfoPress(); }}
+        onContextMenu={(e) => { if (!canInfo || !onInfoPress) return; e.preventDefault(); onInfoPress(); }}
         onTouchStart={handleTouchStart}
         onTouchEnd={cancelLongPress}
         onTouchMove={cancelLongPress}
-        className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm select-none ${isMine ? "cursor-context-menu" : ""} ${
+        className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm select-none transition-opacity ${
+          isSending ? "opacity-60" : ""
+        } ${isMine ? "cursor-context-menu" : ""} ${
           isMine
             ? "bubble-gradient text-white rounded-br-sm shadow-violet-500/20"
             : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-sm"
@@ -138,15 +144,21 @@ function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
         <div className={`flex items-center justify-end gap-1 mt-0.5 ${isMine ? "text-white/55" : "text-gray-400"}`}>
           <span className="text-[11px]">{time}</span>
           {isMine && (
-            <GroupTick
-              senderId={senderId}
-              readBy={message.readBy}
-              deliveredTo={message.deliveredTo}
-              memberCount={memberCount}
-            />
+            isSending ? <Clock size={12} className="text-white/40 animate-pulse" /> :
+            isFailed  ? <AlertCircle size={12} className="text-rose-300" /> :
+            <GroupTick senderId={senderId} readBy={message.readBy} deliveredTo={message.deliveredTo} memberCount={memberCount} />
           )}
         </div>
       </div>
+      {isFailed && onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="flex items-center gap-1 text-[11px] text-rose-400 hover:text-rose-500 mt-0.5 mr-1 transition-colors"
+        >
+          <RotateCcw size={11} /> Retry
+        </button>
+      )}
     </div>
   );
 }
@@ -587,47 +599,71 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
   const sendMessage = async (text: string, files: File[]) => {
     if (!me || !group) return;
 
-    const memberKeys: { userId: string; publicKey: JsonWebKey }[] = [];
-    for (const m of group.members) {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const now = new Date().toISOString();
+
+    // Add optimistic bubble immediately so user sees their message right away
+    setMessages((prev) => [
+      ...prev,
+      {
+        _id: tempId,
+        tempId,
+        groupId,
+        sender: me,
+        plaintext: text || undefined,
+        contentType: (files.length > 0 ? "document" : "text") as GroupMessage["contentType"],
+        sentAt: now,
+        status: "sending" as const,
+        readBy:      [{ userId: me._id, at: now }],
+        deliveredTo: [{ userId: me._id, at: now }],
+      },
+    ]);
+
+    // Fire the actual API call in the background so the input re-enables immediately
+    void (async () => {
       try {
-        const { publicKey } = await api.keys.get(m.user._id);
-        memberKeys.push({ userId: m.user._id, publicKey: publicKey as JsonWebKey });
-      } catch {}
-    }
+        const memberKeys: { userId: string; publicKey: JsonWebKey }[] = [];
+        for (const m of group.members) {
+          try {
+            const { publicKey } = await api.keys.get(m.user._id);
+            memberKeys.push({ userId: m.user._id, publicKey: publicKey as JsonWebKey });
+          } catch {}
+        }
 
-    const fd = new FormData();
-    const msgData: Record<string, unknown> = { contentType: files.length > 0 ? "document" : "text" };
+        const fd = new FormData();
+        const msgData: Record<string, unknown> = { contentType: files.length > 0 ? "document" : "text" };
 
-    if (text && memberKeys.length > 0) {
-      const enc = await encryptGroupText(text, memberKeys);
-      msgData.ciphertext = enc.ciphertext;
-      msgData.memberKeys = enc.memberKeys;
-    } else if (text) {
-      msgData.ciphertext = text;
-      msgData.memberKeys = [];
-    }
-    msgData.mediaKeys = files.map(() => ({}));
-    for (const file of files) fd.append("files", file, file.name);
-    fd.append("data", JSON.stringify(msgData));
+        if (text && memberKeys.length > 0) {
+          const enc = await encryptGroupText(text, memberKeys);
+          msgData.ciphertext = enc.ciphertext;
+          msgData.memberKeys = enc.memberKeys;
+        } else if (text) {
+          msgData.ciphertext = text;
+          msgData.memberKeys = [];
+        }
+        msgData.mediaKeys = files.map(() => ({}));
+        for (const file of files) fd.append("files", file, file.name);
+        fd.append("data", JSON.stringify(msgData));
 
-    try {
-      const { message } = await api.groups.sendMessage(groupId, fd) as { message: GroupMessage };
-      const privateKey = await getStoredPrivateKey();
-      let plaintext = text;
-      if (message.ciphertext && privateKey && message.encryptedKey) {
-        try {
-          const { decryptGroupText } = await import("@/lib/crypto");
-          plaintext = await decryptGroupText(message.ciphertext, message.encryptedKey, privateKey);
-        } catch {}
+        const { message } = await api.groups.sendMessage(groupId, fd) as { message: GroupMessage };
+
+        // Replace optimistic with confirmed message (plaintext already known from local `text`)
+        setMessages((prev) => {
+          const without = prev.filter((m) => m.tempId !== tempId && m._id !== message._id);
+          return [...without, { ...message, plaintext: text || undefined }];
+        });
+      } catch (err) {
+        console.error("sendGroupMessage error:", err);
+        setMessages((prev) =>
+          prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" as const } : m)
+        );
       }
-      setMessages((prev) => {
-        if (prev.find((m) => m._id === message._id)) return prev;
-        return [...prev, { ...message, plaintext: plaintext || text }];
-      });
-    } catch (err) {
-      console.error("sendGroupMessage error:", err);
-    }
-    socketService.emit("group-typing-stop", { groupId });
+    })();
+  };
+
+  const handleRetry = (msg: GroupMessage) => {
+    setMessages((prev) => prev.filter((m) => m.tempId !== msg.tempId && m._id !== msg._id));
+    if (msg.plaintext) void sendMessage(msg.plaintext, []);
   };
 
   const handleTyping = (t: boolean) => {
@@ -694,11 +730,12 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
               const isMine = typeof msg.sender === "object" ? msg.sender._id === me._id : msg.sender === me._id;
               return (
                 <GroupMessageBubble
-                  key={msg._id}
+                  key={msg.tempId ?? msg._id}
                   message={msg}
                   isMine={isMine}
                   memberCount={(group?.members.length ?? 2) - 1}
-                  onInfoPress={isMine ? () => setInfoMsgId(msg._id) : undefined}
+                  onInfoPress={isMine && !msg.status ? () => setInfoMsgId(msg._id) : undefined}
+                  onRetry={isMine && msg.status === "failed" ? () => handleRetry(msg) : undefined}
                 />
               );
             })}

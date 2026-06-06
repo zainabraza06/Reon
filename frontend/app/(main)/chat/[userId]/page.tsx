@@ -227,7 +227,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
 
   const handleTyping = useCallback((t: boolean) => {
     if (!me) return;
-    socketService.emit(t ? "start-typing" : "stop-typing", { senderId: me._id, receiverId: userId });
+    socketService.emit(t ? "start-typing" : "stop-typing", { senderId: me._id, receiverId: userId, isTyping: t });
   }, [me, userId]);
 
   const handleRetry = useCallback(async (msg: Message) => {

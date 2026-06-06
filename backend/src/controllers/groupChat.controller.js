@@ -450,8 +450,8 @@ export const sendGroupMessage = async (req, res) => {
       memberCount,
     });
 
-    // Emit new-message to all other members
-    for (const m of otherMembers) {
+    // Emit to all members (including sender for sidebar update)
+    for (const m of group.members) {
       emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId, groupName: group.name });
     }
 

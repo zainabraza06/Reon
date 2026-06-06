@@ -106,12 +106,15 @@ export interface GroupMessage {
   ciphertext?: string;
   plaintext?: string;
   contentType: "text" | "image" | "audio" | "video" | "document" | "system";
-  encryptedKey?: string; // caller's key extracted from memberKeys
+  encryptedKey?: string;
+  memberKeys?: { userId: string; encryptedKey: string }[];
   media?: (MediaFile & { memberKeys?: GroupMediaKey[] })[];
   sentAt: string;
-  // stored as {userId, at} on the server; frontend receives flattened counts for tick display
   readBy?: { userId: string; at: string }[];
   deliveredTo?: { userId: string; at: string }[];
+  // client-only
+  status?: "sending" | "failed";
+  tempId?: string;
 }
 
 export interface PersonalMessageInfo {
