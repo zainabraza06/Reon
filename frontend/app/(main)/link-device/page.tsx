@@ -51,7 +51,7 @@ function extractD(urlOrRaw: string): string | null {
 function QRScanner({ onScanned }: { onScanned: (d: string) => void }) {
   const videoRef    = useRef<HTMLVideoElement>(null);
   const streamRef   = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const [cameraErr, setCameraErr]   = useState("");
   const [manualInput, setManualInput] = useState("");
   const [manualErr, setManualErr]   = useState("");

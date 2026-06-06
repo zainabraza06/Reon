@@ -97,11 +97,11 @@ export const api = {
       request<{ group: import("@/types").GroupChat }>(`/groups/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) => request(`/groups/${id}`, { method: "DELETE" }),
     addMembers: (id: string, memberIds: string[]) =>
-      request(`/groups/${id}/members`, { method: "POST", body: JSON.stringify({ memberIds }) }),
+      request<{ group: import("@/types").GroupChat }>(`/groups/${id}/members`, { method: "POST", body: JSON.stringify({ memberIds }) }),
     removeMember: (id: string, memberId: string) =>
       request(`/groups/${id}/members/${memberId}`, { method: "DELETE" }),
     promoteAdmin: (id: string, memberId: string) =>
-      request(`/groups/${id}/admins/${memberId}`, { method: "PATCH" }),
+      request<{ group: import("@/types").GroupChat }>(`/groups/${id}/admins/${memberId}`, { method: "PATCH" }),
     sendMessage: (id: string, formData: FormData) =>
       fetch(`${BASE_URL}/groups/${id}/messages`, { method: "POST", credentials: "include", body: formData }).then(
         (r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(new Error(e.message))))
