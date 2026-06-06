@@ -4,7 +4,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { protectRoute } from "../middlewares/auth.middleware.js";
 import { profileUpload } from "../middlewares/profileUpload.js";
-import {updateProfile, changePassword} from "../controllers/settings.controller.js";
+import {updateProfile, changePassword, updatePrivacy} from "../controllers/settings.controller.js";
 import { updateProfileValidator, changePasswordValidator } from "../middlewares/validators.js";
 
 
@@ -35,5 +35,7 @@ router.put(
 );
 
 
+
+router.patch("/privacy", protectRoute, updatePrivacy);
 
 export default router;

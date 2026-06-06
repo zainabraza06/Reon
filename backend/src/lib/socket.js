@@ -237,30 +237,38 @@ const markUserAsOffline = (userId, socketId, reason = 'disconnect') => {
     if (userSockets.get(userId).size === 0 || reason === 'heartbeat_timeout') {
       userSockets.delete(userId);
       onlineUsers.delete(userId);
-      
+
       // Track if disconnected due to heartbeat
       if (reason === 'heartbeat_timeout') {
         disconnectedDueToHeartbeat.add(userId);
       }
-      
+
+      const lastSeen = new Date();
+      User.findByIdAndUpdate(userId, { lastSeen }).catch(() => {});
+
       // Broadcast offline status
-      io.emit("user-status-changed", { 
-        userId, 
+      io.emit("user-status-changed", {
+        userId,
         isOnline: false,
         reason,
-        timestamp: new Date().toISOString()
+        lastSeen: lastSeen.toISOString(),
+        timestamp: lastSeen.toISOString()
       });
-    } 
+    }
   } else if (reason === 'heartbeat_timeout') {
     // User was in heartbeatMap but not in userSockets (edge case)
     onlineUsers.delete(userId);
     disconnectedDueToHeartbeat.add(userId);
-    
-    io.emit("user-status-changed", { 
-      userId, 
+
+    const lastSeen = new Date();
+    User.findByIdAndUpdate(userId, { lastSeen }).catch(() => {});
+
+    io.emit("user-status-changed", {
+      userId,
       isOnline: false,
       reason,
-      timestamp: new Date().toISOString()
+      lastSeen: lastSeen.toISOString(),
+      timestamp: lastSeen.toISOString()
     });
   }
 };

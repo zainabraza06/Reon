@@ -20,6 +20,11 @@ export interface User {
   friends: string[];
   hasPassword?: boolean;
   createdAt?: string;
+  lastSeen?: string;
+  privacySettings?: {
+    showLastSeen: boolean;
+    showActiveStatus: boolean;
+  };
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────

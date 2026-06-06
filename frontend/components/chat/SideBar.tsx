@@ -355,9 +355,6 @@ export default function Sidebar({ onNewGroup }: Props) {
 
     if (isSystem) return { prefix: "", text };
 
-    // Don't prefix generic placeholders — prefix only adds noise when content isn't readable
-    if (text === "Message") return { prefix: "", text };
-
     const senderId = typeof sender === "object" ? (sender as import("@/types").User)._id : sender as string;
     let prefix = "";
     if (senderId === user?._id) {

@@ -40,6 +40,7 @@ const groupChatSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
   description: { type: String, default: "", maxlength: 500 },
   avatar: { type: String, default: "" },
+  avatarId: { type: String, default: "" },
   creator: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   admins: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   members: [{

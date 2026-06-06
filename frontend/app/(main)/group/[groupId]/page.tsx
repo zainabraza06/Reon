@@ -1,9 +1,9 @@
 "use client";
-import { use, useState, useEffect, useRef, useCallback } from "react";
+import { use, useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
 import {
   ArrowLeft, Info, Users, Check, CheckCheck, X,
   Crown, Shield, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader, AlertTriangle,
-  Clock, AlertCircle, RotateCcw,
+  Clock, AlertCircle, RotateCcw, Camera,
 } from "lucide-react";
 
 // ── Confirm dialog ─────────────────────────────────────────────────────────────
@@ -193,6 +193,27 @@ function GroupInfoPanel({
 
   // Busy state per member action
   const [busyMember, setBusyMember] = useState<string | null>(null);
+
+  // Avatar upload
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !group) return;
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("avatar", file);
+      const { group: updated } = await api.groups.updateAvatar(group._id, fd);
+      onGroupUpdated(updated);
+    } catch (err) {
+      console.error("updateGroupAvatar error:", err);
+    } finally {
+      setAvatarUploading(false);
+      if (avatarFileRef.current) avatarFileRef.current.value = "";
+    }
+  };
 
   // Confirm dialog
   const [confirm, setConfirm] = useState<{
@@ -396,7 +417,23 @@ function GroupInfoPanel({
         {/* Group identity */}
         <div className="px-4 py-5 border-b border-gray-100 dark:border-white/6">
           <div className="flex flex-col items-center gap-3">
-            <Avatar src={group.avatar} name={group.name} size={64} />
+            <div className="relative">
+              <Avatar src={group.avatar} name={group.name} size={64} />
+              {amAdmin && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => avatarFileRef.current?.click()}
+                    disabled={avatarUploading}
+                    title="Change group picture"
+                    className="absolute -bottom-1 -right-1 w-6 h-6 btn-gradient rounded-full flex items-center justify-center text-white shadow-md disabled:opacity-50"
+                  >
+                    {avatarUploading ? <Loader size={10} className="animate-spin" /> : <Camera size={10} />}
+                  </button>
+                  <input ref={avatarFileRef} type="file" accept="image/*" aria-label="Change group picture" className="hidden" onChange={handleAvatarChange} />
+                </>
+              )}
+            </div>
             {editing ? (
               <div className="w-full space-y-2">
                 <input

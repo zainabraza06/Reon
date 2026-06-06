@@ -3,6 +3,7 @@ import { GridFSBucket } from "mongodb";
 import { GroupChat, GroupMessage } from "../models/GroupChat.js";
 import User from "../models/User.js";
 import { emitToUser, isUserOnline } from "../lib/socket.js";
+import cloudinary from "../lib/cloudinary.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,48 @@ export const updateGroup = async (req, res) => {
     res.json({ group: populated });
   } catch (err) {
     console.error("updateGroup error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const updateGroupAvatar = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user._id;
+
+    const group = await GroupChat.findById(groupId);
+    if (!group || !group.isActive) return res.status(404).json({ message: "Group not found" });
+    if (!isAdmin(group, userId)) return res.status(403).json({ message: "Admins only" });
+
+    if (!req.file) return res.status(400).json({ message: "No image provided" });
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "reon/group_avatars",
+          public_id: group.avatarId || undefined,
+          overwrite: true,
+          invalidate: true,
+          transformation: [{ width: 400, height: 400, crop: "fill", gravity: "face" }],
+        },
+        (error, result) => (error ? reject(error) : resolve(result))
+      );
+      stream.end(req.file.buffer);
+    });
+
+    group.avatar = uploadResult.secure_url;
+    group.avatarId = uploadResult.public_id;
+    await group.save();
+
+    const populated = await GroupChat.findById(groupId)
+      .populate("members.user", "fullName username profilePic")
+      .populate("admins", "fullName username profilePic")
+      .populate("creator", "fullName username profilePic");
+
+    group.members.forEach((m) => emitToUser(m.user.toString(), "group-updated", { group: populated }));
+    res.json({ group: populated });
+  } catch (err) {
+    console.error("updateGroupAvatar error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

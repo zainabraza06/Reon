@@ -13,6 +13,20 @@ import { api } from "@/lib/api";
 import { encryptText, encryptFile, decryptText, getStoredPublicKey, getStoredPrivateKey } from "@/lib/crypto";
 import type { Message, User } from "@/types";
 
+function formatLastSeen(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "last seen just now";
+  if (mins < 60) return `last seen ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `last seen ${hrs}h ago`;
+  if (date.toDateString() === new Date(now.getTime() - 86400000).toDateString())
+    return `last seen yesterday at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `last seen ${date.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+}
+
 function bestAudioMime() {
   const c = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
   return c.find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)) ?? "audio/webm";
@@ -29,6 +43,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   const { messages, loading, hasMore, loadMore, setMessages } = useMessages(userId, me?._id ?? null);
   const [recipient, setRecipient] = useState<User | null>(null);
   const [isOnline, setIsOnline] = useState(false);
+  const [lastSeen, setLastSeen] = useState<string | undefined>(undefined);
   const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -42,13 +57,21 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   useEffect(() => {
     api.friends.list().then(({ friends }) => {
       const found = friends.find((f) => f._id === userId);
-      if (found) setRecipient(found);
+      if (found) {
+        setRecipient(found);
+        if (found.lastSeen) setLastSeen(found.lastSeen);
+      }
     }).catch(() => {});
     api.messages.markRead(userId).catch(() => {});
   }, [userId]);
 
   useEffect(() => {
-    const onStatus = (d: unknown) => { const { userId: u, isOnline: o } = d as { userId: string; isOnline: boolean }; if (u === userId) setIsOnline(o); };
+    const onStatus = (d: unknown) => {
+      const { userId: u, isOnline: o, lastSeen: ls } = d as { userId: string; isOnline: boolean; lastSeen?: string };
+      if (u !== userId) return;
+      setIsOnline(o);
+      if (!o && ls) setLastSeen(ls);
+    };
     socketService.on("user-status-changed", onStatus);
     return () => socketService.off("user-status-changed", onStatus);
   }, [userId]);
@@ -245,11 +268,23 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
         <Link href="/chat" className="md:hidden p-1.5 -ml-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
           <ArrowLeft size={20} />
         </Link>
-        <Avatar src={recipient?.profilePic} name={recipient?.fullName || "…"} size={40} isOnline={isOnline} />
+        <Avatar
+          src={recipient?.profilePic}
+          name={recipient?.fullName || "…"}
+          size={40}
+          isOnline={isOnline && (recipient?.privacySettings?.showActiveStatus !== false)}
+        />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 dark:text-white text-[15px] truncate">{recipient?.fullName || "…"}</p>
           <p className="text-xs text-gray-500 h-4">
-            {isTyping ? <span className="text-violet-500 dark:text-violet-400 font-medium">typing…</span> : isOnline ? <span className="text-emerald-500 font-medium">Online</span> : ""}
+            {isTyping
+              ? <span className="text-violet-500 dark:text-violet-400 font-medium">typing…</span>
+              : isOnline && recipient?.privacySettings?.showActiveStatus !== false
+                ? <span className="text-emerald-500 font-medium">Online</span>
+                : !isOnline && lastSeen && recipient?.privacySettings?.showLastSeen !== false
+                  ? <span className="text-gray-400">{formatLastSeen(lastSeen)}</span>
+                  : null
+            }
           </p>
         </div>
         <div className="flex items-center gap-0.5">

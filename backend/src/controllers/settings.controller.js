@@ -64,6 +64,24 @@ export const updateProfile = async (req, res) => {
 
 
 
+export const updatePrivacy = async (req, res) => {
+  try {
+    const user = req.user;
+    const { showLastSeen, showActiveStatus } = req.body;
+
+    if (!user.privacySettings) user.privacySettings = {};
+    if (typeof showLastSeen === "boolean") user.privacySettings.showLastSeen = showLastSeen;
+    if (typeof showActiveStatus === "boolean") user.privacySettings.showActiveStatus = showActiveStatus;
+    user.markModified("privacySettings");
+    await user.save();
+
+    return res.status(200).json({ message: "Privacy settings updated", user });
+  } catch (error) {
+    console.error("Update privacy error:", error);
+    return res.status(500).json({ message: "Server error while updating privacy settings" });
+  }
+};
+
 export const changePassword = async (req, res) => {
   try {
     const userOld = req.user; // your authenticated user

@@ -2,7 +2,7 @@
 import { useState, useRef, ChangeEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, Save, Lock, Smartphone, Link as LinkIcon } from "lucide-react";
+import { Camera, Save, Lock, Smartphone, Link as LinkIcon, Eye, EyeOff, Shield } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -25,6 +25,12 @@ export default function SettingsPage() {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg]       = useState("");
   const [pwOk, setPwOk]         = useState(false);
+
+  const [showLastSeen, setShowLastSeen]         = useState(user?.privacySettings?.showLastSeen ?? true);
+  const [showActiveStatus, setShowActiveStatus] = useState(user?.privacySettings?.showActiveStatus ?? true);
+  const [privacySaving, setPrivacySaving]       = useState(false);
+  const [privacyMsg, setPrivacyMsg]             = useState("");
+  const [privacyOk, setPrivacyOk]               = useState(false);
 
   const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -82,6 +88,23 @@ export default function SettingsPage() {
       setPwOk(false);
     } finally {
       setPwSaving(false);
+    }
+  };
+
+  const savePrivacy = async () => {
+    setPrivacySaving(true);
+    setPrivacyMsg("");
+    setPrivacyOk(false);
+    try {
+      await api.settings.updatePrivacy({ showLastSeen, showActiveStatus });
+      await refreshUser();
+      setPrivacyMsg("Privacy settings saved.");
+      setPrivacyOk(true);
+    } catch (err) {
+      setPrivacyMsg(err instanceof Error ? err.message : "Failed to save.");
+      setPrivacyOk(false);
+    } finally {
+      setPrivacySaving(false);
     }
   };
 
@@ -184,6 +207,70 @@ export default function SettingsPage() {
               This is My New Device
             </Link>
           </div>
+        </section>
+
+        <hr className="border-gray-200 dark:border-white/6" />
+
+        {/* Privacy section */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Shield size={14} />Privacy
+          </h2>
+          <div className="space-y-3">
+            {/* Show Last Seen toggle */}
+            <div className="flex items-center justify-between p-3 bg-white dark:bg-[#12122e] rounded-xl border border-gray-100 dark:border-white/6">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-violet-50 dark:bg-violet-500/10">
+                  <Eye size={14} className="text-violet-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Show Last Seen</p>
+                  <p className="text-xs text-gray-400">Let others see when you were last active</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLastSeen((v) => !v)}
+                className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 ${showLastSeen ? "btn-gradient" : "bg-gray-300 dark:bg-gray-600"}`}
+                aria-label="Toggle show last seen"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform duration-200 ${showLastSeen ? "translate-x-4.5" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            {/* Show Active Status toggle */}
+            <div className="flex items-center justify-between p-3 bg-white dark:bg-[#12122e] rounded-xl border border-gray-100 dark:border-white/6">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10">
+                  <EyeOff size={14} className="text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Show Online Status</p>
+                  <p className="text-xs text-gray-400">Let others see when you are online</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowActiveStatus((v) => !v)}
+                className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 ${showActiveStatus ? "btn-gradient" : "bg-gray-300 dark:bg-gray-600"}`}
+                aria-label="Toggle show online status"
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform duration-200 ${showActiveStatus ? "translate-x-4.5" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </div>
+
+          {privacyMsg && (
+            <p className={`text-sm font-medium mt-3 ${privacyOk ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
+              {privacyMsg}
+            </p>
+          )}
+
+          <button type="button" onClick={savePrivacy} disabled={privacySaving}
+            className="mt-3 btn-gradient flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 shadow-md shadow-violet-500/25 transition-all">
+            <Save size={15} />
+            {privacySaving ? "Saving…" : "Save Privacy"}
+          </button>
         </section>
 
         <hr className="border-gray-200 dark:border-white/6" />

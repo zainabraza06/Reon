@@ -58,6 +58,15 @@ const userSchema = new mongoose.Schema({
   type: String,
 },
 
+  lastSeen: {
+    type: Date,
+  },
+
+  privacySettings: {
+    showLastSeen:     { type: Boolean, default: true },
+    showActiveStatus: { type: Boolean, default: true },
+  },
+
   friends: [
     {
       type: mongoose.Schema.Types.ObjectId,

@@ -2,7 +2,7 @@ import express from "express";
 import multer from "multer";
 import { protectRoute } from "../middlewares/auth.middleware.js";
 import {
-  createGroup, getMyGroups, getGroupById, updateGroup,
+  createGroup, getMyGroups, getGroupById, updateGroup, updateGroupAvatar,
   addMembers, removeMember, promoteAdmin, deleteGroup,
   sendGroupMessage, getGroupMessages, markGroupMessagesRead,
   getGroupMessageInfo,
@@ -22,6 +22,7 @@ router.post("/", createGroup);
 router.get("/", getMyGroups);
 router.get("/:groupId", getGroupById);
 router.put("/:groupId", updateGroup);
+router.patch("/:groupId/avatar", upload.single("avatar"), updateGroupAvatar);
 router.delete("/:groupId", deleteGroup);
 
 // Member management

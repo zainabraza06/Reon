@@ -95,6 +95,10 @@ export const api = {
     get: (id: string) => request<{ group: import("@/types").GroupChat }>(`/groups/${id}`),
     update: (id: string, data: { name?: string; description?: string }) =>
       request<{ group: import("@/types").GroupChat }>(`/groups/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    updateAvatar: (id: string, formData: FormData) =>
+      fetch(`${BASE_URL}/groups/${id}/avatar`, { method: "PATCH", credentials: "include", body: formData }).then(
+        (r) => (r.ok ? r.json() as Promise<{ group: import("@/types").GroupChat }> : r.json().then((e) => Promise.reject(new Error(e.message))))
+      ),
     delete: (id: string) => request(`/groups/${id}`, { method: "DELETE" }),
     addMembers: (id: string, memberIds: string[]) =>
       request<{ group: import("@/types").GroupChat }>(`/groups/${id}/members`, { method: "POST", body: JSON.stringify({ memberIds }) }),
@@ -188,5 +192,7 @@ export const api = {
       ),
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
       request("/settings/change-password", { method: "PUT", body: JSON.stringify(data) }),
+    updatePrivacy: (data: { showLastSeen?: boolean; showActiveStatus?: boolean }) =>
+      request("/settings/privacy", { method: "PATCH", body: JSON.stringify(data) }),
   },
 };
