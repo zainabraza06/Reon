@@ -6,7 +6,41 @@ import Avatar from "@/components/ui/Avatar";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
+import { useAuth } from "@/context/AuthContext";
 import type { ChatListItem, GroupChat } from "@/types";
+
+function groupMsgPreview(g: GroupChat, myUserId?: string): string {
+  const lm = g.lastMessage;
+  if (!lm) return "No messages yet";
+
+  const { content, sender, contentType } = lm;
+
+  let text: string;
+  if (contentType === "system") return content || "";
+  else if (contentType === "image")    text = "📷 Photo";
+  else if (contentType === "video")    text = "🎬 Video";
+  else if (contentType === "audio")    text = "🎤 Voice note";
+  else if (contentType === "document") text = "📎 Document";
+  else {
+    if (!content || content === "[encrypted]") return "Message";
+    if (content === "[image]")    return "📷 Photo";
+    if (content === "[video]")    return "🎬 Video";
+    if (content === "[audio]")    return "🎤 Voice note";
+    if (content === "[document]") return "📎 Document";
+    if (content.startsWith("["))  return "Message";
+    // readable system-message text
+    return content;
+  }
+
+  // prefix for media
+  const senderId = typeof sender === "object" ? (sender as import("@/types").User)._id : sender as string;
+  const prefix = senderId === myUserId
+    ? "You: "
+    : (lm.senderName
+        ? `${lm.senderName.split(" ")[0]}: `
+        : (typeof sender === "object" ? `${(sender as import("@/types").User).fullName.split(" ")[0]}: ` : ""));
+  return prefix + text;
+}
 
 function formatTime(d?: string) {
   if (!d) return "";
@@ -18,6 +52,7 @@ function formatTime(d?: string) {
 }
 
 export default function ChatLandingPage() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<"dms" | "groups">("dms");
   const [search, setSearch] = useState("");
   const [chats, setChats] = useState<ChatListItem[]>([]);
@@ -50,9 +85,17 @@ export default function ChatLandingPage() {
       ));
     };
     const onNewGroupMsg = (data: unknown) => {
-      const { groupId, message } = data as { groupId: string; message: { sentAt: string } };
+      const { message, groupId } = data as { message: import("@/types").GroupMessage; groupId: string };
+      const sender = message.sender as import("@/types").User;
+      let content: string;
+      if (message.contentType === "system")        content = message.ciphertext || "";
+      else if (message.contentType === "image")    content = "[image]";
+      else if (message.contentType === "video")    content = "[video]";
+      else if (message.contentType === "audio")    content = "[audio]";
+      else if (message.contentType === "document") content = "[document]";
+      else                                          content = "[encrypted]";
       setGroups((prev) => prev.map((g) => g._id === groupId
-        ? { ...g, lastMessage: { ...g.lastMessage, sentAt: message.sentAt, content: "[new message]" } as GroupChat["lastMessage"] }
+        ? { ...g, lastMessage: { content, sender, sentAt: message.sentAt, contentType: message.contentType, senderName: sender?.fullName } }
         : g
       ));
     };
@@ -177,7 +220,7 @@ export default function ChatLandingPage() {
                             <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{g.name}</p>
                             <span className="text-[11px] text-gray-400 shrink-0">{formatTime(g.lastMessage?.sentAt)}</span>
                           </div>
-                          <p className="text-xs text-gray-400 dark:text-gray-500">{g.members.length} members</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{groupMsgPreview(g, user?._id)}</p>
                         </div>
                       </Link>
                     </li>
