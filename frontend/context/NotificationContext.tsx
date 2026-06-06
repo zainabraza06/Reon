@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { usePathname } from "next/navigation";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
-import type { Message } from "@/types";
+import { api } from "@/lib/api";
+import type { Message, AppNotification } from "@/types";
 
 export type NotifType =
   | "friend_request"
@@ -13,16 +14,8 @@ export type NotifType =
   | "new_message"
   | "new_group_message";
 
-export interface AppNotification {
-  id: string;
-  type: NotifType;
-  title: string;
-  body: string;
-  avatar?: string;
-  link?: string;
-  timestamp: string;
-  read: boolean;
-}
+// Re-export for files that imported AppNotification from here
+export type { AppNotification };
 
 interface NotificationContextValue {
   notifications: AppNotification[];
@@ -35,6 +28,10 @@ interface NotificationContextValue {
 
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
+function mapFromDb(n: AppNotification): AppNotification {
+  return { ...n, id: n._id, timestamp: n.createdAt ?? n.timestamp };
+}
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const pathname = usePathname();
@@ -43,18 +40,35 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
-  const push = useCallback((n: Omit<AppNotification, "id" | "read">) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setNotifications((prev) => [{ ...n, id, read: false }, ...prev].slice(0, 50));
+  // Load persisted notifications from DB on login
+  useEffect(() => {
+    if (!user) { setNotifications([]); return; }
+    api.notifications.list()
+      .then(({ notifications: ns }) => setNotifications(ns.map(mapFromDb)))
+      .catch(() => {});
+  }, [user]);
+
+  const push = useCallback((n: Omit<AppNotification, "id" | "_id" | "read" | "timestamp" | "createdAt">) => {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const now = new Date().toISOString();
+    setNotifications((prev) => [
+      { ...n, id: tempId, _id: tempId, read: false, timestamp: now },
+      ...prev,
+    ].slice(0, 50));
+    api.notifications
+      .create({ type: n.type, title: n.title, body: n.body, avatar: n.avatar, link: n.link })
+      .then(({ notification: saved }) => {
+        const mapped = mapFromDb(saved);
+        setNotifications((prev) => prev.map((x) => x.id === tempId ? mapped : x));
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!user) return;
 
     const onFriendReq = (data: unknown) => {
-      const { sender } = data as {
-        sender: { _id: string; fullName: string; profilePic?: string };
-      };
+      const { sender } = data as { sender: { _id: string; fullName: string; profilePic?: string } };
       if (!sender) return;
       push({
         type: "friend_request",
@@ -62,7 +76,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         body: `${sender.fullName} sent you a friend request`,
         avatar: sender.profilePic,
         link: "/friends",
-        timestamp: new Date().toISOString(),
       });
     };
 
@@ -73,7 +86,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         sender?: { fullName: string; profilePic?: string };
         receiver?: { fullName: string; profilePic?: string };
       };
-      // Only notify the original requester (sender) that their request was accepted
       if (d.senderId !== user._id) return;
       push({
         type: "friend_accepted",
@@ -81,21 +93,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         body: `${d.receiver?.fullName ?? "Someone"} accepted your friend request`,
         avatar: d.receiver?.profilePic,
         link: "/friends",
-        timestamp: new Date().toISOString(),
       });
     };
 
     const onGroupAdded = (data: unknown) => {
-      const { group } = data as {
-        group: { _id: string; name: string; avatar?: string };
-      };
+      const { group } = data as { group: { _id: string; name: string; avatar?: string } };
       push({
         type: "group_added",
         title: "Added to Group",
         body: `You were added to "${group.name}"`,
         avatar: group.avatar,
         link: `/group/${group._id}`,
-        timestamp: new Date().toISOString(),
       });
     };
 
@@ -106,7 +114,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         title: "Removed from Group",
         body: groupName ? `You were removed from "${groupName}"` : "You were removed from a group",
         link: "/chat",
-        timestamp: new Date().toISOString(),
       });
     };
 
@@ -123,7 +130,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         body: "Sent you a message",
         avatar: msg.senderInfo?.profilePic,
         link: `/chat/${chatId}`,
-        timestamp: new Date().toISOString(),
       });
     };
 
@@ -133,7 +139,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         groupId: string;
         groupName?: string;
       };
-      // Skip system messages and messages the user sent
       if (message.contentType === "system") return;
       if (String(message.sender?._id) === String(user._id)) return;
       if (pathnameRef.current === `/group/${groupId}`) return;
@@ -144,7 +149,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         body: `${senderName}: sent a message`,
         avatar: message.sender?.profilePic,
         link: `/group/${groupId}`,
-        timestamp: new Date().toISOString(),
       });
     };
 
@@ -167,10 +171,25 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markRead    = useCallback((id: string) => setNotifications((p) => p.map((n) => n.id === id ? { ...n, read: true } : n)), []);
-  const markAllRead = useCallback(() => setNotifications((p) => p.map((n) => ({ ...n, read: true }))), []);
-  const remove      = useCallback((id: string) => setNotifications((p) => p.filter((n) => n.id !== id)), []);
-  const clearAll    = useCallback(() => setNotifications([]), []);
+  const markRead = useCallback((id: string) => {
+    setNotifications((p) => p.map((n) => n.id === id ? { ...n, read: true } : n));
+    if (!id.startsWith("temp-")) api.notifications.markRead(id).catch(() => {});
+  }, []);
+
+  const markAllRead = useCallback(() => {
+    setNotifications((p) => p.map((n) => ({ ...n, read: true })));
+    api.notifications.markAllRead().catch(() => {});
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    setNotifications((p) => p.filter((n) => n.id !== id));
+    if (!id.startsWith("temp-")) api.notifications.delete(id).catch(() => {});
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setNotifications([]);
+    api.notifications.clearAll().catch(() => {});
+  }, []);
 
   return (
     <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markAllRead, remove, clearAll }}>

@@ -15,7 +15,8 @@ import friendRoutes  from "./routes/friend.route.js";
 import messageRoutes from "./routes/message.route.js";
 import keyRoutes     from "./routes/key.route.js";
 import callRoutes    from "./routes/call.route.js";
-import groupChatRoutes from "./routes/groupChat.route.js";
+import groupChatRoutes    from "./routes/groupChat.route.js";
+import notificationRoutes from "./routes/notification.route.js";
 
 import "./utils/passport.js";
 
@@ -53,7 +54,8 @@ export function createApp() {
   app.use("/api/messages", messageRoutes);
   app.use("/api/keys",     keyRoutes);
   app.use("/api/calls",    callRoutes);
-  app.use("/api/groups",   groupChatRoutes);
+  app.use("/api/groups",        groupChatRoutes);
+  app.use("/api/notifications", notificationRoutes);
 
   return app;
 }

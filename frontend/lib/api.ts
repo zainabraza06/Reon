@@ -163,6 +163,19 @@ export const api = {
       request<{ callId: string; type: string; status: string; roomName: string }>(`/calls/${callId}`),
   },
 
+  // ── Notifications ──────────────────────────────────────────────────────────
+  notifications: {
+    list: () => request<{ notifications: import("@/types").AppNotification[] }>("/notifications"),
+    create: (data: { type: string; title: string; body: string; avatar?: string; link?: string }) =>
+      request<{ notification: import("@/types").AppNotification }>("/notifications", {
+        method: "POST", body: JSON.stringify(data),
+      }),
+    markRead: (id: string) => request(`/notifications/${id}/read`, { method: "PATCH" }),
+    markAllRead: () => request("/notifications/read-all", { method: "PATCH" }),
+    delete: (id: string) => request(`/notifications/${id}`, { method: "DELETE" }),
+    clearAll: () => request("/notifications", { method: "DELETE" }),
+  },
+
   // ── Settings ───────────────────────────────────────────────────────────────
   settings: {
     updateProfile: (data: FormData) =>

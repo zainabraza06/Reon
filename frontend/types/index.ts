@@ -160,6 +160,20 @@ export interface ChatListItem {
   isOnline?: boolean;
 }
 
+// ── Notifications ─────────────────────────────────────────────────────────────
+export interface AppNotification {
+  _id?: string;      // present on DB-returned documents
+  id: string;        // always present: equals _id after mapFromDb, or tempId for optimistic entries
+  type: "friend_request" | "friend_accepted" | "group_added" | "group_removed" | "new_message" | "new_group_message";
+  title: string;
+  body: string;
+  avatar?: string;
+  link?: string;
+  read: boolean;
+  timestamp: string; // maps to createdAt on DB documents
+  createdAt?: string;
+}
+
 // ── Crypto ────────────────────────────────────────────────────────────────────
 export interface KeyPair {
   publicKey: JsonWebKey;
