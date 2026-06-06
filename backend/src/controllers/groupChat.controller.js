@@ -66,6 +66,27 @@ const saveFileToGridFS = (buffer, originalName, index, fileType, encryptionIV) =
     }
   });
 
+// ── system message helper ─────────────────────────────────────────────────────
+
+const createAndEmitSystemMessage = async (groupId, senderId, text, memberIds, groupName) => {
+  try {
+    const msg = await GroupMessage.create({
+      groupId, sender: senderId, ciphertext: text, contentType: "system", sentAt: new Date(),
+    });
+    const populated = await GroupMessage.findById(msg._id).populate("sender", "fullName username profilePic");
+    await GroupChat.findByIdAndUpdate(groupId, {
+      lastMessage: { content: text, sender: senderId, sentAt: new Date() },
+    });
+    for (const uid of memberIds) {
+      emitToUser(uid.toString(), "new-group-message", {
+        message: populated, groupId: groupId.toString(), groupName: groupName || "",
+      });
+    }
+  } catch (err) {
+    console.error("createAndEmitSystemMessage error:", err);
+  }
+};
+
 // ── group CRUD ────────────────────────────────────────────────────────────────
 
 export const createGroup = async (req, res) => {
@@ -106,6 +127,12 @@ export const createGroup = async (req, res) => {
         emitToUser(uid, "group-added", { group: populated });
       }
     }
+
+    await createAndEmitSystemMessage(
+      group._id, creatorId,
+      `${req.user.fullName} created this group`,
+      allMemberIds, populated.name
+    );
 
     res.status(201).json({ group: populated });
   } catch (err) {
@@ -208,6 +235,19 @@ export const addMembers = async (req, res) => {
     group.members.forEach((m) => emitToUser(m.user.toString(), "group-updated", { group: populated }));
     added.forEach((mid) => emitToUser(mid.toString(), "group-added", { group: populated }));
 
+    if (added.length > 0) {
+      const addedNames = populated.members
+        .filter((m) => added.some((a) => a.toString() === m.user._id.toString()))
+        .map((m) => m.user.fullName)
+        .join(", ");
+      const allMemberIds = populated.members.map((m) => m.user._id.toString());
+      await createAndEmitSystemMessage(
+        groupId, userId,
+        `${req.user.fullName} added ${addedNames}`,
+        allMemberIds, populated.name
+      );
+    }
+
     res.json({ group: populated, added });
   } catch (err) {
     console.error("addMembers error:", err);
@@ -229,14 +269,24 @@ export const removeMember = async (req, res) => {
     if (!selfLeave && group.creator.toString() === memberId)
       return res.status(400).json({ message: "Cannot remove the creator" });
 
+    const removedUser = await User.findById(memberId).select("fullName");
+    const removedName = removedUser?.fullName || "Someone";
+    const groupName = group.name;
+
     group.members = group.members.filter((m) => m.user.toString() !== memberId.toString());
     group.admins = group.admins.filter((a) => a.toString() !== memberId.toString());
     await group.save();
 
-    emitToUser(memberId.toString(), "group-removed", { groupId });
+    emitToUser(memberId.toString(), "group-removed", { groupId, groupName });
     group.members.forEach((m) =>
       emitToUser(m.user.toString(), "group-member-left", { groupId, memberId })
     );
+
+    const systemText = selfLeave
+      ? `${removedName} left`
+      : `${req.user.fullName} removed ${removedName}`;
+    const remainingIds = group.members.map((m) => m.user.toString());
+    await createAndEmitSystemMessage(groupId, userId, systemText, remainingIds, groupName);
 
     res.json({ message: selfLeave ? "Left group" : "Member removed" });
   } catch (err) {
@@ -402,7 +452,7 @@ export const sendGroupMessage = async (req, res) => {
 
     // Emit new-message to all other members
     for (const m of otherMembers) {
-      emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId });
+      emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId, groupName: group.name });
     }
 
     res.status(201).json({ message: populated });

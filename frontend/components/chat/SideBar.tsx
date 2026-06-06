@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Users, Settings, Plus, LogOut, Search, Compass } from "lucide-react";
+import NotificationBell from "@/components/ui/NotificationBell";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
@@ -339,11 +340,12 @@ export default function Sidebar({ onNewGroup }: Props) {
           <Link href="/friends" className={`${navIconCls("/friends")} relative`} title="Friends">
             <Users size={17} />
             {pendingCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] rounded-full w-[15px] h-[15px] flex items-center justify-center font-bold">
+              <span className="absolute -top-0.5 -right-0.5 btn-gradient text-white text-[9px] rounded-full w-[15px] h-[15px] flex items-center justify-center font-bold">
                 {pendingCount > 9 ? "9+" : pendingCount}
               </span>
             )}
           </Link>
+          <NotificationBell />
           <Link href="/settings" className={navIconCls("/settings")} title="Settings">
             <Settings size={17} />
           </Link>
@@ -487,7 +489,7 @@ export default function Sidebar({ onNewGroup }: Props) {
             <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">@{user.username || "me"}</p>
           </div>
           <button type="button" onClick={logout} title="Logout"
-            className="p-1.5 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+            className="p-1.5 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-400/10 transition-colors">
             <LogOut size={15} />
           </button>
         </div>

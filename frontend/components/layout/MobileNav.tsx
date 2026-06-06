@@ -1,16 +1,18 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquare, Users, Compass, Settings, LogOut } from "lucide-react";
+import { MessageSquare, Users, Compass, Settings, LogOut, Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
+import { useNotifications } from "@/context/NotificationContext";
 
 const tabs = [
   { href: "/chat",            icon: MessageSquare, label: "Chats"    },
   { href: "/friends",         icon: Users,         label: "Friends"  },
   { href: "/recommendations", icon: Compass,       label: "Discover" },
+  { href: "/notifications",   icon: Bell,          label: "Alerts"   },
   { href: "/settings",        icon: Settings,      label: "Settings" },
 ] as const;
 
@@ -19,6 +21,7 @@ export default function MobileNav() {
   const router = useRouter();
   const { logout } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
+  const { unreadCount: notifCount } = useNotifications();
 
   useEffect(() => {
     api.friends.pendingCount().then(({ count }) => setPendingCount(count)).catch(() => {});
@@ -65,7 +68,7 @@ export default function MobileNav() {
                 key="logout"
                 type="button"
                 onClick={item.action}
-                className="flex flex-col items-center justify-center gap-0.5 flex-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                className="flex flex-col items-center justify-center gap-0.5 flex-1 text-gray-400 hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-400/10 transition-colors"
                 title="Logout"
               >
                 <item.icon size={20} />
@@ -94,8 +97,13 @@ export default function MobileNav() {
                   className={isActive ? "text-violet-600 dark:text-violet-400" : "text-gray-400 dark:text-gray-500"}
                 />
                 {item.label === "Friends" && pendingCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-3.5 h-3.5 flex items-center justify-center px-0.5">
+                  <span className="absolute -top-0.5 -right-0.5 btn-gradient text-white text-[9px] font-bold rounded-full min-w-3.5 h-3.5 flex items-center justify-center px-0.5">
                     {pendingCount > 9 ? "9+" : pendingCount}
+                  </span>
+                )}
+                {item.label === "Alerts" && notifCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 btn-gradient text-white text-[9px] font-bold rounded-full min-w-3.5 h-3.5 flex items-center justify-center px-0.5">
+                    {notifCount > 9 ? "9+" : notifCount}
                   </span>
                 )}
               </div>

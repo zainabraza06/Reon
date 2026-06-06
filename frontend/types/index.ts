@@ -103,7 +103,7 @@ export interface GroupMessage {
   sender: User;
   ciphertext?: string;
   plaintext?: string;
-  contentType: "text" | "image" | "audio" | "video" | "document";
+  contentType: "text" | "image" | "audio" | "video" | "document" | "system";
   encryptedKey?: string; // caller's key extracted from memberKeys
   media?: (MediaFile & { memberKeys?: GroupMediaKey[] })[];
   sentAt: string;

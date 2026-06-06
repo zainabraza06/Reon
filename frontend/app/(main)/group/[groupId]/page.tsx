@@ -19,8 +19,8 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = fals
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#1a1a3a] rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-xl ${danger ? "bg-red-100 dark:bg-red-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
-            <AlertTriangle size={18} className={danger ? "text-red-500" : "text-violet-500"} />
+          <div className={`p-2 rounded-xl ${danger ? "bg-rose-100 dark:bg-rose-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
+            <AlertTriangle size={18} className={danger ? "text-rose-500" : "text-violet-500"} />
           </div>
           <p className="font-semibold text-gray-900 dark:text-white text-sm">{title}</p>
         </div>
@@ -37,7 +37,7 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = fals
             type="button"
             onClick={onConfirm}
             className={`flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-colors ${
-              danger ? "bg-red-500 hover:bg-red-600" : "btn-gradient"
+              danger ? "bg-rose-500 hover:bg-rose-600" : "btn-gradient"
             }`}
           >
             {confirmLabel}
@@ -83,6 +83,17 @@ function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
 function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
   message: GroupMessage; isMine: boolean; memberCount: number; onInfoPress?: () => void;
 }) {
+  // System messages render as centered pills
+  if (message.contentType === "system") {
+    return (
+      <div className="flex justify-center my-1.5">
+        <span className="text-[11px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-white/6 px-3 py-1 rounded-full select-none">
+          {message.plaintext || message.ciphertext}
+        </span>
+      </div>
+    );
+  }
+
   const time       = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const text       = message.plaintext || message.ciphertext;
   const senderName = typeof message.sender === "object" ? message.sender.fullName : "";
@@ -463,7 +474,7 @@ function GroupInfoPanel({
                       {canRemove && (
                         <button type="button" onClick={() => removeMember(m.user._id, false)}
                           title="Remove from group"
-                          className="p-1 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                          className="p-1 rounded-lg text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-400/10 transition-colors">
                           <UserMinus size={13} />
                         </button>
                       )}
@@ -483,7 +494,7 @@ function GroupInfoPanel({
           type="button"
           onClick={() => removeMember(myId, true)}
           disabled={!!busyMember}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-red-200 dark:border-red-900/40 text-red-500 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors"
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-rose-200 dark:border-rose-400/20 text-rose-500 dark:text-rose-400 text-sm font-medium hover:bg-rose-50 dark:hover:bg-rose-400/10 disabled:opacity-50 transition-colors"
         >
           <LogOut size={15} />
           Leave Group
@@ -495,7 +506,7 @@ function GroupInfoPanel({
             type="button"
             onClick={deleteGroup}
             disabled={!!busyMember}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium disabled:opacity-50 transition-colors"
           >
             <Trash2 size={15} />
             Delete Group
@@ -643,9 +654,9 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
           type="button"
           title="Group info"
           onClick={() => setShowInfo((v) => !v)}
-          className={`p-2 rounded-xl transition-colors ${showInfo ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10" : "text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"}`}
+          className={`p-2.5 sm:p-2 rounded-xl transition-colors touch-manipulation ${showInfo ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10" : "text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"}`}
         >
-          <Info size={18} />
+          <Info size={20} />
         </button>
       </div>
 
@@ -703,13 +714,20 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
 
         {/* Info panel — slides in from the right */}
         {showInfo && (
-          <GroupInfoPanel
-            group={group}
-            myId={me._id}
-            onClose={() => setShowInfo(false)}
-            onGroupUpdated={(g) => setGroup(g)}
-            onGroupLeft={() => router.replace("/chat")}
-          />
+          <>
+            {/* Mobile backdrop — tap to close */}
+            <div
+              className="fixed inset-0 z-20 md:hidden bg-black/40 backdrop-blur-[2px]"
+              onClick={() => setShowInfo(false)}
+            />
+            <GroupInfoPanel
+              group={group}
+              myId={me._id}
+              onClose={() => setShowInfo(false)}
+              onGroupUpdated={(g) => setGroup(g)}
+              onGroupLeft={() => router.replace("/chat")}
+            />
+          </>
         )}
       </div>
     </div>

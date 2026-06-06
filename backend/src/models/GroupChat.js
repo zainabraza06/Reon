@@ -21,7 +21,7 @@ const groupMessageSchema = new mongoose.Schema({
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: "GroupChat", required: true, index: true },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   ciphertext: { type: String },
-  contentType: { type: String, enum: ["text", "image", "audio", "video", "document"], default: "text" },
+  contentType: { type: String, enum: ["text", "image", "audio", "video", "document", "system"], default: "text" },
   // AES key encrypted once per member (sender key distribution)
   memberKeys: [{
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

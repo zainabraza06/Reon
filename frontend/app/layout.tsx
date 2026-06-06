@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CallProvider } from "@/context/CallContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 export const metadata: Metadata = {
   title: "Reon – Encrypted Messaging",
@@ -20,9 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="h-full bg-gray-50 dark:bg-gray-950 antialiased">
         <AuthProvider>
-          <CallProvider>
-            {children}
-          </CallProvider>
+          <NotificationProvider>
+            <CallProvider>
+              {children}
+            </CallProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>
