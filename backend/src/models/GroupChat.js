@@ -50,6 +50,12 @@ const groupChatSchema = new mongoose.Schema({
   }],
   lastMessage: {
     content: { type: String, default: "" },
+    ciphertext: { type: String },
+    memberKeys: [{
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      encryptedKey: { type: String }
+    }],
+    contentType: { type: String },
     sender: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     sentAt: { type: Date }
   },

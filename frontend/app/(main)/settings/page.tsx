@@ -2,7 +2,7 @@
 import { useState, useRef, ChangeEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, Save, Lock, Smartphone, Link as LinkIcon, Eye, EyeOff, Shield } from "lucide-react";
+import { Camera, Save, Lock, Link as LinkIcon, Eye, EyeOff, Shield } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -191,22 +191,13 @@ export default function SettingsPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Use your account on another browser or device. Your encryption keys transfer securely via QR code — the server never sees your private key.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              href="/settings/link-device"
-              className="btn-gradient flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md shadow-violet-500/25 transition-all"
-            >
-              <LinkIcon size={15} />
-              Link New Device
-            </Link>
-            <Link
-              href="/link-device"
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-            >
-              <Smartphone size={15} />
-              This is My New Device
-            </Link>
-          </div>
+          <Link
+            href="/settings/link-device"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl btn-gradient text-white text-sm font-semibold shadow-md shadow-violet-500/25 transition-all"
+          >
+            <LinkIcon size={15} />
+            Link New Device
+          </Link>
         </section>
 
         <hr className="border-gray-200 dark:border-white/6" />

@@ -8,7 +8,7 @@ import Avatar from "@/components/ui/Avatar";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
-import { decryptText, getStoredPrivateKey } from "@/lib/crypto";
+import { decryptText, decryptGroupText, getStoredPrivateKey } from "@/lib/crypto";
 import type { ChatListItem, GroupChat } from "@/types";
 
 interface Props {
@@ -27,6 +27,22 @@ export default function Sidebar({ onNewGroup }: Props) {
   const [pendingCount, setPendingCount] = useState(0);
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const privateKeyRef = useRef<CryptoKey | null>(null);
+
+  const decryptGroupList = async (list: GroupChat[], key: CryptoKey | null) => {
+    if (!key) return list;
+    return Promise.all(
+      list.map(async (g) => {
+        const lm = g.lastMessage;
+        if (!lm || lm.contentType !== "text" || !lm.ciphertext || !lm.encryptedKey) return g;
+        try {
+          const content = await decryptGroupText(lm.ciphertext, lm.encryptedKey, key);
+          return { ...g, lastMessage: { ...lm, content } };
+        } catch {
+          return g;
+        }
+      })
+    );
+  };
 
   const decryptChatList = async (list: ChatListItem[], key: CryptoKey | null) => {
     if (!key) return list;
@@ -85,7 +101,12 @@ export default function Sidebar({ onNewGroup }: Props) {
       const decrypted = await decryptChatList(c ?? [], k);
       setChats(decrypted);
     }).catch(() => {});
-    api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {});
+    api.groups.list().then(async ({ groups: g }) => {
+      const k = privateKeyRef.current || await getStoredPrivateKey();
+      if (!privateKeyRef.current && k) { privateKeyRef.current = k; setPrivateKey(k); }
+      const decrypted = await decryptGroupList(g ?? [], k);
+      setGroups(decrypted);
+    }).catch(() => {});
     api.friends.pendingCount().then(({ count }) => setPendingCount(count)).catch(() => {});
   }, []);
 
@@ -118,6 +139,18 @@ export default function Sidebar({ onNewGroup }: Props) {
       }
     }
   }, [privateKey, chats]);
+
+  useEffect(() => {
+    if (privateKey && groups.length > 0) {
+      const needsDecryption = groups.some(
+        (g) => g.lastMessage?.contentType === "text" && g.lastMessage?.ciphertext && !g.lastMessage?.content
+      );
+      if (needsDecryption) {
+        decryptGroupList(groups, privateKey).then(setGroups);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privateKey]);
 
   useEffect(() => {
     // Seed initial online set — register ALL handlers before emitting the request
@@ -235,16 +268,31 @@ export default function Sidebar({ onNewGroup }: Props) {
         return prev;
       });
     };
-    const onNewGroupMsg = (data: unknown) => {
+    const onNewGroupMsg = async (data: unknown) => {
       const { message, groupId } = data as { message: import("@/types").GroupMessage; groupId: string };
       const sender = message.sender as import("@/types").User;
-      let content: string;
-      if (message.contentType === "system")        content = message.ciphertext || "";
-      else if (message.contentType === "image")    content = "[image]";
-      else if (message.contentType === "video")    content = "[video]";
-      else if (message.contentType === "audio")    content = "[audio]";
-      else if (message.contentType === "document") content = "[document]";
-      else                                          content = "[encrypted]";
+
+      let content = "";
+      if (message.contentType === "system") {
+        content = message.ciphertext || "";
+      } else if (message.contentType === "image")    { content = "[image]"; }
+      else if (message.contentType === "video")      { content = "[video]"; }
+      else if (message.contentType === "audio")      { content = "[audio]"; }
+      else if (message.contentType === "document")   { content = "[document]"; }
+      else if (message.contentType === "text" && message.ciphertext) {
+        const myKey = message.memberKeys?.find(
+          (k) => k.userId === user?._id || k.userId?.toString() === user?._id
+        )?.encryptedKey;
+        if (myKey && privateKeyRef.current) {
+          try { content = await decryptGroupText(message.ciphertext, myKey, privateKeyRef.current); }
+          catch { content = ""; }
+        }
+      }
+
+      const encryptedKey = message.memberKeys?.find(
+        (k) => k.userId === user?._id || k.userId?.toString() === user?._id
+      )?.encryptedKey;
+
       setGroups((prev) =>
         prev.map((g) =>
           g._id === groupId
@@ -252,6 +300,8 @@ export default function Sidebar({ onNewGroup }: Props) {
                 ...g,
                 lastMessage: {
                   content,
+                  ciphertext: message.ciphertext,
+                  encryptedKey,
                   sender,
                   sentAt: message.sentAt,
                   contentType: message.contentType,
@@ -350,7 +400,7 @@ export default function Sidebar({ onNewGroup }: Props) {
       else if (content === "[audio]")    text = "🎤 Voice note";
       else if (content === "[document]") text = "📎 Document";
       else if (content.startsWith("[")) text = "Message";
-      else { text = content; isSystem = true; }
+      else { text = content; } // decrypted text — keep sender prefix
     } else { text = "Message"; }
 
     if (isSystem) return { prefix: "", text };

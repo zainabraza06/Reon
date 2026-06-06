@@ -84,6 +84,8 @@ export interface GroupChat {
   members: GroupMember[];
   lastMessage?: {
     content: string;
+    ciphertext?: string;
+    encryptedKey?: string;
     sender: User | string;
     sentAt: string;
     contentType?: string;

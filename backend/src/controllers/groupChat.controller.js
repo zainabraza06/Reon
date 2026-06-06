@@ -152,7 +152,19 @@ export const getMyGroups = async (req, res) => {
       .populate("lastMessage.sender", "fullName username")
       .sort({ "lastMessage.sentAt": -1, updatedAt: -1 });
 
-    res.json({ groups });
+    // Resolve the requesting user's encrypted key for sidebar decryption
+    const enriched = groups.map((g) => {
+      const obj = g.toObject();
+      if (obj.lastMessage?.memberKeys?.length) {
+        obj.lastMessage.encryptedKey = obj.lastMessage.memberKeys.find(
+          (k) => k.userId?.toString() === userId.toString()
+        )?.encryptedKey;
+        delete obj.lastMessage.memberKeys;
+      }
+      return obj;
+    });
+
+    res.json({ groups: enriched });
   } catch (err) {
     console.error("getMyGroups error:", err);
     res.status(500).json({ message: "Server error" });
@@ -458,10 +470,18 @@ export const sendGroupMessage = async (req, res) => {
       readBy:      [{ userId: senderId, at: now }],
     });
 
-    // Update group's lastMessage
+    // Update group's lastMessage — include ciphertext+memberKeys for sidebar decryption
+    const finalContentType = hasFiles ? (mediaArr[0]?.type || "document") : contentType;
     const previewText = hasText ? "[encrypted]" : `[${mediaArr[0]?.type || "file"}]`;
     await GroupChat.findByIdAndUpdate(groupId, {
-      lastMessage: { content: previewText, sender: senderId, sentAt: new Date() },
+      lastMessage: {
+        content: previewText,
+        ciphertext: hasText ? ciphertext : undefined,
+        memberKeys: hasText ? memberKeys : undefined,
+        contentType: finalContentType,
+        sender: senderId,
+        sentAt: new Date(),
+      },
     });
 
     const populated = await GroupMessage.findById(message._id).populate(
