@@ -62,6 +62,7 @@ export default function Sidebar({ onNewGroup }: Props) {
           } catch {
             content = "[decryption failed]";
           }
+        }
         return {
           ...chat,
           lastMessage: {
@@ -199,6 +200,7 @@ export default function Sidebar({ onNewGroup }: Props) {
         } catch {
           content = "[decryption failed]";
         }
+      }
       const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
       const isMine = String(msg.sender) === String(user?._id);
 
