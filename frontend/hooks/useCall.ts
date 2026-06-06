@@ -31,6 +31,7 @@ export interface CallState {
   status:      CallStatus;
   callId:      string | null;
   roomName:    string | null;
+  roomURL:     string | null;
   peerId:      string | null;
   peerName:    string | null;
   type:        "audio" | "video";
@@ -43,7 +44,7 @@ export interface CallState {
 }
 
 const INIT: CallState = {
-  status: "idle", callId: null, roomName: null,
+  status: "idle", callId: null, roomName: null, roomURL: null,
   peerId: null, peerName: null, type: "audio",
   localStream: null, remoteStream: null,
   isMuted: false, isCameraOff: false,
@@ -130,7 +131,7 @@ export function useCall(myId: string | null, myName?: string | null) {
   endCallLocalRef.current = endCallLocal;
 
   // ── Join Metered room ─────────────────────────────────────────────────────
-  const joinRoom = useCallback(async (roomName: string, type: "audio" | "video") => {
+  const joinRoom = useCallback(async (roomURL: string, type: "audio" | "video") => {
     await loadMeteredSDK();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meeting = new (window as any).Metered.Meeting();
@@ -138,7 +139,7 @@ export function useCall(myId: string | null, myName?: string | null) {
 
     const displayName = myName || "User";
     await meeting.join({
-      roomURL: `${METERED_DOMAIN}/${roomName}`,
+      roomURL: roomURL,
       name:    displayName,
     });
 
@@ -200,8 +201,8 @@ export function useCall(myId: string | null, myName?: string | null) {
     callSockRef.current = sock;
 
     sock.on("call:initiate", ({
-      callId, fromUserId, fromUserName, type, roomName
-    }: { callId: string; fromUserId: string; fromUserName: string; type: "audio" | "video"; roomName: string }) => {
+      callId, fromUserId, fromUserName, type, roomName, roomURL
+    }: { callId: string; fromUserId: string; fromUserName: string; type: "audio" | "video"; roomName: string; roomURL: string }) => {
       if (stateRef.current.status !== "idle") {
         sock.emit("call:busy", { callId, reason: "busy" });
         return;
@@ -210,7 +211,7 @@ export function useCall(myId: string | null, myName?: string | null) {
       ringTimeoutRef.current = setTimeout(() => {
         if (stateRef.current.status === "incoming") endCallLocalRef.current("missed");
       }, 45_000);
-      setState((s) => ({ ...s, status: "incoming", callId, roomName, peerId: fromUserId, peerName: fromUserName, type }));
+      setState((s) => ({ ...s, status: "incoming", callId, roomName, roomURL, peerId: fromUserId, peerName: fromUserName, type }));
     });
 
     sock.on("call:reject", ({ callId }: { callId: string }) => {
@@ -230,9 +231,9 @@ export function useCall(myId: string | null, myName?: string | null) {
   const startCall = useCallback(async (toUserId: string, peerName: string, type: "audio" | "video") => {
     if (!myId || stateRef.current.status !== "idle") return;
     try {
-      const { callId, roomName } = await api.calls.create(toUserId, type);
-      setState((s) => ({ ...s, status: "calling", callId, roomName, peerId: toUserId, peerName, type }));
-      await joinRoom(roomName, type);
+      const { callId, roomName, roomURL } = await api.calls.create(toUserId, type);
+      setState((s) => ({ ...s, status: "calling", callId, roomName, roomURL, peerId: toUserId, peerName, type }));
+      await joinRoom(roomURL, type);
       // Wait for callee to join (they trigger participantJoined → activateCall via remoteTrackStarted)
     } catch (err) {
       console.error("[Call] startCall error:", err);
@@ -241,12 +242,12 @@ export function useCall(myId: string | null, myName?: string | null) {
   }, [myId, joinRoom, endCallLocal]);
 
   const answerCall = useCallback(async () => {
-    const { callId, roomName, type } = stateRef.current;
-    if (!callId || !roomName || stateRef.current.status !== "incoming") return;
+    const { callId, roomURL, type } = stateRef.current;
+    if (!callId || !roomURL || stateRef.current.status !== "incoming") return;
     if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
     setState((s) => ({ ...s, status: "connecting" }));
     try {
-      await joinRoom(roomName, type);
+      await joinRoom(roomURL, type);
     } catch (err) {
       console.error("[Call] answerCall error:", err);
       endCallLocal("failed");
