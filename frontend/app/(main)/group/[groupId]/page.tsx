@@ -2,8 +2,51 @@
 import { use, useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft, Info, Users, Check, CheckCheck, X,
-  Crown, Shield, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader,
+  Crown, Shield, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader, AlertTriangle,
 } from "lucide-react";
+
+// ── Confirm dialog ─────────────────────────────────────────────────────────────
+
+function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = false, onConfirm, onCancel }: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#1a1a3a] rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-xl ${danger ? "bg-red-100 dark:bg-red-900/30" : "bg-violet-100 dark:bg-violet-900/30"}`}>
+            <AlertTriangle size={18} className={danger ? "text-red-500" : "text-violet-500"} />
+          </div>
+          <p className="font-semibold text-gray-900 dark:text-white text-sm">{title}</p>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-white/10 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-colors ${
+              danger ? "bg-red-500 hover:bg-red-600" : "btn-gradient"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "@/components/ui/Avatar";
@@ -115,6 +158,13 @@ function GroupInfoPanel({
   // Busy state per member action
   const [busyMember, setBusyMember] = useState<string | null>(null);
 
+  // Confirm dialog
+  const [confirm, setConfirm] = useState<{
+    title: string; message: string; confirmLabel: string; danger: boolean; onConfirm: () => void;
+  } | null>(null);
+
+  const askConfirm = (opts: typeof confirm) => setConfirm(opts);
+
   const openEdit = () => {
     if (!group) return;
     setEditName(group.name);
@@ -165,23 +215,28 @@ function GroupInfoPanel({
     }
   };
 
-  const removeMember = async (memberId: string, isSelf: boolean) => {
+  const removeMember = (memberId: string, isSelf: boolean) => {
     if (!group) return;
-    const confirmed = isSelf
-      ? window.confirm("Leave this group?")
-      : window.confirm("Remove this member?");
-    if (!confirmed) return;
-    setBusyMember(memberId);
-    try {
-      await api.groups.removeMember(group._id, memberId);
-      if (isSelf) { onGroupLeft(); return; }
-      const { group: updated } = await api.groups.get(group._id);
-      onGroupUpdated(updated);
-    } catch (err) {
-      console.error("removeMember error:", err);
-    } finally {
-      setBusyMember(null);
-    }
+    askConfirm({
+      title: isSelf ? "Leave Group" : "Remove Member",
+      message: isSelf ? "Are you sure you want to leave this group?" : "Remove this member from the group?",
+      confirmLabel: isSelf ? "Leave" : "Remove",
+      danger: true,
+      onConfirm: async () => {
+        setConfirm(null);
+        setBusyMember(memberId);
+        try {
+          await api.groups.removeMember(group._id, memberId);
+          if (isSelf) { onGroupLeft(); return; }
+          const { group: updated } = await api.groups.get(group._id);
+          onGroupUpdated(updated);
+        } catch (err) {
+          console.error("removeMember error:", err);
+        } finally {
+          setBusyMember(null);
+        }
+      },
+    });
   };
 
   const promoteAdmin = async (memberId: string) => {
@@ -197,16 +252,35 @@ function GroupInfoPanel({
     }
   };
 
-  const deleteGroup = async () => {
+  const deleteGroup = () => {
     if (!group) return;
-    if (!window.confirm(`Delete "${group.name}"? This cannot be undone.`)) return;
-    try {
-      await api.groups.delete(group._id);
-      router.replace("/chat");
-    } catch (err) {
-      console.error("deleteGroup error:", err);
-    }
+    askConfirm({
+      title: "Delete Group",
+      message: `Delete "${group.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      danger: true,
+      onConfirm: async () => {
+        setConfirm(null);
+        try {
+          await api.groups.delete(group._id);
+          router.replace("/chat");
+        } catch (err) {
+          console.error("deleteGroup error:", err);
+        }
+      },
+    });
   };
+
+  const confirmDialog = confirm && (
+    <ConfirmDialog
+      title={confirm.title}
+      message={confirm.message}
+      confirmLabel={confirm.confirmLabel}
+      danger={confirm.danger}
+      onConfirm={confirm.onConfirm}
+      onCancel={() => setConfirm(null)}
+    />
+  );
 
   // Loading skeleton
   if (!group) {
@@ -271,6 +345,8 @@ function GroupInfoPanel({
   }
 
   return (
+    <>
+    {confirmDialog}
     <div className="fixed inset-0 z-30 md:static md:z-auto md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/6 shrink-0">
@@ -427,6 +503,7 @@ function GroupInfoPanel({
         )}
       </div>
     </div>
+    </>
   );
 }
 
