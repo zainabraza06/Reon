@@ -1,13 +1,12 @@
 "use client";
 import { use, useState, useEffect, useRef, useCallback } from "react";
-import { Phone, Video, ArrowLeft } from "lucide-react";
+import {  ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
 import MessageBubble from "@/components/chat/MessageBubble";
 import MessageInput from "@/components/chat/MessageInput";
 import { useMessages } from "@/hooks/useMessages";
 import { useAuth } from "@/context/AuthContext";
-import { useCallContext } from "@/context/CallContext";
 import { socketService } from "@/lib/socket";
 import { api } from "@/lib/api";
 import { encryptText, encryptFile, decryptText, getStoredPublicKey, getStoredPrivateKey } from "@/lib/crypto";
@@ -39,7 +38,6 @@ function guessFileType(m: string): "image" | "video" | "audio" | "document" {
 export default function DMPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
   const { user: me } = useAuth();
-  const { startCall } = useCallContext();
   const { messages, loading, hasMore, loadMore, setMessages } = useMessages(userId, me?._id ?? null);
   const [recipient, setRecipient] = useState<User | null>(null);
   const [isOnline, setIsOnline] = useState(false);
@@ -287,16 +285,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
             }
           </p>
         </div>
-        <div className="flex items-center gap-0.5">
-          <button type="button" onClick={() => startCall(userId, recipient?.fullName || "User", "audio")}
-            className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all" title="Voice call">
-            <Phone size={19} />
-          </button>
-          <button type="button" onClick={() => startCall(userId, recipient?.fullName || "User", "video")}
-            className="p-2.5 rounded-xl text-gray-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all" title="Video call">
-            <Video size={19} />
-          </button>
-        </div>
+        
       </div>
 
       {/* Messages area */}

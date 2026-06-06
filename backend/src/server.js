@@ -4,7 +4,6 @@ import http from "http";
 import { createApp } from "./app.js";
 import { connectDB } from "./lib/db.js";
 import { initSocket } from "./lib/socket.js";
-import { initCallNamespace } from "./lib/callSocket.js";
 import { getIO } from "./lib/socket.js";
 
 dotenv.config();
@@ -13,7 +12,6 @@ const app    = createApp();
 const server = http.createServer(app);
 
 initSocket(server);
-initCallNamespace(getIO());
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, async () => {

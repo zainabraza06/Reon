@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
-import { CallProvider } from "@/context/CallContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 
 export const metadata: Metadata = {
@@ -22,9 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="h-full bg-gray-50 dark:bg-gray-950 antialiased">
         <AuthProvider>
           <NotificationProvider>
-            <CallProvider>
               {children}
-            </CallProvider>
+            
           </NotificationProvider>
         </AuthProvider>
       </body>
