@@ -27,6 +27,10 @@ dependencies:
   provider: ^6.1.2
   # E2E crypto (RSA-OAEP + AES-GCM)
   pointycastle: ^3.9.1
+  # Device linking + settings
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:

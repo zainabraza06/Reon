@@ -8,6 +8,8 @@ import '../models/message.dart';
 import '../models/chat_list_item.dart';
 import '../models/friend_request.dart';
 import '../models/group_chat.dart';
+import '../models/notification.dart';
+import '../models/recommended_user.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -201,4 +203,98 @@ class ApiService {
 
   Future<Map<String, dynamic>> getGroupMessageInfo(String messageId) =>
       _get('/groups/messages/$messageId/info');
+
+  // ── Recommendations ───────────────────────────────────────────────────────────
+
+  Future<({List<RecommendedUser> users, int total})> getRecommendations({
+    String search = '',
+    int page = 1,
+    int limit = 12,
+  }) async {
+    var path = '/users/recommendation?page=$page&limit=$limit';
+    if (search.isNotEmpty) path += '&search=${Uri.encodeQueryComponent(search)}';
+    final res = await _get(path);
+    final list = res['recommended'] as List? ?? [];
+    return (
+      users: list.map((u) => RecommendedUser.fromJson(u as Map<String, dynamic>)).toList(),
+      total: (res['total'] as int?) ?? list.length,
+    );
+  }
+
+  // ── Notifications ─────────────────────────────────────────────────────────────
+
+  Future<List<AppNotification>> getNotifications() async {
+    final res = await _get('/notifications');
+    final list = res['notifications'] as List? ?? [];
+    return list.map((n) => AppNotification.fromJson(n as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> markNotificationRead(String id) => _patch('/notifications/$id/read');
+  Future<void> markAllNotificationsRead() => _patch('/notifications/read-all');
+  Future<void> deleteNotification(String id) => _del('/notifications/$id');
+  Future<void> clearNotifications() => _del('/notifications');
+
+  // ── Settings ──────────────────────────────────────────────────────────────────
+
+  Future<ReonUser> updateProfile({
+    required String fullName,
+    String? bio,
+    String? location,
+    String? imagePath,
+  }) async {
+    final form = FormData.fromMap({
+      'fullName': fullName,
+      if (bio != null) 'bio': bio,
+      if (location != null) 'location': location,
+      if (imagePath != null) 'profilePic': await MultipartFile.fromFile(imagePath),
+    });
+    final res = await _dio.put('/settings/profile', data: form);
+    if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
+      return ReonUser.fromJson((res.data as Map)['user'] as Map<String, dynamic>);
+    }
+    throw ApiException((res.data as Map?)?['message'] as String? ?? 'Update failed', res.statusCode);
+  }
+
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    await _put('/settings/change-password', body: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+  }
+
+  Future<ReonUser> updatePrivacy({bool? showLastSeen, bool? showActiveStatus}) async {
+    final res = await _req('PATCH', '/settings/privacy', body: {
+      if (showLastSeen != null) 'showLastSeen': showLastSeen,
+      if (showActiveStatus != null) 'showActiveStatus': showActiveStatus,
+    });
+    return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
+  }
+
+  // ── Device linking ────────────────────────────────────────────────────────────
+
+  Future<String> createLinkSession(Map<String, dynamic> ecdhPublicKey) async {
+    final res = await _post('/keys/link-session/create', body: {'ecdhPublicKey': ecdhPublicKey});
+    return res['sessionId'] as String;
+  }
+
+  Future<Map<String, dynamic>> claimLinkSession(String sessionId, Map<String, dynamic> ecdhPublicKey) async {
+    final res = await _req('PUT', '/keys/link-session/$sessionId/claim', body: {'ecdhPublicKey': ecdhPublicKey});
+    return res['ecdhPublicKey_A'] as Map<String, dynamic>;
+  }
+
+  Future<void> transferLinkKey(String sessionId, String encryptedPrivateKey, String iv) async {
+    await _req('PUT', '/keys/link-session/$sessionId/transfer', body: {
+      'encryptedPrivateKey': encryptedPrivateKey,
+      'iv': iv,
+    });
+  }
+
+  Future<({String status, String? encryptedPrivateKey, String? iv})> getLinkSession(String sessionId) async {
+    final res = await _get('/keys/link-session/$sessionId');
+    return (
+      status: res['status'] as String,
+      encryptedPrivateKey: res['encryptedPrivateKey'] as String?,
+      iv: res['iv'] as String?,
+    );
+  }
 }

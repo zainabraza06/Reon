@@ -7,6 +7,7 @@ import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/link_device_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,9 @@ class ReonApp extends StatelessWidget {
     darkTheme: AppTheme.dark,
     themeMode: ThemeMode.system,
     home: const _Root(),
+    routes: {
+      '/link-device': (_) => const LinkDeviceScreen(),
+    },
   );
 }
 

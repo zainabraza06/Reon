@@ -47,7 +47,7 @@ const messageSchema = new mongoose.Schema({
   },
   contentType: { 
     type: String, 
-    enum: ["text", "image", "audio", "video", "document", "call-log"], 
+    enum: ["text", "image", "audio", "video", "document"], 
     default: "text" 
   },
   encryptedKey: { type: String }, // For receiver's text decryption

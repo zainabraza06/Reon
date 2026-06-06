@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
-import { Check, CheckCheck, Download, FileText, Play, Pause, RotateCcw, Phone, Video, PhoneMissed, Clock, AlertCircle } from "lucide-react";
+import { Check, CheckCheck, Download, FileText, Play, Pause, RotateCcw, Clock, AlertCircle } from "lucide-react";
 import type { Message, MediaFile } from "@/types";
 import { decryptFile, getStoredPrivateKey } from "@/lib/crypto";
 import MessageInfoSheet from "@/components/chat/info/MessageInfoSheet";
@@ -220,44 +220,9 @@ function Media({ file, isMine }: { file: MediaFile; isMine: boolean }) {
   );
 }
 
-function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean }) {
-  const log = message.callLog;
-  const isVideo = log?.callType === "video";
-  const missed  = log?.outcome === "missed" || log?.outcome === "declined";
-  const dur     = log?.duration;
-  const label   =
-    log?.outcome === "completed" ? `${isVideo ? "Video" : "Voice"} call${dur ? ` · ${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}` : ""}` :
-    log?.outcome === "missed"    ? `Missed ${isVideo ? "video" : "voice"} call` :
-    log?.outcome === "declined"  ? `Declined ${isVideo ? "video" : "voice"} call` :
-    log?.outcome === "busy"      ? "Busy" :
-    `${isVideo ? "Video" : "Voice"} call`;
-
-  const Icon = missed ? PhoneMissed : isVideo ? Video : Phone;
-
-  return (
-    <div className={`flex ${isMine ? "justify-end" : "justify-start"} mb-1 px-1`}>
-      <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
-        missed
-          ? isMine ? "bg-red-500/15 text-red-300" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-          : isMine ? "bubble-gradient text-white"  : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100"
-      }`}>
-        <Icon size={15} className={missed ? "text-red-400" : ""} />
-        <span className="font-medium">{label}</span>
-        <span className={`text-[11px] ${isMine ? "text-white/50" : "text-gray-400"}`}>
-          {new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export default function MessageBubble({ message, isMine, onRetry }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  if (message.contentType === "call-log") {
-    return <CallLogBubble message={message} isMine={isMine} />;
-  }
 
   const time    = new Date(message.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const text    = message.plaintext || (!message.media?.length ? message.ciphertext : undefined);

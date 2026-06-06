@@ -11,15 +11,6 @@ export function useMessages(chatUserId: string | null, myId: string | null) {
   const privateKeyRef = useRef<CryptoKey | null>(null);
 
   const decryptMsg = useCallback(async (msg: Message): Promise<Message> => {
-    // Call-log messages have ciphertext as JSON metadata — don't decrypt
-    if (msg.contentType === "call-log") {
-      try {
-        const callLog = msg.ciphertext ? JSON.parse(msg.ciphertext) : null;
-        return { ...msg, callLog: callLog ?? undefined };
-      } catch {
-        return msg;
-      }
-    }
     if (!privateKeyRef.current || !msg.ciphertext) return msg;
     try {
       // API resolves the correct key into `encryptedKey` for both sender and receiver.

@@ -62,14 +62,6 @@ export default function Sidebar({ onNewGroup }: Props) {
           } catch {
             content = "[decryption failed]";
           }
-        } else if (chat.lastMessage.contentType === "call-log" && chat.lastMessage.ciphertext) {
-          try {
-            const log = JSON.parse(chat.lastMessage.ciphertext);
-            const isVideo = log?.callType === "video";
-            const missed  = log?.outcome === "missed" || log?.outcome === "declined";
-            content = missed ? `Missed ${isVideo ? "video" : "voice"} call` : `${isVideo ? "Video" : "Voice"} call`;
-          } catch {}
-        }
         return {
           ...chat,
           lastMessage: {
@@ -135,7 +127,7 @@ export default function Sidebar({ onNewGroup }: Props) {
       const needsDecryption = chats.some(
         (c) =>
           c.lastMessage &&
-          (c.lastMessage.contentType === "text" || c.lastMessage.contentType === "call-log") &&
+          c.lastMessage.contentType === "text" &&
           !c.lastMessage.content
       );
       if (needsDecryption) {
@@ -207,15 +199,6 @@ export default function Sidebar({ onNewGroup }: Props) {
         } catch {
           content = "[decryption failed]";
         }
-      } else if (msg.contentType === "call-log" && msg.ciphertext) {
-        try {
-          const log = JSON.parse(msg.ciphertext);
-          const isVideo = log?.callType === "video";
-          const missed  = log?.outcome === "missed" || log?.outcome === "declined";
-          content = missed ? `Missed ${isVideo ? "video" : "voice"} call` : `${isVideo ? "Video" : "Voice"} call`;
-        } catch {}
-      }
-
       const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
       const isMine = String(msg.sender) === String(user?._id);
 
@@ -526,7 +509,7 @@ export default function Sidebar({ onNewGroup }: Props) {
                           {chat.lastMessage ? (
                             <>
                               {chat.lastMessage.sender === user?._id && "You: "}
-                              {chat.lastMessage.contentType && chat.lastMessage.contentType !== "text" && chat.lastMessage.contentType !== "call-log" ? (
+                              {chat.lastMessage.contentType && chat.lastMessage.contentType !== "text" ? (
                                 <span>📎 {chat.lastMessage.contentType}</span>
                               ) : (
                                 chat.lastMessage.content || "Message"

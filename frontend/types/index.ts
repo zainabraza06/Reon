@@ -49,7 +49,7 @@ export interface Message {
   ciphertext?: string;
   plaintext?: string; // decrypted on client
   type?: "prekey" | "ratcheted";
-  contentType: "text" | "image" | "audio" | "video" | "document" | "call-log";
+  contentType: "text" | "image" | "audio" | "video" | "document";
   encryptedKey?: string;
   senderEncryptedKey?: string;
   media?: MediaFile[];
@@ -61,8 +61,6 @@ export interface Message {
   status?: "sending" | "sent" | "delivered" | "read" | "failed";
   isVoiceMessage?: boolean;
   senderInfo?: { fullName: string; username?: string; profilePic?: string };
-  // populated when contentType === "call-log"
-  callLog?: { callType: "audio" | "video"; outcome: "completed" | "missed" | "declined" | "busy"; duration?: number };
   // client-only: temp id before server confirms
   tempId?: string;
 }

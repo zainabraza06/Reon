@@ -11,3 +11,4 @@
 
 const kApiBase   = String.fromEnvironment('API_BASE',   defaultValue: 'https://reon-4g0b.onrender.com/api');
 const kSocketUrl = String.fromEnvironment('SOCKET_URL', defaultValue: 'https://reon-4g0b.onrender.com');
+const kSiteUrl   = String.fromEnvironment('SITE_URL',   defaultValue: 'https://reon-4g0b.onrender.com');

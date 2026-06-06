@@ -157,16 +157,6 @@ export const api = {
     },
   },
 
-  // ── Calls ──────────────────────────────────────────────────────────────────
-  calls: {
-    create: (toUserId: string, type: "audio" | "video") =>
-      request<{ callId: string; type: string; roomName: string; roomURL: string; status: string; calleeStatus: string }>(
-        "/calls", { method: "POST", body: JSON.stringify({ toUserId, type }) }
-      ),
-    get: (callId: string) =>
-      request<{ callId: string; type: string; status: string; roomName: string; roomURL: string }>(`/calls/${callId}`),
-  },
-
   // ── Notifications ──────────────────────────────────────────────────────────
   notifications: {
     list: () => request<{ notifications: import("@/types").AppNotification[] }>("/notifications"),

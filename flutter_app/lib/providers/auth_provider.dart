@@ -70,6 +70,18 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  void updateUser(ReonUser user) {
+    _user = user;
+    notifyListeners();
+  }
+
+  Future<void> refreshUser() async {
+    try {
+      _user = await ApiService.instance.me();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   /// Called after successful auth: connect socket + ensure crypto keys are set up.
   Future<void> _postLogin() async {
     SocketService.instance.connect(_user!.id);

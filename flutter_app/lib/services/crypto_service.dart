@@ -9,6 +9,8 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/export.dart';
+import 'package:pointycastle/ecc/api.dart';
+import 'package:pointycastle/ecc/curves/prime256v1.dart';
 
 class CryptoService {
   CryptoService._();
@@ -43,6 +45,16 @@ class CryptoService {
   Future<void> clearKeys() async {
     await _storage.delete(key: _kPrivKey);
     await _storage.delete(key: _kPubKey);
+  }
+
+  Future<void> importKeyPairFromPrivateJwk(Map<String, dynamic> privJwk) async {
+    final pubJwk = {
+      'kty': 'RSA', 'alg': 'RSA-OAEP-256',
+      'n': privJwk['n'], 'e': privJwk['e'],
+      'ext': true, 'key_ops': ['encrypt'],
+    };
+    await _storage.write(key: _kPrivKey, value: jsonEncode(privJwk));
+    await _storage.write(key: _kPubKey,  value: jsonEncode(pubJwk));
   }
 
   // ── Key generation ────────────────────────────────────────────────────────────
@@ -184,6 +196,70 @@ class CryptoService {
       final plain       = _aesGcmDecrypt(Uint8List.fromList(aesKeyBytes), Uint8List.fromList(iv), Uint8List.fromList(cipher));
       return utf8.decode(plain);
     } catch (_) { return null; }
+  }
+
+  // ── Device-linking (ECDH P-256 + AES-GCM) ───────────────────────────────────
+
+  ECDomainParameters get _p256 => ECDomainParameters('prime256v1');
+
+  Future<({Map<String, dynamic> publicKey, ECPrivateKey privateKey})> generateECDHKeyPair() async {
+    final keyGen = ECKeyGenerator()
+      ..init(ParametersWithRandom(ECKeyGeneratorParameters(_p256), _buildSecureRandom()));
+    final pair = keyGen.generateKeyPair();
+    return (
+      publicKey: _ecPublicToJwk(pair.publicKey as ECPublicKey),
+      privateKey: pair.privateKey as ECPrivateKey,
+    );
+  }
+
+  Map<String, dynamic> _ecPublicToJwk(ECPublicKey pub) {
+    final x = _fixedBytes(pub.Q!.x!.toBigInteger()!, 32);
+    final y = _fixedBytes(pub.Q!.y!.toBigInteger()!, 32);
+    return {
+      'kty': 'EC', 'crv': 'P-256',
+      'x': base64Url.encode(x).replaceAll('=', ''),
+      'y': base64Url.encode(y).replaceAll('=', ''),
+      'ext': true,
+    };
+  }
+
+  ECPublicKey _jwkToEcPublic(Map<String, dynamic> jwk) {
+    final x = _b64urlToBigInt(jwk['x'] as String);
+    final y = _b64urlToBigInt(jwk['y'] as String);
+    return ECPublicKey(_p256.curve.createPoint(x, y), _p256);
+  }
+
+  Uint8List deriveTransferAesKey(ECPrivateKey myPrivate, Map<String, dynamic> theirPubJwk) {
+    final agreement = ECDHBasicAgreement()..init(myPrivate);
+    final secret = agreement.calculateAgreement(_jwkToEcPublic(theirPubJwk));
+    return _fixedBytes(secret, 32);
+  }
+
+  Future<({String ciphertext, String iv})> encryptForTransfer(
+    Map<String, dynamic> data,
+    Uint8List aesKey,
+  ) async {
+    final iv = _randomBytes(12);
+    final encoded = Uint8List.fromList(utf8.encode(jsonEncode(data)));
+    final cipher = _aesGcmEncrypt(aesKey, iv, encoded);
+    return (ciphertext: base64.encode(cipher), iv: base64.encode(iv));
+  }
+
+  Map<String, dynamic> decryptFromTransfer(String ciphertextB64, String ivB64, Uint8List aesKey) {
+    final plain = _aesGcmDecrypt(aesKey, base64.decode(ivB64), base64.decode(ciphertextB64));
+    return jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
+  }
+
+  Uint8List _fixedBytes(BigInt n, int length) {
+    final bytes = _bigIntToBytes(n);
+    if (bytes.length == length) return bytes;
+    final out = Uint8List(length);
+    if (bytes.length < length) {
+      out.setRange(length - bytes.length, length, bytes);
+    } else {
+      out.setRange(0, length, bytes.sublist(bytes.length - length));
+    }
+    return out;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
