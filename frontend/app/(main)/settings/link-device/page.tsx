@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Shield, CheckCircle, Loader } from "lucide-react";
+import { ArrowLeft, Shield, CheckCircle, Loader, Copy, Check } from "lucide-react";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
@@ -25,10 +25,12 @@ type Step = "generating" | "waiting" | "transferring" | "done" | "error";
 export default function LinkDevicePage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [step, setStep] = useState<Step>("generating");
+  const [step, setStep]       = useState<Step>("generating");
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
   const [sessionId, setSessionId] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
+  const [copied, setCopied]   = useState(false);
   const sessionRef = useRef<{ sessionId: string; ecdhPrivateKey: CryptoKey } | null>(null);
 
   const init = useCallback(async () => {
@@ -43,12 +45,13 @@ export default function LinkDevicePage() {
       setSessionId(sid);
 
       // 3. Build the URL Device B will open (encodes session ID + Device A's ECDH pub key)
-      const payload = btoa(JSON.stringify({ sessionId: sid, ecdhPublicKey: ecdhPubKeyA }));
-      const linkUrl = `${SITE_URL}/link-device?d=${encodeURIComponent(payload)}`;
+      const payload  = btoa(JSON.stringify({ sessionId: sid, ecdhPublicKey: ecdhPubKeyA }));
+      const generatedLinkUrl = `${SITE_URL}/link-device?d=${encodeURIComponent(payload)}`;
+      setLinkUrl(generatedLinkUrl);
 
       // 4. Generate QR code
       const QRCode = (await import("qrcode")).default;
-      const dataUrl = await QRCode.toDataURL(linkUrl, { width: 260, margin: 2, color: { dark: "#1e1b4b", light: "#ffffff" } });
+      const dataUrl = await QRCode.toDataURL(generatedLinkUrl, { width: 260, margin: 2, color: { dark: "#1e1b4b", light: "#ffffff" } });
       setQrDataUrl(dataUrl);
       setStep("waiting");
     } catch (err) {
@@ -109,9 +112,9 @@ export default function LinkDevicePage() {
           <div className="bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-2xl p-4 text-sm text-violet-800 dark:text-violet-300 space-y-1">
             <p className="font-semibold">How to link your new device:</p>
             <ol className="list-decimal list-inside space-y-1 text-violet-700 dark:text-violet-400">
-              <li>Log in on your new device</li>
-              <li>Go to Settings → "Link from Existing Device"</li>
-              <li>Scan the QR code below</li>
+              <li>Log in to Reon on the new device</li>
+              <li>You will be redirected to a QR scanner page</li>
+              <li>Point that camera at the QR below — or copy the link and open it there</li>
             </ol>
           </div>
 
@@ -128,7 +131,21 @@ export default function LinkDevicePage() {
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={qrDataUrl} alt="Scan to link device" width={260} height={260} className="rounded-xl" />
-                <p className="text-xs text-gray-400 text-center font-mono break-all">{sessionId}</p>
+                <p className="text-xs text-gray-400 text-center font-mono break-all select-all">{sessionId}</p>
+                {linkUrl && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(linkUrl);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2500);
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? "Copied!" : "Copy link (for desktop-to-desktop)"}
+                  </button>
+                )}
               </>
             )}
 
