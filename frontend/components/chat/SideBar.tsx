@@ -33,9 +33,15 @@ export default function Sidebar({ onNewGroup }: Props) {
     return Promise.all(
       list.map(async (g) => {
         const lm = g.lastMessage;
-        if (!lm || lm.contentType !== "text" || !lm.ciphertext || !lm.encryptedKey) return g;
+        if (!lm || lm.contentType !== "text" || !lm.ciphertext) return g;
+        // Resolve per-user key: prefer pre-resolved encryptedKey, fall back to searching memberKeys
+        const encryptedKey = lm.encryptedKey
+          || lm.memberKeys?.find(
+              (k) => k.userId === user?._id || String(k.userId) === user?._id
+            )?.encryptedKey;
+        if (!encryptedKey) return g;
         try {
-          const content = await decryptGroupText(lm.ciphertext, lm.encryptedKey, key);
+          const content = await decryptGroupText(lm.ciphertext, encryptedKey, key);
           return { ...g, lastMessage: { ...lm, content } };
         } catch {
           return g;

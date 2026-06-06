@@ -152,19 +152,7 @@ export const getMyGroups = async (req, res) => {
       .populate("lastMessage.sender", "fullName username")
       .sort({ "lastMessage.sentAt": -1, updatedAt: -1 });
 
-    // Resolve the requesting user's encrypted key for sidebar decryption
-    const enriched = groups.map((g) => {
-      const obj = g.toObject();
-      if (obj.lastMessage?.memberKeys?.length) {
-        obj.lastMessage.encryptedKey = obj.lastMessage.memberKeys.find(
-          (k) => k.userId?.toString() === userId.toString()
-        )?.encryptedKey;
-        delete obj.lastMessage.memberKeys;
-      }
-      return obj;
-    });
-
-    res.json({ groups: enriched });
+    res.json({ groups });
   } catch (err) {
     console.error("getMyGroups error:", err);
     res.status(500).json({ message: "Server error" });
