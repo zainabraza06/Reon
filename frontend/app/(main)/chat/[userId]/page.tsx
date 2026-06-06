@@ -266,17 +266,18 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
 
       {/* Messages area */}
       <div ref={chatContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-0.5 chat-bg">
-        {/* Infinite Scroll Sentinel */}
-        {hasMore && (
+        {/* Infinite Scroll Sentinel — only shown while there are already messages (pagination) */}
+        {hasMore && messages.length > 0 && (
           <div ref={sentinelRef} className="h-6 w-full flex items-center justify-center py-2">
             {loading && (
-              <div className="w-4 h-4 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+              <div className="w-4 h-4 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
             )}
           </div>
         )}
+        {/* Initial load spinner — only when no messages exist yet */}
         {loading && messages.length === 0 && (
           <div className="flex justify-center py-8">
-            <div className="w-6 h-6 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+            <div className="w-6 h-6 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
           </div>
         )}
 

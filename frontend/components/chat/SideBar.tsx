@@ -236,11 +236,28 @@ export default function Sidebar({ onNewGroup }: Props) {
       });
     };
     const onNewGroupMsg = (data: unknown) => {
-      const { message, groupId } = data as { message: { sentAt: string }; groupId: string };
+      const { message, groupId } = data as { message: import("@/types").GroupMessage; groupId: string };
+      const sender = message.sender as import("@/types").User;
+      let content: string;
+      if (message.contentType === "system")        content = message.ciphertext || "";
+      else if (message.contentType === "image")    content = "[image]";
+      else if (message.contentType === "video")    content = "[video]";
+      else if (message.contentType === "audio")    content = "[audio]";
+      else if (message.contentType === "document") content = "[document]";
+      else                                          content = "[encrypted]";
       setGroups((prev) =>
         prev.map((g) =>
           g._id === groupId
-            ? { ...g, lastMessage: { ...g.lastMessage, sentAt: message.sentAt, content: "[new message]" } as GroupChat["lastMessage"] }
+            ? {
+                ...g,
+                lastMessage: {
+                  content,
+                  sender,
+                  sentAt: message.sentAt,
+                  contentType: message.contentType,
+                  senderName: sender?.fullName,
+                },
+              }
             : g
         )
       );
@@ -310,6 +327,47 @@ export default function Sidebar({ onNewGroup }: Props) {
   const filteredGroups = (groups ?? []).filter((g) =>
     !search || g.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const groupMsgPreview = (g: GroupChat) => {
+    const lm = g.lastMessage;
+    if (!lm) return { prefix: "", text: "No messages yet" };
+
+    const { content, sender, contentType, senderName } = lm;
+    let text: string;
+    let isSystem = false;
+
+    if (contentType === "system") {
+      text = content || "";
+      isSystem = true;
+    } else if (contentType === "image") { text = "📷 Photo"; }
+    else if (contentType === "video")   { text = "🎬 Video"; }
+    else if (contentType === "audio")   { text = "🎤 Voice note"; }
+    else if (contentType === "document") { text = "📎 Document"; }
+    else if (contentType === "text" || contentType === undefined) {
+      if (!content || content === "[encrypted]") text = "Message";
+      else if (content === "[image]")    text = "📷 Photo";
+      else if (content === "[video]")    text = "🎬 Video";
+      else if (content === "[audio]")    text = "🎤 Voice note";
+      else if (content === "[document]") text = "📎 Document";
+      else if (content.startsWith("[")) text = "Message";
+      else { text = content; isSystem = true; }
+    } else { text = "Message"; }
+
+    if (isSystem) return { prefix: "", text };
+
+    const senderId = typeof sender === "object" ? (sender as import("@/types").User)._id : sender as string;
+    let prefix = "";
+    if (senderId === user?._id) {
+      prefix = "You: ";
+    } else {
+      const name = senderName
+        || (typeof sender === "object" ? (sender as import("@/types").User).fullName : undefined)
+        || g.members.find((m) => m.user._id === senderId)?.user.fullName
+        || "";
+      if (name) prefix = `${name.split(" ")[0]}: `;
+    }
+    return { prefix, text };
+  };
 
   const formatTime = (d?: string) => {
     if (!d) return "";
@@ -453,6 +511,7 @@ export default function Sidebar({ onNewGroup }: Props) {
               )}
               {filteredGroups.map((g) => {
                 const active = pathname === `/group/${g._id}`;
+                const { prefix, text } = groupMsgPreview(g);
                 return (
                   <li key={g._id}>
                     <Link
@@ -469,7 +528,9 @@ export default function Sidebar({ onNewGroup }: Props) {
                           </p>
                           <span className="text-[11px] text-gray-400 shrink-0 ml-1">{formatTime(g.lastMessage?.sentAt)}</span>
                         </div>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{g.members.length} members</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                          {prefix && <span className="font-medium text-gray-500 dark:text-gray-400">{prefix}</span>}{text}
+                        </p>
                       </div>
                     </Link>
                   </li>

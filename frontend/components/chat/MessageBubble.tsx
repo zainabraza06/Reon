@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Check, CheckCheck, Download, FileText, Play, Pause, RotateCcw, Phone, Video, PhoneMissed, Clock, AlertCircle } from "lucide-react";
 import type { Message, MediaFile } from "@/types";
 import { decryptFile, getStoredPrivateKey } from "@/lib/crypto";
@@ -253,6 +253,7 @@ function CallLogBubble({ message, isMine }: { message: Message; isMine: boolean 
 
 export default function MessageBubble({ message, isMine, onRetry }: Props) {
   const [showInfo, setShowInfo] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (message.contentType === "call-log") {
     return <CallLogBubble message={message} isMine={isMine} />;
@@ -263,11 +264,20 @@ export default function MessageBubble({ message, isMine, onRetry }: Props) {
   const isVoice = !!(message.isVoiceMessage || (message.contentType === "audio" && message.media?.length));
   const isFailed  = message.status === "failed";
   const isSending = message.status === "sending";
+  const canInfo   = isMine && !isSending && !isFailed && !message._id.startsWith("temp");
 
   const handleContextMenu = (e: React.MouseEvent) => {
-    if (!isMine || isSending || isFailed || message._id.startsWith("temp")) return;
+    if (!canInfo) return;
     e.preventDefault();
     setShowInfo(true);
+  };
+
+  const handleTouchStart = () => {
+    if (!canInfo) return;
+    longPressTimer.current = setTimeout(() => setShowInfo(true), 500);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
 
   return (
@@ -283,7 +293,10 @@ export default function MessageBubble({ message, isMine, onRetry }: Props) {
       <div className="flex flex-col items-end gap-1 max-w-[74%]">
         <div
           onContextMenu={handleContextMenu}
-          className={`relative rounded-2xl px-3.5 py-2 shadow-md transition-opacity ${
+          onTouchStart={handleTouchStart}
+          onTouchEnd={cancelLongPress}
+          onTouchMove={cancelLongPress}
+          className={`relative rounded-2xl px-3.5 py-2 shadow-md transition-opacity select-none ${
             isMine ? "cursor-context-menu" : ""
           } ${
             isSending ? "opacity-65" : ""

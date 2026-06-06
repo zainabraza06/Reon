@@ -81,6 +81,8 @@ export interface GroupChat {
     content: string;
     sender: User | string;
     sentAt: string;
+    contentType?: string;
+    senderName?: string;
   };
   isActive: boolean;
   createdAt: string;

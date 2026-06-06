@@ -83,6 +83,8 @@ function GroupTick({ senderId, readBy, deliveredTo, memberCount }: {
 function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
   message: GroupMessage; isMine: boolean; memberCount: number; onInfoPress?: () => void;
 }) {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // System messages render as centered pills
   if (message.contentType === "system") {
     return (
@@ -99,6 +101,14 @@ function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
   const senderName = typeof message.sender === "object" ? message.sender.fullName : "";
   const senderId   = typeof message.sender === "object" ? message.sender._id : message.sender;
 
+  const handleTouchStart = () => {
+    if (!isMine || !onInfoPress) return;
+    longPressTimer.current = setTimeout(() => onInfoPress(), 500);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+
   return (
     <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} mb-1`}>
       {!isMine && (
@@ -112,7 +122,10 @@ function GroupMessageBubble({ message, isMine, memberCount, onInfoPress }: {
       )}
       <div
         onContextMenu={(e) => { if (!isMine || !onInfoPress) return; e.preventDefault(); onInfoPress(); }}
-        className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm ${isMine ? "cursor-context-menu" : ""} ${
+        onTouchStart={handleTouchStart}
+        onTouchEnd={cancelLongPress}
+        onTouchMove={cancelLongPress}
+        className={`relative max-w-[70%] rounded-2xl px-4 py-2 shadow-sm select-none ${isMine ? "cursor-context-menu" : ""} ${
           isMine
             ? "bubble-gradient text-white rounded-br-sm shadow-violet-500/20"
             : "bg-white dark:bg-[#1a1a3a] text-gray-900 dark:text-gray-100 rounded-bl-sm"
