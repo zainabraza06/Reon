@@ -29,7 +29,7 @@ interface NotificationContextValue {
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
 function mapFromDb(n: AppNotification): AppNotification {
-  return { ...n, id: n._id, timestamp: n.createdAt ?? n.timestamp };
+  return { ...n, id: n._id ?? n.id, timestamp: n.createdAt ?? n.timestamp };
 }
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {

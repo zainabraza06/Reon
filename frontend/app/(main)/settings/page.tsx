@@ -186,7 +186,7 @@ export default function SettingsPage() {
         {/* Linked devices section */}
         <section>
           <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Smartphone size={14} />Linked Devices
+            <LinkIcon size={14} />Linked Devices
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Use your account on another browser or device. Your encryption keys transfer securely via QR code — the server never sees your private key.
