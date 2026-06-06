@@ -309,7 +309,7 @@ function GroupInfoPanel({
   // Loading skeleton
   if (!group) {
     return (
-      <div className="fixed inset-0 z-30 md:static md:z-auto md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col">
+      <div className="fixed inset-0 z-30 md:static md:z-auto md:h-full md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col">
         <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 dark:border-white/6">
           <span className="text-sm font-semibold text-gray-900 dark:text-white">Group Info</span>
           <button type="button" title="Close" onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -326,7 +326,7 @@ function GroupInfoPanel({
   // Add-members sheet
   if (showAddMembers) {
     return (
-      <div className="fixed inset-0 z-30 md:static md:z-auto md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col">
+      <div className="fixed inset-0 z-30 md:static md:z-auto md:h-full md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col">
         <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-100 dark:border-white/6">
           <button type="button" title="Back" onClick={() => setShowAddMembers(false)} className="p-1 rounded-lg text-gray-400 hover:text-gray-600">
             <ArrowLeft size={16} />
@@ -371,7 +371,7 @@ function GroupInfoPanel({
   return (
     <>
     {confirmDialog}
-    <div className="fixed inset-0 z-30 md:static md:z-auto md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-30 md:static md:z-auto md:h-full md:w-72 border-l border-gray-200 dark:border-white/6 bg-white dark:bg-[#0f0f28] flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/6 shrink-0">
         <span className="text-sm font-semibold text-gray-900 dark:text-white">Group Info</span>
@@ -402,7 +402,7 @@ function GroupInfoPanel({
                   placeholder="Description (optional)"
                   className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1a1a3a] text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
                 />
-                {editErr && <p className="text-xs text-red-500">{editErr}</p>}
+                {editErr && <p className="text-xs text-rose-500 dark:text-rose-400">{editErr}</p>}
                 <div className="flex gap-2">
                   <button type="button" onClick={saveEdit} disabled={editSaving}
                     className="flex-1 btn-gradient py-1.5 rounded-lg text-white text-xs font-semibold disabled:opacity-50">
@@ -654,7 +654,7 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
           ) : groupErr ? (
             <>
               <p className="font-semibold text-gray-900 dark:text-white text-[15px]">Group</p>
-              <button type="button" onClick={fetchGroup} className="text-xs text-red-400 hover:underline">Failed to load · retry</button>
+              <button type="button" onClick={fetchGroup} className="text-xs text-rose-400 dark:text-rose-500 hover:underline">Failed to load · retry</button>
             </>
           ) : (
             <>
