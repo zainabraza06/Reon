@@ -3,6 +3,7 @@ import Message from "../models/Message.js";
 import User from "../models/User.js";
 import { GroupChat, GroupMessage } from "../models/GroupChat.js";
 import * as messageController from "../controllers/message.controller.js";
+import { sendPush } from "./fcm.js";
 
 let io;
 const onlineUsers = new Map(); // userId → socketId (primary socket)
@@ -610,11 +611,26 @@ export const initSocket = (server) => {
                 deliveredAt: new Date().toISOString()
               });
             } else {
-              // If receiver is offline, mark as sent only (delivered: false)
+              // Receiver is offline — emit socket (for reconnect) and send push
               emitToUser(receiverId, "new-message", {
                 ...message,
-                delivered: false // Still not delivered
+                delivered: false,
               });
+
+              // Push notification
+              User.findById(receiverId).select("fcmToken fullName").lean()
+                .then(receiver => {
+                  if (receiver?.fcmToken) {
+                    User.findById(senderId).select("fullName").lean().then(sender => {
+                      sendPush(receiver.fcmToken, {
+                        title: sender?.fullName ?? "New message",
+                        body:  "You have a new message",
+                        data:  { senderId, type: "new_message" },
+                      });
+                    });
+                  }
+                })
+                .catch(() => {});
             }
           }
         });

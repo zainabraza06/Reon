@@ -262,6 +262,9 @@ class ApiService {
     });
   }
 
+  Future<void> updateFcmToken(String token) =>
+      _put('/settings/fcm-token', body: {'fcmToken': token});
+
   Future<ReonUser> updatePrivacy({bool? showLastSeen, bool? showActiveStatus}) async {
     final res = await _req('PATCH', '/settings/privacy', body: {
       if (showLastSeen != null) 'showLastSeen': showLastSeen,

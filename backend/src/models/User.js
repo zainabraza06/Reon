@@ -67,6 +67,11 @@ const userSchema = new mongoose.Schema({
     showActiveStatus: { type: Boolean, default: true },
   },
 
+  fcmToken: {
+    type: String,
+    default: null,
+  },
+
   friends: [
     {
       type: mongoose.Schema.Types.ObjectId,

@@ -3,6 +3,8 @@ import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/crypto_service.dart';
+import '../services/notification_service.dart';
+import '../services/message_cache_service.dart';
 
 enum AuthStatus { unknown, unauthenticated, authenticated }
 
@@ -55,6 +57,8 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await NotificationService.instance.deleteToken().catchError((_) {});
+    await MessageCacheService.instance.clearAll().catchError((_) {});
     await ApiService.instance.logout();
     SocketService.instance.disconnect();
     await CryptoService.instance.clearKeys();

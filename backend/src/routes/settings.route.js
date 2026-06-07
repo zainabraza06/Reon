@@ -38,4 +38,16 @@ router.put(
 
 router.patch("/privacy", protectRoute, updatePrivacy);
 
+router.put("/fcm-token", protectRoute, async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) return res.status(400).json({ message: "fcmToken required" });
+    const User = (await import("../models/User.js")).default;
+    await User.findByIdAndUpdate(req.user._id, { fcmToken });
+    res.json({ message: "FCM token saved" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;
