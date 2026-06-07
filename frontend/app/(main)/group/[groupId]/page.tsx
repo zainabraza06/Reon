@@ -601,7 +601,7 @@ export default function GroupPage({ params }: { params: Promise<{ groupId: strin
       .catch(() => setGroupErr(true));
   }, [groupId]);
 
-  useEffect(() => { fetchGroup(); }, [fetchGroup]);
+  useEffect(() => { void fetchGroup(); }, [fetchGroup]);
 
   useEffect(() => {
     const onTyping = (data: unknown) => {

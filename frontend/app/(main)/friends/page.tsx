@@ -69,7 +69,7 @@ export default function FriendsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { void loadAll(); }, []);
 
   // Real-time socket listeners — refresh data when any friend event fires
   useEffect(() => {
