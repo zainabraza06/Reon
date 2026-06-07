@@ -9,6 +9,10 @@
 | **Mobile** | Flutter 3.x, Provider, Dio | Android (and iOS) client |
 | **Backend** | Node.js, Express, MongoDB, Socket.io | REST API + real-time relay |
 
+[![Backend CI](https://github.com/zainabraza06/reon/actions/workflows/backend.yml/badge.svg)](https://github.com/zainabraza06/reon/actions/workflows/backend.yml)
+[![Flutter CI](https://github.com/zainabraza06/reon/actions/workflows/flutter.yml/badge.svg)](https://github.com/zainabraza06/reon/actions/workflows/flutter.yml)
+[![Frontend CI](https://github.com/zainabraza06/reon/actions/workflows/frontend.yml/badge.svg)](https://github.com/zainabraza06/reon/actions/workflows/frontend.yml)
+
 ---
 
 ## Table of Contents
@@ -17,20 +21,23 @@
 2. [System Architecture](#system-architecture)
 3. [Repository Structure](#repository-structure)
 4. [Tech Stack](#tech-stack)
-5. [Data Models](#data-models)
-6. [Authentication Flow](#authentication-flow)
-7. [End-to-End Encryption](#end-to-end-encryption)
-8. [Device Linking Flow](#device-linking-flow)
-9. [Messaging Flows](#messaging-flows)
-10. [Mobile Screens — Full Walkthrough](#mobile-screens--full-walkthrough)
-11. [Web Routes](#web-routes)
-12. [REST API Reference](#rest-api-reference)
-13. [Socket.io Events](#socketio-events)
-14. [Environment Variables](#environment-variables)
-15. [Flutter Setup & Build APK](#flutter-setup--build-apk)
-16. [Backend & Web Setup](#backend--web-setup)
-17. [Deployment Notes](#deployment-notes)
-18. [Troubleshooting](#troubleshooting)
+5. [Testing](#testing)
+6. [Data Models](#data-models)
+7. [Authentication Flow](#authentication-flow)
+8. [End-to-End Encryption](#end-to-end-encryption)
+9. [Device Linking Flow](#device-linking-flow)
+10. [Messaging Flows](#messaging-flows)
+11. [Mobile Screens — Full Walkthrough](#mobile-screens--full-walkthrough)
+12. [Web Routes](#web-routes)
+13. [REST API Reference](#rest-api-reference)
+14. [Socket.io Events](#socketio-events)
+15. [Environment Variables](#environment-variables)
+16. [Flutter Setup & Build APK](#flutter-setup--build-apk)
+17. [Firebase Push Notifications Setup](#firebase-push-notifications-setup)
+18. [Backend & Web Setup](#backend--web-setup)
+19. [CI/CD](#cicd)
+20. [Deployment Notes](#deployment-notes)
+21. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -41,12 +48,18 @@
 - **Group chats** — create groups, add/remove members, admin promotion, encrypted group messages
 - **Real-time delivery** — Socket.io for instant push, typing indicators, read receipts, online presence
 - **Message info** — delivery and read timestamps per message
+- **Offline message cache** — messages load instantly from device storage before the network responds; up to 200 messages per conversation persisted locally with Hive
 
 ### Security & Privacy
 - **RSA-2048 + AES-256-GCM** hybrid encryption — server is a blind relay
-- **Per-user RSA key pairs** — generated client-side; private key stays in secure local storage
+- **Per-user RSA key pairs** — generated client-side; private key stays in platform secure storage (Android Keystore)
 - **Device linking** — transfer private keys via ECDH P-256 + QR code (server never sees the private key)
 - **Privacy settings** — toggle last-seen and online-status visibility
+
+### Push Notifications
+- **Firebase Cloud Messaging** — push notification delivered when the recipient is offline
+- **Foreground notifications** — local notification shown while the app is open
+- **Token lifecycle** — FCM token uploaded on login, deleted on logout; stale tokens auto-purged
 
 ### Social
 - **Friend requests** — send, accept, reject, withdraw
@@ -58,6 +71,12 @@
 - **Encrypted file storage** — media blobs in MongoDB GridFS (`encryptedFiles` bucket)
 - **Profile pictures** — Cloudinary CDN
 - **Voice notes** — record and send encrypted audio messages
+
+### Quality & Engineering
+- **Integration tests** — 18 backend tests covering auth, friends, and messages (Jest + Supertest + mongodb-memory-server)
+- **Unit tests** — 15+ Flutter tests covering all data models and auth provider state
+- **CI/CD** — GitHub Actions pipelines for all three apps
+- **Clean architecture** — business logic separated from UI via dedicated Provider classes
 
 ---
 
@@ -72,38 +91,25 @@
 │   │  (Android/iOS)  │        │ (React 19, Tailwind)  │  │
 │   └────────┬────────┘        └──────────┬───────────┘  │
 └────────────┼─────────────────────────────┼─────────────┘
-             │  HTTPS + cookies (Dio)       │  HTTPS + cookies
+             │  HTTPS + cookies             │  HTTPS + cookies
              │  WebSocket (socket_io)       │  WebSocket (socket.io)
              ▼                             ▼
 ┌─────────────────────────────────────────────────────────┐
 │                   Backend (Node.js)                     │
 │                                                         │
 │   ┌──────────────┐  ┌──────────────┐  ┌─────────────┐  │
-│   │  Express API │  │  Socket.io   │  │  Passport   │  │
-│   │   /api/*     │  │   Server     │  │  JWT auth   │  │
-│   └──────┬───────┘  └──────┬───────┘  └─────────────┘  │
-└──────────┼────────────────┼─────────────────────────────┘
-           │                │
-           ▼                ▼
-┌────────────────────┐  ┌────────────────────┐
-│     MongoDB        │  │    Cloudinary      │
-│  Users, Messages,  │  │  Profile pictures  │
-│  Groups, Keys,     │  └────────────────────┘
-│  Notifs, GridFS    │
+│   │  Express API │  │  Socket.io   │  │  Firebase   │  │
+│   │   /api/*     │  │   Server     │  │  Admin SDK  │  │
+│   └──────┬───────┘  └──────┬───────┘  └──────┬──────┘  │
+└──────────┼────────────────┼─────────────────┼───────────┘
+           │                │                 │
+           ▼                ▼                 ▼
+┌────────────────────┐  ┌────────────┐  ┌──────────────────┐
+│     MongoDB        │  │ Cloudinary │  │  FCM (Firebase)  │
+│  Users, Messages,  │  │  Profile   │  │  Push to offline │
+│  Groups, Keys,     │  │  pictures  │  │  recipients      │
+│  Notifs, GridFS    │  └────────────┘  └──────────────────┘
 └────────────────────┘
-```
-
-### Request lifecycle (message send)
-
-```
-Client                    Express API             MongoDB          Socket.io
-  │                            │                      │                │
-  │── encryptText() locally ──▶│                      │                │
-  │── POST /api/messages/send ▶│── save ciphertext ──▶│                │
-  │                            │◀── saved ────────────│                │
-  │                            │─── emit new-message ────────────────▶ receiver
-  │◀── message-sent ──────────────────────────────────────────────────│
-  │                            │                      │                │
 ```
 
 ---
@@ -112,42 +118,63 @@ Client                    Express API             MongoDB          Socket.io
 
 ```
 Reon/
-├── backend/                    # Node.js API + Socket.io
+├── .github/
+│   └── workflows/
+│       ├── backend.yml        # Jest tests on every push
+│       ├── flutter.yml        # analyze + test + build APK
+│       └── frontend.yml       # lint + type-check + build
+│
+├── backend/
+│   ├── jest.config.cjs        # Jest config (ESM, mongodb-memory-server)
 │   └── src/
-│       ├── app.js              # Express factory (routes, CORS, middleware)
-│       ├── server.js           # HTTP server + DB + socket init
-│       ├── controllers/        # Business logic per domain
-│       ├── models/             # Mongoose schemas
-│       ├── routes/             # Express route definitions
-│       ├── middlewares/        # Auth, upload, validation
-│       ├── lib/                # db.js, socket.js, cloudinary.js
-│       └── utils/              # passport.js, generateToken.js
+│       ├── app.js             # Express factory — importable in tests
+│       ├── server.js          # HTTP + socket bootstrap
+│       ├── controllers/       # Business logic (auth, messages, friends…)
+│       ├── models/            # Mongoose schemas
+│       ├── routes/            # Express routers
+│       ├── middlewares/       # Auth, upload, validation
+│       ├── lib/
+│       │   ├── socket.js      # Socket.io + FCM push for offline users
+│       │   ├── fcm.js         # Firebase Cloud Messaging helper
+│       │   ├── db.js
+│       │   └── cloudinary.js
+│       └── tests/
+│           ├── globalSetup.js    # Start mongodb-memory-server
+│           ├── globalTeardown.js # Stop mongodb-memory-server
+│           ├── setup.js          # DB connect / wipe between tests
+│           ├── auth.test.js      # 7 tests — signup, login, me, logout
+│           ├── friend.test.js    # 6 tests — requests, accept, list
+│           └── message.test.js   # 5 tests — send, fetch, mark-read
 │
-├── frontend/                   # Next.js 16 web app
+├── frontend/
 │   ├── app/
-│   │   ├── (auth)/             # Login, signup, onboarding
-│   │   ├── (main)/             # Authenticated app shell
-│   │   ├── layout.tsx
-│   │   └── page.tsx
+│   │   ├── (auth)/            # Login, signup, onboarding
+│   │   └── (main)/            # Authenticated app shell
 │   ├── components/
-│   │   ├── chat/               # Sidebar, bubbles, input, group modal
-│   │   ├── layout/             # MobileNav
-│   │   └── ui/                 # Avatar, NotificationBell
-│   ├── context/                # AuthContext, NotificationContext, SocketContext
-│   ├── hooks/                  # useMessages, useGroupMessages
-│   ├── lib/                    # api.ts, crypto.ts, socket.ts
-│   └── types/                  # Shared TypeScript interfaces
+│   ├── context/               # Auth, Notification, Socket contexts
+│   ├── hooks/
+│   └── lib/                   # api.ts, crypto.ts, socket.ts
 │
-├── flutter_app/                # Flutter mobile app
-│   └── lib/
-│       ├── main.dart           # Entry point + auth gate
-│       ├── config.dart         # API_BASE, SOCKET_URL, SITE_URL
-│       ├── screens/            # All 13 screens
-│       ├── services/           # api_service, socket_service, crypto_service
-│       ├── providers/          # auth_provider (ChangeNotifier)
-│       ├── models/             # Dart data classes
-│       ├── widgets/            # Reusable components
-│       └── theme/              # Colors, gradients, light/dark themes
+├── flutter_app/
+│   ├── lib/
+│   │   ├── main.dart          # Entry: Hive init → Firebase init → app
+│   │   ├── config.dart        # API_BASE, SOCKET_URL, SITE_URL
+│   │   ├── providers/
+│   │   │   ├── auth_provider.dart   # Auth state + FCM/cache cleanup on logout
+│   │   │   └── chat_provider.dart   # All chat logic (socket, crypto, cache, API)
+│   │   ├── screens/           # Pure UI — no business logic in screens
+│   │   ├── services/
+│   │   │   ├── api_service.dart
+│   │   │   ├── socket_service.dart
+│   │   │   ├── crypto_service.dart
+│   │   │   ├── notification_service.dart  # FCM init, foreground display, token
+│   │   │   └── message_cache_service.dart # Hive offline cache
+│   │   ├── models/
+│   │   ├── widgets/
+│   │   └── theme/
+│   └── test/
+│       ├── models_test.dart       # 15 tests — ChatMessage, ReonUser, Notif, Request
+│       └── auth_provider_test.dart # AuthProvider state tests
 │
 └── README.md
 ```
@@ -160,11 +187,13 @@ Reon/
 | Layer | Technology |
 |-------|-----------|
 | Framework | Flutter 3.x (Dart ≥ 3.2) |
-| State | Provider (ChangeNotifier) |
+| State | Provider + ChangeNotifier |
 | HTTP | Dio + cookie_jar + dio_cookie_manager |
 | Real-time | socket_io_client |
 | Crypto | pointycastle (RSA-OAEP + AES-GCM + ECDH P-256) |
 | Secure storage | flutter_secure_storage (Android Keystore) |
+| Offline cache | hive_flutter |
+| Push notifications | firebase_messaging + flutter_local_notifications |
 | QR | qr_flutter (generate), mobile_scanner (scan) |
 | Images | cached_network_image, image_picker |
 | Fonts | google_fonts (Inter) |
@@ -185,11 +214,44 @@ Reon/
 | Runtime | Node.js (ES modules) |
 | HTTP | Express 4 |
 | Database | MongoDB + Mongoose 8 |
-| File storage | GridFS (encrypted media blobs) |
+| File storage | GridFS (encrypted media) |
 | Images | Cloudinary |
 | Auth | Passport.js, JWT (httpOnly cookies), bcryptjs |
 | Real-time | Socket.io 4 |
+| Push | Firebase Admin SDK (FCM) |
 | Security | Helmet, express-rate-limit, CORS |
+| Testing | Jest + Supertest + mongodb-memory-server |
+
+---
+
+## Testing
+
+### Backend — 18 integration tests
+
+Tests use `mongodb-memory-server` — no real database or environment required.
+
+```bash
+cd backend
+NODE_OPTIONS=--experimental-vm-modules npx jest
+```
+
+| File | Tests |
+|------|-------|
+| `auth.test.js` | Signup, duplicate email, missing fields, login, wrong password, unknown email, `/me`, logout |
+| `friend.test.js` | Empty friend list, send request, duplicate request, received requests, accept flow, pending count |
+| `message.test.js` | Sidebar list, send encrypted message, fetch history, mark-read, auth guard |
+
+### Flutter — 15+ unit tests
+
+```bash
+cd flutter_app
+flutter test
+```
+
+| File | Tests |
+|------|-------|
+| `models_test.dart` | `ChatMessage` parse, nested objects, defaults, `copyWith`, `isSending`, `isFailed`; `ReonUser` parse, defaults, `copyWith`; `AppNotification`; `FriendRequest` |
+| `auth_provider_test.dart` | Initial state, `updateUser`, `updateOnlineStatus` for matching and unknown userId |
 
 ---
 
@@ -199,7 +261,7 @@ Reon/
 
 | Collection | Description |
 |-----------|-------------|
-| `users` | Accounts, profiles, privacy settings, friend list |
+| `users` | Accounts, profiles, privacy settings, friend list, `fcmToken` |
 | `messages` | 1:1 encrypted messages + media metadata |
 | `groupchats` | Groups, members, admins, embedded messages |
 | `publickeys` | RSA public keys (JWK) per user |
@@ -215,9 +277,8 @@ Reon/
 | `encryptedKey` | string | AES key wrapped with receiver's RSA public key |
 | `senderEncryptedKey` | string | AES key wrapped with sender's RSA public key |
 | `contentType` | string | `text \| image \| audio \| video \| document` |
-| `delivered` | bool | Delivery acknowledgement |
-| `read` | bool | Read receipt |
-| `isVoiceMessage` | bool | Whether the audio is a voice note |
+| `isVoiceMessage` | bool | Whether the audio attachment is a voice note |
+| `delivered` / `read` | bool | Delivery and read receipts |
 
 ---
 
@@ -234,7 +295,7 @@ Auth status?
             │
             ▼
         isOnboarded?
-            ├── No ──────────────▶  OnboardingScreen
+            ├── No ──────────────▶  OnboardingScreen (generates RSA keypair)
             └── Yes ─────────────▶  HomeScreen
 ```
 
@@ -242,7 +303,6 @@ Auth status?
 - **Email + password** — `POST /api/auth/signup`, `POST /api/auth/login`
 - **Google OAuth** — `GET /api/auth/google` → callback sets JWT cookie
 - **Session** — JWT in httpOnly cookie; `protectRoute` middleware validates on every protected request
-- **Socket auth** — client emits `authenticate` with `userId` after login
 
 ### Auth API routes
 
@@ -253,12 +313,9 @@ Auth status?
 | POST | `/api/auth/logout` | — | Clear session |
 | GET | `/api/auth/me` | ✓ | Current user |
 | POST | `/api/auth/onboard` | ✓ | Complete profile setup |
-| GET | `/api/auth/verify-email` | — | Email verification |
 | POST | `/api/auth/forgot-password` | — | Send reset email |
 | POST | `/api/auth/forgot-password/reset` | — | Reset password |
-| GET | `/api/auth/google` | — | Start Google OAuth |
-| GET | `/api/auth/google/callback` | — | OAuth callback |
-| GET | `/api/auth/details/:userId` | — | Public user details |
+| GET | `/api/auth/google` | — | Google OAuth |
 
 ---
 
@@ -268,37 +325,25 @@ The server is a **blind relay** — it stores and forwards ciphertext only.
 
 ### Text messages (1:1)
 ```
-Sender device                    Server                  Receiver device
-     │                              │                           │
-     │  1. Generate AES-256 key     │                           │
-     │  2. Encrypt plaintext        │                           │
-     │     with AES-GCM             │                           │
-     │  3. Wrap AES key with        │                           │
-     │     receiver RSA public key  │                           │
-     │  4. Wrap AES key with        │                           │
-     │     sender RSA public key    │                           │
-     │── POST ciphertext + keys ──▶ │── push to receiver ────▶ │
-     │                              │                           │
-     │                              │     5. Unwrap AES key     │
-     │                              │        with own RSA priv  │
-     │                              │     6. Decrypt ciphertext │
+Sender                           Server              Receiver
+  │  1. Generate AES-256 key       │                    │
+  │  2. Encrypt plaintext AES-GCM  │                    │
+  │  3. Wrap AES key (receiver RSA)│                    │
+  │  4. Wrap AES key (sender RSA)  │                    │
+  │── POST ciphertext + keys ──────▶── push ───────────▶│
+  │                                │  5. Unwrap AES key │
+  │                                │  6. Decrypt cipher │
 ```
 
-### File / media messages
-1. Encrypt file bytes with AES-GCM (unique key per file)
-2. RSA-encrypt AES key for sender and receiver
-3. Upload encrypted blob to GridFS; store metadata + keys in message document
-
 ### Group messages
-- One AES key per message, RSA-encrypted separately for **each group member**
-- Each member decrypts their own copy with their own RSA private key
+One AES key per message, RSA-encrypted separately for **each group member**.
 
 ### Key storage
 
 | Platform | Private key | Public key |
 |----------|------------|-----------|
-| Web | IndexedDB (`reon-crypto` store) | IndexedDB + server |
-| Mobile | flutter_secure_storage (Android Keystore) | Secure storage + server |
+| Web | IndexedDB (`reon-crypto`) | IndexedDB + server |
+| Mobile | flutter_secure_storage | Secure storage + server |
 
 ### Crypto algorithms
 
@@ -312,82 +357,54 @@ Sender device                    Server                  Receiver device
 
 ## Device Linking Flow
 
-Transfer an existing RSA private key to a new device without the server ever seeing it.
+Transfer an existing RSA private key to a new device — server never sees it.
 
 ```
-Device A (has keys)           Server              Device B (new device)
-        │                        │                         │
-        │── POST create session ▶│                         │
-        │   (ECDH pub key A)     │                         │
-        │◀── sessionId ──────────│                         │
-        │                        │                         │
-        │  Shows QR code         │                         │
-        │  (sessionId + ECDH     │                         │
-        │   pub key A)           │                         │
-        │                        │◀── scan QR ─────────────│
-        │                        │◀── claim (ECDH pub B) ──│
-        │◀── device-link-claimed (socket) ─────────────────│
-        │                        │                         │
-        │  ECDH derive shared    │                         │
-        │  AES key               │                         │
-        │  Encrypt RSA priv JWK  │                         │
-        │── PUT transfer ───────▶│                         │
-        │   (encrypted key)      │──device-link-ready ────▶│
-        │                        │                         │
-        │                        │◀── GET session ─────────│
-        │                        │    (fetch encrypted key)│
-        │                        │                         │
-        │                        │  ECDH derive same AES   │
-        │                        │  Decrypt RSA private key│
-        │                        │  Import + store locally │
+Device A (has keys)      Server          Device B (new)
+  │── create session ──▶ │                    │
+  │◀── sessionId ─────── │                    │
+  │  [shows QR code]     │◀── scan + claim ───│
+  │◀── device-link-claimed (socket) ──────────│
+  │  ECDH derive AES     │                    │
+  │  Encrypt RSA priv    │                    │
+  │── PUT transfer ──────▶── device-link-ready▶│
+  │                      │◀── GET session ─────│
+  │                      │   ECDH derive AES   │
+  │                      │   Decrypt + import  │
 ```
-
-Screens involved:
-- **Mobile — Device A**: `SettingsLinkDeviceScreen` (generates QR)
-- **Mobile — Device B**: `LinkDeviceScreen` (scans QR, route `/link-device`)
 
 ---
 
 ## Messaging Flows
 
-### 1:1 message with delivery + read receipts
+### 1:1 with delivery + read receipts
 
 ```
-Sender ──▶ API (save) ──▶ Receiver (new-message socket event)
-                               │
-                               │── confirm-message-delivery ──▶ Server
-                               │                                    │
-Sender ◀── message-delivered ──────────────────────────────────────┘
-               (double tick)
-
-Receiver opens chat ──▶ PUT /api/messages/chat/read/:userId
-                             │
-Sender ◀── message-read ─────┘  (blue tick)
+Sender ──▶ API (save) ──▶ Receiver online? ──Yes──▶ socket new-message
+                               │                        │
+                               No                   confirm-delivery
+                               │                        │
+                          FCM push to device    Sender ◀── message-delivered
+                          (if FCM token set)
 ```
 
-### Typing indicators
+### Offline message cache (Flutter)
 
 ```
-Sender types ──▶ emit typing-start { receiverId }
-                      │
-Receiver ◀──── user-typing { isTyping: true }
-
-Sender stops ──▶ emit typing-stop { receiverId }
-                      │
-Receiver ◀──── user-typing { isTyping: false }
+Open chat screen
+    │
+    ▼
+Load from Hive cache ──▶ Show messages instantly (no spinner)
+    │
+    ▼ (in parallel)
+Fetch from API ──▶ Decrypt ──▶ Update UI ──▶ Save to Hive
 ```
-
-### Online presence
-
-- Client connects socket → emits `authenticate(userId)`
-- Server tracks `onlineUsers` map; broadcasts `user-status-changed` to friends
-- Heartbeat every 12s; 45s timeout marks user offline
 
 ---
 
 ## Mobile Screens — Full Walkthrough
 
-The Flutter app has **13 screens**. All are shown below in mobile phone frames.
+The Flutter app has **13 screens**. All shown below in mobile phone frames.
 
 ---
 
@@ -395,14 +412,11 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║  ← status bar
+  ║  9:41          ▐▌ ▓  ║
   ╠══════════════════════╣
   ║                      ║
-  ║                      ║
   ║      ┌─────────┐     ║
-  ║      │    R    │     ║  ← Reon logo
-  ║      │ (violet │     ║    (violet-to-cyan
-  ║      │  -cyan) │     ║     gradient)
+  ║      │    R    │     ║  ← Reon logo (violet–cyan gradient)
   ║      └─────────┘     ║
   ║                      ║
   ║    Welcome back      ║
@@ -410,24 +424,21 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
   ║      continue        ║
   ║                      ║
   ║  ┌──────────────────┐║
-  ║  │ ✉  Email         │║  ← email field
+  ║  │ ✉  Email         │║
   ║  └──────────────────┘║
   ║  ┌──────────────────┐║
-  ║  │ 🔒 Password    👁 │║  ← password (show/hide)
+  ║  │ 🔒 Password    👁 │║
   ║  └──────────────────┘║
   ║                      ║
   ║  ╔══════════════════╗ ║
-  ║  ║     Sign In      ║ ║  ← gradient button
+  ║  ║     Sign In      ║ ║
   ║  ╚══════════════════╝ ║
   ║                      ║
   ║  Don't have an       ║
-  ║  account?  Sign Up   ║  ← navigate to Sign Up
+  ║  account?  Sign Up   ║
   ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** Auth gate (unauthenticated)  
-**Actions:** Enter email + password → tap Sign In → navigates to HomeScreen (or OnboardingScreen on first login)
 
 ---
 
@@ -437,13 +448,10 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
   ╔══════════════════════╗
   ║  9:41          ▐▌ ▓  ║
   ╠══════════════════════╣
-  ║                      ║
   ║      ┌─────────┐     ║
   ║      │    R    │     ║
   ║      └─────────┘     ║
-  ║                      ║
   ║    Create account    ║
-  ║                      ║
   ║  ┌──────────────────┐║
   ║  │ 👤  Full Name    │║
   ║  └──────────────────┘║
@@ -453,19 +461,13 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
   ║  ┌──────────────────┐║
   ║  │ 🔒  Password   👁 │║
   ║  └──────────────────┘║
-  ║                      ║
   ║  ╔══════════════════╗ ║
   ║  ║     Sign Up      ║ ║
   ║  ╚══════════════════╝ ║
-  ║                      ║
   ║  Already have an     ║
   ║  account?  Sign In   ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** Pushed from LoginScreen  
-**Actions:** Fill name / email / password → tap Sign Up → navigates to OnboardingScreen
 
 ---
 
@@ -475,33 +477,23 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
   ╔══════════════════════╗
   ║  9:41          ▐▌ ▓  ║
   ╠══════════════════════╣
-  ║                      ║
   ║   Set up your        ║
   ║      profile         ║
-  ║                      ║
   ║       ┌───────┐      ║
-  ║       │       │      ║
   ║       │  👤   │      ║  ← tap to pick from gallery
-  ║       │       │      ║
   ║       └───────┘      ║
   ║    Tap to add photo  ║
-  ║                      ║
   ║  ┌──────────────────┐║
   ║  │ Bio (optional)   │║
   ║  └──────────────────┘║
   ║  ┌──────────────────┐║
   ║  │ Location         │║
   ║  └──────────────────┘║
-  ║                      ║
   ║  ╔══════════════════╗ ║
-  ║  ║   Get Started    ║ ║
+  ║  ║   Get Started    ║ ║  ← RSA keypair generated here
   ║  ╚══════════════════╝ ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** Auth gate (authenticated, `isOnboarded = false`)  
-**Actions:** Optionally set avatar, bio, location → Get Started → HomeScreen. RSA key pair is generated here.
 
 ---
 
@@ -509,28 +501,16 @@ The Flutter app has **13 screens**. All are shown below in mobile phone frames.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
-  ║                      ║
-  ║   [current tab       ║
-  ║    content shown     ║
-  ║    here]             ║
-  ║                      ║
-  ║                      ║
-  ║                      ║
-  ║                      ║
-  ║                      ║
+  ║  [current tab content]║
   ║                      ║
   ╠══════════════════════╣
-  ║  💬   👥²  🔭  🔔³  ⚙️ ║  ← bottom nav
+  ║  💬   👥²  🔭  🔔³  ⚙️ ║
   ║Chats Friends Disc    ║
-  ║       ↑badge  Alerts Settings
-  ║            ↑badge    ║
+  ║            Alerts Settings
   ╚══════════════════════╝
 ```
 
-**Tab 0** → Chat List | **Tab 1** → Friends (badge = pending requests) | **Tab 2** → Discover | **Tab 3** → Notifications (badge = unread) | **Tab 4** → Settings  
-All tabs use `IndexedStack` so state is preserved when switching.
+Badge on Friends = pending requests. Badge on Alerts = unread notifications.
 
 ---
 
@@ -538,34 +518,27 @@ All tabs use `IndexedStack` so state is preserved when switching.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
-  ║  Reon              🔍 ║  ← gradient logo + search
+  ║  Reon              🔍 ║
   ║──────────────────────║
-  ║  [Chats] │  Groups   ║  ← tab bar
+  ║  [Chats] │  Groups   ║
   ║──────────────────────║
-  ║                      ║
   ║  ┌────────────────┐  ║
   ║  │ 👤 Alice    🟢 │  ║  ← online dot
-  ║  │ Hey, how are   │  ║  ← last message preview
-  ║  │           3:41 │  ║  ← timestamp
+  ║  │ Hey, how are   │  ║
+  ║  │           3:41 │  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
   ║  │ 👤 Bob         │  ║
-  ║  │ You: sounds good│  ║  ← "You:" prefix for sent
+  ║  │ You: sounds good│  ║
   ║  │     Yesterday  │  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
-  ║  │ 👥 Dev Team    │  ║  ← group (Groups tab)
-  ║  │ Alice: PR merge│  ║
+  ║  │ 👥 Dev Team    │  ║  ← group
+  ║  │ Alice: Merged! │  ║
   ║  │           2:15 │  ║
   ║  └────────────────┘  ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** HomeScreen tab 0  
-**Actions:** Tap a row → ChatScreen or GroupChatScreen. Pull to refresh. Search by name filters results. Tabs switch between DMs and Groups.
 
 ---
 
@@ -573,34 +546,27 @@ All tabs use `IndexedStack` so state is preserved when switching.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
+  ║ ←  👤 Alice    🟢    ║
+  ║    Online            ║
   ╠══════════════════════╣
-  ║ ←  👤 Alice    🟢    ║  ← back, avatar, online dot
-  ║    Online            ║  ← status / "typing…"
-  ╠══════════════════════╣
-  ║ · · · · · · · · · ·  ║
-  ║ · · (dot-grid bg)· · ║
+  ║ · · · · · · · · · ·  ║  ← dot-grid background
   ║              ┌─────┐ ║
-  ║              │ Hey! │ ║  ← my bubble (right, gradient)
+  ║              │ Hey! │ ║  ← my bubble (gradient, right)
   ║              │  ✓✓  │ ║  ← read ticks (blue)
   ║              └─────┘ ║
   ║  ┌────────┐          ║
-  ║  │ Hi :)  │          ║  ← their bubble (left, card)
+  ║  │ Hi :)  │          ║  ← their bubble (card, left)
   ║  └────────┘          ║
-  ║              ┌──────┐║
-  ║              │ Cool!│ ║
-  ║              │  ✓   │ ║  ← delivered (grey)
-  ║              └──────┘║
-  ║  ● ● ●               ║  ← animated typing dots
+  ║  ● ● ●               ║  ← typing animation
   ╠══════════════════════╣
   ║  ┌────────────────┐ ➤║
-  ║  │  Message…      │  ║  ← input field + send button
+  ║  │  Message…      │  ║
   ║  └────────────────┘  ║
   ╚══════════════════════╝
 ```
 
-**Route:** Pushed from ChatListScreen or FriendsScreen  
-**Features:** E2EE text, typing indicator, online/offline status, status ticks (sending → sent → delivered → read), load earlier messages, optimistic UI
+Messages load from **Hive cache instantly** before network responds.  
+Status ticks: sending → sent → delivered → read.
 
 ---
 
@@ -608,27 +574,16 @@ All tabs use `IndexedStack` so state is preserved when switching.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║ ←  👥 Dev Team       ║
   ║    4 members         ║
   ╠══════════════════════╣
-  ║ · · · · · · · · · ·  ║
   ║  ┌────────────────┐  ║
   ║  │ Alice          │  ║  ← sender name
   ║  │ PR is merged!  │  ║
   ║  └────────────────┘  ║
   ║              ┌──────┐║
-  ║              │ Nice!│ ║  ← my message
+  ║              │ Nice!│ ║
   ║              │ 3/4✓ │ ║  ← delivered to 3 of 4
-  ║              └──────┘║
-  ║  ┌────────────────┐  ║
-  ║  │ Bob            │  ║
-  ║  │ Let's celebrate│  ║
-  ║  └────────────────┘  ║
-  ║              ┌──────┐║
-  ║              │ 🎉   │ ║
-  ║              │ 4/4✓✓│ ║  ← read by all 4
   ║              └──────┘║
   ╠══════════════════════╣
   ║  ┌────────────────┐ ➤║
@@ -637,81 +592,56 @@ All tabs use `IndexedStack` so state is preserved when switching.
   ╚══════════════════════╝
 ```
 
-**Route:** Pushed from ChatListScreen (Groups tab)  
-**Features:** Per-member E2EE, delivery/read counters, sender name on each bubble, typing indicator
-
 ---
 
 ### Screen 8 — Friends
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║  Friends             ║
   ║──────────────────────║
-  ║  [Friends] │ Requests║  ← tab bar (Requests has badge)
+  ║  [Friends] │ Requests║
   ║──────────────────────║
-  ║                      ║
   ║  ┌────────────────┐  ║
-  ║  │ 👤 Alice  🟢   │  ║  ← online
-  ║  │ [Message] [Remove]│  ← action buttons
+  ║  │ 👤 Alice  🟢   │  ║
+  ║  │ [Message] [Remove]║
   ║  └────────────────┘  ║
-  ║  ┌────────────────┐  ║
-  ║  │ 👤 Bob    ⚫   │  ║  ← offline
-  ║  │ [Message] [Remove]│
-  ║  └────────────────┘  ║
-  ║                      ║
   ║  ── Requests tab ──  ║
   ║  ┌────────────────┐  ║
-  ║  │ 👤 Carol       │  ║  ← incoming request
-  ║  │ [Accept] [Reject]│  ← accept / reject
+  ║  │ 👤 Carol       │  ║
+  ║  │[Accept] [Reject]  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
-  ║  │ 👤 Dan         │  ║  ← outgoing (sent by me)
-  ║  │    [Withdraw]  │  ║
+  ║  │ 👤 Dan         │  ║
+  ║  │   [Withdraw]   │  ║  ← sent by me
   ║  └────────────────┘  ║
   ╚══════════════════════╝
 ```
-
-**Route:** HomeScreen tab 1  
-**Features:** Two tabs — Friends (Message / Remove) and Requests (Received: Accept/Reject, Sent: Withdraw). Real-time updates via socket events.
 
 ---
 
-### Screen 9 — Discover (Recommendations)
+### Screen 9 — Discover
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║  Discover            ║
   ║──────────────────────║
-  ║                      ║
   ║  ┌────────────────┐  ║
   ║  │   👤 Eve       │  ║
-  ║  │  "Designer"    │  ║  ← bio
-  ║  │   London       │  ║  ← location
-  ║  │    [Add →]     │  ║  ← send friend request
+  ║  │  "Designer"    │  ║
+  ║  │   London       │  ║
+  ║  │    [Add →]     │  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
   ║  │   👤 Frank     │  ║
-  ║  │  "Developer"   │  ║
-  ║  │   Berlin       │  ║
-  ║  │   [Withdraw]   │  ║  ← already sent, can cancel
+  ║  │   [Withdraw]   │  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
   ║  │   👤 Grace     │  ║
-  ║  │  sent you a    │  ║
-  ║  │   request      │  ║
-  ║  │[Accept] [Reject]│  ║
+  ║  │[Accept] [Reject]  ║
   ║  └────────────────┘  ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** HomeScreen tab 2  
-**Actions:** Add / Withdraw / Accept / Reject depending on request state. Pull to refresh.
 
 ---
 
@@ -719,33 +649,19 @@ All tabs use `IndexedStack` so state is preserved when switching.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
-  ║  Alerts      [✓ All] ║  ← mark all read
+  ║  Alerts      [✓ All] ║
   ║──────────────────────║
-  ║                      ║
   ║  ┌────────────────┐  ║
   ║  │ 🔵 Alice sent  │  ║  ← blue dot = unread
-  ║  │    a friend    │  ║
-  ║  │    request     │  ║
+  ║  │    a request   │  ║
   ║  │    2 min ago   │  ║
   ║  └────────────────┘  ║
   ║  ┌────────────────┐  ║
-  ║  │    Bob accepted│  ║  ← no dot = read
-  ║  │    your request│  ║
+  ║  │    Bob accepted│  ║  ← no dot = already read
   ║  │    1 hr ago    │  ║
   ║  └────────────────┘  ║
-  ║  ┌────────────────┐  ║
-  ║  │ 🔵 New message │  ║
-  ║  │    from Carol  │  ║
-  ║  │    Yesterday   │  ║
-  ║  └────────────────┘  ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** HomeScreen tab 3  
-**Features:** Unread items have a blue dot. Tap to mark one read. "✓ All" marks everything read. Badge on home nav tab decrements in real time.
 
 ---
 
@@ -753,12 +669,10 @@ All tabs use `IndexedStack` so state is preserved when switching.
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║  Settings            ║
   ╠══════════════════════╣
   ║      ┌─────────┐     ║
-  ║      │   👤    │     ║  ← avatar (tap to change)
+  ║      │   👤    │     ║  ← tap to change avatar
   ║      └─────────┘     ║
   ║  ┌──────────────────┐║
   ║  │  Full Name       │║
@@ -766,191 +680,117 @@ All tabs use `IndexedStack` so state is preserved when switching.
   ║  ┌──────────────────┐║
   ║  │  Bio…            │║
   ║  └──────────────────┘║
-  ║  ┌──────────────────┐║
-  ║  │  Location…       │║
-  ║  └──────────────────┘║
   ║  ╔══════════════════╗ ║
   ║  ║  Save Profile    ║ ║
   ║  ╚══════════════════╝ ║
-  ║──────────────────────║
   ║  Privacy             ║
-  ║  Show last seen  [✓] ║  ← toggle
-  ║  Show online     [✓] ║  ← toggle
+  ║  Show last seen  [✓] ║
+  ║  Show online     [✓] ║
   ║  ╔══════════════════╗ ║
-  ║  ║  Save Privacy    ║ ║
+  ║  ║  Link Device  📱 ║ ║
   ║  ╚══════════════════╝ ║
-  ║──────────────────────║
-  ║  ╔══════════════════╗ ║
-  ║  ║  Link Device  📱 ║ ║  ← opens QR generator
-  ║  ╚══════════════════╝ ║
-  ║──────────────────────║
   ║  Change Password     ║
-  ║  ┌──────────────────┐║
-  ║  │  Current password│║
-  ║  └──────────────────┘║
-  ║  ┌──────────────────┐║
-  ║  │  New password    │║
-  ║  └──────────────────┘║
   ║  ╔══════════════════╗ ║
-  ║  ║ Save Password    ║ ║
-  ║  ╚══════════════════╝ ║
-  ║──────────────────────║
-  ║  ╔══════════════════╗ ║
-  ║  ║    Log Out       ║ ║
+  ║  ║    Log Out       ║ ║  ← deletes FCM token + Hive cache
   ║  ╚══════════════════╝ ║
   ╚══════════════════════╝
 ```
 
-**Route:** HomeScreen tab 4  
-**Features:** Profile editing (name, bio, location, avatar), privacy toggles, device linking button, password change, logout. All sections save independently.
-
 ---
 
-### Screen 12 — Generate QR (Settings → Link Device)
+### Screen 12 — Generate QR (Device A)
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║ ←  Link Device       ║
   ╠══════════════════════╣
-  ║                      ║
-  ║  Scan this QR code   ║
-  ║  from your new       ║
-  ║  device              ║
-  ║                      ║
+  ║  Scan this QR from   ║
+  ║  your new device     ║
   ║      ┌───────────┐   ║
   ║      │█▀▀▀▀▀▀▀▀█│   ║
-  ║      │█ ███████ █│   ║
-  ║      │█ █     █ █│   ║  ← generated QR code
-  ║      │█ █ ███ █ █│   ║    (ECDH pub key + sessionId)
-  ║      │█ █ ███ █ █│   ║
+  ║      │█ ███████ █│   ║  ← ECDH pub key + sessionId
   ║      │█ █     █ █│   ║
   ║      │█ ███████ █│   ║
-  ║      │█▄▄▄▄▄▄▄▄█│   ║
   ║      └───────────┘   ║
-  ║                      ║
-  ║   Expires in 05:00   ║  ← countdown timer
-  ║                      ║
+  ║   Expires in 05:00   ║
   ╚══════════════════════╝
 ```
-
-**Route:** Pushed from SettingsScreen  
-**What it does:** Generates a temporary ECDH P-256 public key, registers a link session on the server, and shows it as a QR code for Device B to scan.
 
 ---
 
-### Screen 13 — QR Scanner (Link Device)
+### Screen 13 — QR Scanner (Device B)
 
 ```
   ╔══════════════════════╗
-  ║  9:41          ▐▌ ▓  ║
-  ╠══════════════════════╣
   ║ ←  Link Device       ║
   ╠══════════════════════╣
-  ║                      ║
   ║  Point camera at     ║
-  ║  the QR code on      ║
-  ║  your other device   ║
-  ║                      ║
+  ║  the QR on your      ║
+  ║  other device        ║
   ║  ┌────────────────┐  ║
-  ║  │                │  ║
-  ║  │  [live camera] │  ║  ← mobile_scanner viewfinder
-  ║  │   ┌────────┐   │  ║
-  ║  │   │ scan   │   │  ║  ← animated scan overlay
-  ║  │   │ target │   │  ║
+  ║  │  [live camera] │  ║
+  ║  │   ┌────────┐   │  ║  ← animated scan overlay
   ║  │   └────────┘   │  ║
-  ║  │                │  ║
   ║  └────────────────┘  ║
-  ║                      ║
   ║   Waiting for scan…  ║
-  ║                      ║
   ╚══════════════════════╝
 ```
-
-**Route:** `/link-device` (named route)  
-**What it does:** Opens camera, scans the QR from Device A, performs ECDH key exchange, decrypts and imports the RSA private key, stores it in secure storage.
 
 ---
 
 ### Screen navigation map
 
 ```
-                    ┌─────────────┐
-           ┌────────│  LoginScreen │────────┐
-           │        └─────────────┘        │
-           ▼                               ▼
-   ┌─────────────┐               ┌──────────────────┐
-   │ SignupScreen│               │ OnboardingScreen  │
-   └─────────────┘               └────────┬─────────┘
-                                          │
-                               ┌──────────▼──────────┐
-                               │     HomeScreen       │
-                               │  (IndexedStack nav)  │
-                               └──┬──┬──┬──┬──┬──────┘
-                     tab 0 ───────┘  │  │  │  └── tab 4
-                     tab 1 ──────────┘  │  └────── tab 3
-                     tab 2 ─────────────┘
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-  ChatListScreen  FriendsScreen  RecommendationsScreen
-         │
-    ┌────┴────┐
-    ▼         ▼
-ChatScreen  GroupChatScreen
-                              SettingsScreen (tab 4)
-                                      │
-                              SettingsLinkDeviceScreen
-                                      │
-                              LinkDeviceScreen (/link-device)
+           LoginScreen ──────────── SignupScreen
+                │
+          OnboardingScreen
+                │
+           HomeScreen (IndexedStack)
+           │    │    │    │    │
+      tab0 │ tab1│ tab2│ tab3│ tab4│
+           │    │    │    │    │
+      ChatList  │  Discover │  Settings
+           │  Friends   │       │
+           │    │    Notifications│
+      ┌────┘    │              SettingsLinkDeviceScreen
+      │         │                     │
+  ChatScreen  (Friends/Discover   LinkDeviceScreen
+  GroupChatScreen push to ChatScreen)  (/link-device)
 ```
 
 ---
 
 ## Web Routes
 
-Next.js App Router — all pages under `frontend/app/`.
-
-### Public routes `(auth)/`
-
 | Route | Description |
 |-------|-------------|
-| `/login` | Email/password + Google OAuth link |
+| `/login` | Email/password + Google OAuth |
 | `/signup` | Registration |
-| `/onboarding` | Username, bio, language, avatar |
-
-### Authenticated routes `(main)/`
-
-| Route | Description |
-|-------|-------------|
-| `/chat` | Chat list (DMs + Groups tabs) |
+| `/onboarding` | Profile + RSA key generation |
+| `/chat` | Chat list (DMs + Groups) |
 | `/chat/[userId]` | 1:1 conversation |
-| `/group/[groupId]` | Group chat + member management |
-| `/friends` | Friends list + friend requests |
+| `/group/[groupId]` | Group chat |
+| `/friends` | Friends + requests |
 | `/recommendations` | Discover people |
 | `/notifications` | Notification centre |
 | `/settings` | Profile, privacy, password |
-| `/settings/link-device` | Show QR to link keys (Device A) |
-| `/link-device` | Scan QR to receive keys (Device B) |
+| `/settings/link-device` | Generate QR (Device A) |
+| `/link-device` | Scan QR (Device B) |
 
 ---
 
 ## REST API Reference
 
-All routes are prefixed with `/api`. Protected routes require a valid JWT cookie.
-
 ### Messages — `/api/messages`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/send` | Send 1:1 message (multipart, up to 10 files) |
+| POST | `/send` | Send 1:1 message (multipart) |
 | GET | `/:receiverId` | Paginated message history |
-| GET | `/sidebar/list` | Chat sidebar (last message per friend) |
-| GET | `/search?q=` | Search users by name/username |
-| PUT | `/chat/read/:userId` | Mark entire chat as read |
+| GET | `/sidebar/list` | Last message per conversation |
+| GET | `/search?q=` | Search users |
+| PUT | `/chat/read/:userId` | Mark conversation read |
 | GET | `/:messageId/info` | Delivery/read metadata |
-| POST | `/read/:messageId` | Mark single message read |
 | GET | `/media/:id` | Serve encrypted media |
 | GET | `/download/:id` | Download encrypted file |
 
@@ -962,15 +802,12 @@ All routes are prefixed with `/api`. Protected routes require a valid JWT cookie
 | GET | `/` | List user's groups |
 | GET | `/:groupId` | Group details |
 | PUT | `/:groupId` | Update name/description |
-| PATCH | `/:groupId/avatar` | Upload group avatar |
-| DELETE | `/:groupId` | Delete group |
 | POST | `/:groupId/members` | Add members |
 | DELETE | `/:groupId/members/:memberId` | Remove member |
 | PATCH | `/:groupId/admins/:memberId` | Promote to admin |
 | POST | `/:groupId/messages` | Send group message |
 | GET | `/:groupId/messages` | Paginated group messages |
-| PUT | `/:groupId/read` | Mark group chat read |
-| GET | `/messages/:messageId/info` | Group message receipts |
+| PUT | `/:groupId/read` | Mark group read |
 
 ### Friends — `/api/users`
 
@@ -980,31 +817,32 @@ All routes are prefixed with `/api`. Protected routes require a valid JWT cookie
 | GET | `/friends` | Friend list |
 | PATCH | `/friends/:id` | Remove friend |
 | POST | `/friend-request/:id` | Send request |
-| POST | `/friend-request/:id/accept` | Accept request |
-| POST | `/friend-request/:id/withdraw` | Withdraw request |
-| DELETE | `/friend-request/:id` | Reject request |
-| GET | `/friend-requests/received` | Incoming requests |
-| GET | `/friend-requests/sent` | Outgoing requests |
+| POST | `/friend-request/:id/accept` | Accept |
+| POST | `/friend-request/:id/withdraw` | Withdraw |
+| DELETE | `/friend-request/:id` | Reject |
+| GET | `/friend-requests/received` | Incoming |
+| GET | `/friend-requests/sent` | Outgoing |
 | GET | `/friend-request/pending-count` | Badge count |
 
 ### Keys — `/api/keys`
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/uploadPublicKey` | — | Upload RSA public JWK |
-| GET | `/publicKey/:userId` | — | Fetch user's public key |
-| POST | `/link-session/create` | ✓ | Start device-link session |
-| PUT | `/link-session/:id/claim` | ✓ | New device claims session |
-| PUT | `/link-session/:id/transfer` | ✓ | Upload encrypted private key |
-| GET | `/link-session/:id` | ✓ | Poll session status |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/uploadPublicKey` | Upload RSA public JWK |
+| GET | `/publicKey/:userId` | Fetch public key |
+| POST | `/link-session/create` | Start device-link |
+| PUT | `/link-session/:id/claim` | New device claims |
+| PUT | `/link-session/:id/transfer` | Upload encrypted key |
+| GET | `/link-session/:id` | Poll session status |
 
 ### Settings — `/api/settings`
 
 | Method | Path | Description |
 |--------|------|-------------|
 | PUT | `/profile` | Update name, bio, location, avatar |
-| PUT | `/change-password` | Change or set password |
-| PATCH | `/privacy` | Update privacy toggles |
+| PUT | `/change-password` | Change password |
+| PATCH | `/privacy` | Privacy toggles |
+| PUT | `/fcm-token` | Save FCM push token |
 
 ### Notifications — `/api/notifications`
 
@@ -1025,42 +863,36 @@ All routes are prefixed with `/api`. Protected routes require a valid JWT cookie
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `authenticate` | `userId` | Bind socket to user |
-| `heartbeat` | — | Keep-alive |
-| `request-online-friends` | — | Get online friend IDs |
-| `typing-start` | `{ receiverId }` | Start typing in DM |
-| `typing-stop` | `{ receiverId }` | Stop typing in DM |
+| `heartbeat` | — | Keep-alive (every 12s) |
+| `start-typing` | `{ senderId, receiverId, isTyping }` | Typing indicator |
+| `stop-typing` | `{ senderId, receiverId }` | Stop typing |
 | `message-read` | `{ messageId, senderId }` | Read receipt |
 | `confirm-message-delivery` | `{ messageId, senderId }` | Delivery ack |
 | `join-groups` | — | Join all group rooms |
-| `group-typing-start` | `{ groupId }` | Group typing indicator |
-| `group-typing-stop` | `{ groupId }` | Stop group typing |
+| `group-typing-start` | `{ groupId }` | Group typing |
 | `group-message-delivered` | `{ messageId, groupId }` | Group delivery ack |
 
 ### Server → Client
 
 | Event | Description |
 |-------|-------------|
-| `authenticated` | Auth success + `onlineFriends` list |
-| `user-status-changed` | Friend online/offline + `lastSeen` |
+| `authenticated` | Auth OK + online friends list |
+| `user-status-changed` | Friend online/offline |
 | `user-typing` | DM typing indicator |
 | `new-message` | Incoming 1:1 message |
-| `message-sent` | Outgoing message confirmed |
-| `message-delivered` | Message reached recipient |
+| `message-sent` | Send confirmed |
+| `message-delivered` | Delivered to recipient |
 | `messages-delivered-batch` | Batch delivery update |
-| `message-read` | Message read by recipient |
+| `message-read` | Read by recipient |
 | `new-group-message` | Incoming group message |
 | `group-message-delivered` | Group delivery receipt |
-| `group-user-typing` | Group typing indicator |
 | `group-messages-read` | Group read receipts |
-| `group-added` / `group-updated` / `group-deleted` | Group changes |
-| `friend-request-received` | Incoming friend request |
+| `friend-request-received` | Incoming request |
 | `friend-request-accepted-realtime` | Request accepted |
 | `friend-request-rejected` | Request rejected |
-| `friend-request-withdrawn` | Request withdrawn |
-| `friend-removed` | Friend removed |
 | `pending-requests-count-updated` | Badge count update |
-| `device-link-claimed` | Device B claimed link session |
-| `device-link-ready` | Encrypted key ready for Device B |
+| `device-link-claimed` | Device B claimed session |
+| `device-link-ready` | Encrypted key ready |
 
 ---
 
@@ -1074,11 +906,20 @@ NODE_ENV=development
 MONGO_URI=mongodb+srv://...
 JWT_SECRET=your_long_random_secret
 FRONTEND_URL=http://localhost:3000
+
+# Cloudinary
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# Google OAuth (optional)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Firebase — ONE of these two (see Firebase Setup section)
+FIREBASE_SERVICE_ACCOUNT=/path/to/serviceAccount.json
+# OR
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
 ```
 
 ### Web (`frontend/.env.local`)
@@ -1092,197 +933,93 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ### Mobile (`flutter_app/lib/config.dart`)
 
 ```dart
-const String API_BASE   = 'http://10.0.2.2:5001/api';   // Android emulator
-const String SOCKET_URL = 'http://10.0.2.2:5001';
-const String SITE_URL   = 'http://localhost:3000';
-```
-
-Or pass at build time:
-
-```powershell
-flutter run `
-  --dart-define=API_BASE=http://192.168.1.100:5001/api `
-  --dart-define=SOCKET_URL=http://192.168.1.100:5001
+const String kApiBase    = 'http://10.0.2.2:5001/api';  // emulator
+const String kSocketUrl  = 'http://10.0.2.2:5001';
+const String kSiteUrl    = 'http://localhost:3000';
 ```
 
 ---
 
 ## Flutter Setup & Build APK
 
-Follow every step in order.
+### Step 1 — Install JDK 17
 
----
+Download from **https://adoptium.net** → choose Temurin 17 LTS → run installer.
 
-### Step 1 — Install Java (JDK)
-
-Flutter's Android toolchain requires Java 17.
-
-1. Download **JDK 17** from https://adoptium.net (choose `Temurin 17 LTS`)
-2. Run the installer — it will add Java to your PATH automatically
-3. Verify:
-   ```powershell
-   java -version
-   ```
-   Expected: `openjdk version "17.x.x"`
-
----
+```powershell
+java -version   # expected: openjdk version "17.x.x"
+```
 
 ### Step 2 — Install Android Studio
 
-1. Download from https://developer.android.com/studio
-2. Run the installer with default options
-3. On first launch, complete the **Android Studio Setup Wizard** — this installs:
-   - Android SDK
-   - Android SDK Platform-Tools
-   - Android Emulator
-4. After the wizard, open **SDK Manager** (top-right gear icon → SDK Manager):
-   - **SDK Platforms tab**: Install **Android 14 (API 34)** or newer
-   - **SDK Tools tab**: Check and install:
-     - Android SDK Build-Tools (latest)
-     - Android SDK Command-line Tools (latest)
-     - Android SDK Platform-Tools
-     - NDK (Side by side) — version 26+ recommended
+Download from **https://developer.android.com/studio** → run the Setup Wizard (installs SDK automatically).
 
----
+Then open **SDK Manager → SDK Tools** and install:
+- Android SDK Command-line Tools
+- NDK (Side by side)
 
 ### Step 3 — Install Flutter SDK
 
-1. Go to https://docs.flutter.dev/get-started/install/windows
-2. Click **"Download Flutter SDK"** — you get a zip like `flutter_windows_3.x.x-stable.zip`
-3. Extract to a path **with no spaces or special characters**, for example:
-   ```
-   C:\flutter
-   ```
-4. Add Flutter to your PATH:
-   - Press `Win + R` → type `sysdm.cpl` → OK
-   - Go to **Advanced** tab → **Environment Variables**
-   - Under **User variables**, select `Path` → click **Edit**
-   - Click **New** → type `C:\flutter\bin`
-   - Click **OK** on all windows
-5. Open a **new** PowerShell and verify:
-   ```powershell
-   flutter --version
-   ```
+1. Download from **https://docs.flutter.dev/get-started/install/windows**
+2. Extract to `C:\flutter`
+3. Add `C:\flutter\bin` to your PATH (System → Environment Variables → User `Path` → New)
+4. Verify: `flutter --version`
 
----
-
-### Step 4 — Accept Android Licenses
+### Step 4 — Accept licenses & verify
 
 ```powershell
-flutter doctor --android-licenses
+flutter doctor --android-licenses   # press Y for each prompt
+flutter doctor -v                   # all items must show [✓]
 ```
 
-Press `y` + Enter for every prompt (there are usually 5–7).
-
----
-
-### Step 5 — Verify Full Setup
+### Step 5 — Get dependencies
 
 ```powershell
-flutter doctor -v
-```
-
-All items must show a green checkmark `[✓]`. Common fixes:
-
-| Issue | Fix |
-|-------|-----|
-| `Android toolchain not found` | Re-run Android Studio SDK Manager |
-| `cmdline-tools component is missing` | SDK Manager → SDK Tools → Android SDK Command-line Tools |
-| `Unable to find bundled Java version` | Set `JAVA_HOME` to your JDK 17 path |
-| `Flutter plugin not installed` | Install Flutter + Dart plugins in Android Studio |
-
-To set `JAVA_HOME` manually in PowerShell:
-```powershell
-# Add to Environment Variables → System variables → JAVA_HOME
-# Value: C:\Program Files\Eclipse Adoptium\jdk-17.x.x.x-hotspot
-```
-
----
-
-### Step 6 — Open the Flutter Project
-
-```powershell
-cd "C:\Users\HP 15s fq4014ne\Documents\Zainab rAza\reon\Reon\flutter_app"
-```
-
----
-
-### Step 7 — Configure the Backend URL
-
-Open [lib/config.dart](flutter_app/lib/config.dart) and set your server addresses:
-
-```dart
-// For Android emulator (backend running on your PC)
-const String API_BASE   = 'http://10.0.2.2:5001/api';
-const String SOCKET_URL = 'http://10.0.2.2:5001';
-const String SITE_URL   = 'http://localhost:3000';
-
-// For a physical phone on the same WiFi (replace with your PC's IP)
-// const String API_BASE   = 'http://192.168.1.100:5001/api';
-// const String SOCKET_URL = 'http://192.168.1.100:5001';
-
-// For production
-// const String API_BASE   = 'https://api.yourdomain.com/api';
-// const String SOCKET_URL = 'https://api.yourdomain.com';
-```
-
----
-
-### Step 8 — Install Dependencies
-
-```powershell
+cd flutter_app
 flutter pub get
 ```
 
----
+### Step 6 — Configure backend URL
 
-### Step 9 — Build a Debug APK (Quick Test)
+Edit [lib/config.dart](flutter_app/lib/config.dart):
+
+```dart
+const String kApiBase   = 'http://10.0.2.2:5001/api';   // Android emulator
+// const String kApiBase = 'http://192.168.1.100:5001/api'; // physical phone (your LAN IP)
+// const String kApiBase = 'https://api.yourdomain.com/api'; // production
+```
+
+### Step 7 — Run tests
 
 ```powershell
+flutter test
+```
+
+### Step 8 — Build APK
+
+```powershell
+# Debug (quick test)
 flutter build apk --debug
+# Output: build\app\outputs\flutter-apk\app-debug.apk
+
+# Release (signed — see signing steps below)
+flutter build apk --release
+
+# Split by architecture (smaller files — use arm64 for modern phones)
+flutter build apk --split-per-abi --release
 ```
 
-The APK is at:
-```
-build\app\outputs\flutter-apk\app-debug.apk
-```
+### Signing a release APK
 
-To install directly on a connected phone:
-```powershell
-flutter install
-```
-
----
-
-### Step 10 — Build a Release APK (For Distribution)
-
-A release APK must be signed. Follow these sub-steps.
-
-#### 10a — Create a Keystore (one-time, keep the file safe)
+#### Create keystore (one-time)
 
 ```powershell
-# keytool is in your JDK bin folder
-# If it's not on PATH, use the full path:
-# & "C:\Program Files\Eclipse Adoptium\jdk-17.x.x.x-hotspot\bin\keytool.exe" ...
-
-keytool -genkey -v `
-  -keystore reon-release.jks `
-  -keyalg RSA `
-  -keysize 2048 `
-  -validity 10000 `
-  -alias reon
+keytool -genkey -v -keystore reon-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias reon
 ```
 
-You'll be prompted for a store password, key password, and identity details. Remember your passwords — you cannot recover them.
+Move `reon-release.jks` to `flutter_app/android/app/`.
 
-Move the resulting `reon-release.jks` into:
-```
-flutter_app\android\app\reon-release.jks
-```
-
-#### 10b — Create key.properties
-
-Create a new file at `flutter_app\android\key.properties`:
+#### Create `android/key.properties`
 
 ```properties
 storePassword=YOUR_STORE_PASSWORD
@@ -1291,14 +1028,11 @@ keyAlias=reon
 storeFile=reon-release.jks
 ```
 
-Add `android/key.properties` to `.gitignore` — never commit this file.
+Add `android/key.properties` to `.gitignore`.
 
-#### 10c — Wire Up Gradle Signing
-
-Open [android/app/build.gradle](flutter_app/android/app/build.gradle) and add the signing config:
+#### Update `android/app/build.gradle`
 
 ```gradle
-// At the top of the android {} block, before android {
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -1306,8 +1040,6 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    // ... existing content ...
-
     signingConfigs {
         release {
             keyAlias     keystoreProperties['keyAlias']
@@ -1316,164 +1048,132 @@ android {
             storePassword keystoreProperties['storePassword']
         }
     }
-
     buildTypes {
-        release {
-            signingConfig signingConfigs.release
-            // minifyEnabled and shrinkResources can be enabled for smaller APK
-        }
+        release { signingConfig signingConfigs.release }
     }
 }
 ```
 
-#### 10d — Build the Release APK
+### Install on a physical phone
 
-```powershell
-flutter build apk --release
-```
-
-Output:
-```
-build\app\outputs\flutter-apk\app-release.apk
-```
-
-#### 10e — Build Split APKs (Smaller, One per CPU Architecture)
-
-```powershell
-flutter build apk --split-per-abi --release
-```
-
-This produces three smaller APKs:
-```
-build\app\outputs\flutter-apk\app-armeabi-v7a-release.apk   # older 32-bit phones
-build\app\outputs\flutter-apk\app-arm64-v8a-release.apk     # modern 64-bit phones (most common)
-build\app\outputs\flutter-apk\app-x86_64-release.apk        # emulators
-```
-
-For distributing to real phones, use `app-arm64-v8a-release.apk`.
+1. Enable **Developer Options** → **USB Debugging** on your phone
+2. Connect via USB, accept the prompt
+3. Run: `flutter install`
 
 ---
 
-### Step 11 — Install APK on a Physical Android Phone
+## Firebase Push Notifications Setup
 
-#### Via USB
+Push notifications are **optional** — the app works fully without them. Notifications only fire when the recipient is offline.
 
-1. Enable **Developer Options** on your phone:
-   - Settings → About Phone → tap **Build Number** 7 times
-2. Enable **USB Debugging**:
-   - Settings → Developer Options → USB Debugging → On
-3. Connect phone via USB, accept the debugging prompt on the phone
-4. Check Flutter sees the device:
-   ```powershell
-   flutter devices
-   ```
-5. Run or install:
-   ```powershell
-   flutter run --release        # run directly
-   flutter install              # install the APK
-   ```
+### Step 1 — Create a Firebase project
 
-#### Via File Transfer
+1. Go to **https://console.firebase.google.com**
+2. Click **Add project** → follow the wizard
 
-1. Copy `app-release.apk` to your phone (USB, Google Drive, email, etc.)
-2. On the phone, open the APK file using **Files** app
-3. If prompted, allow installation from unknown sources in Settings → Security
+### Step 2 — Add Android app to Firebase
+
+1. In the Firebase console, click **Add app → Android**
+2. Package name: `com.example.reon` (match your `android/app/build.gradle`)
+3. Download `google-services.json`
+4. Place it at `flutter_app/android/app/google-services.json`
+
+### Step 3 — Enable Firebase in the Android build
+
+In `flutter_app/android/build.gradle` (project-level), add:
+```gradle
+dependencies {
+    classpath 'com.google.gms:google-services:4.4.1'
+}
+```
+
+In `flutter_app/android/app/build.gradle`, add at the bottom:
+```gradle
+apply plugin: 'com.google.gms.google-services'
+```
+
+### Step 4 — Get the server service account key
+
+1. Firebase Console → Project Settings → **Service Accounts**
+2. Click **Generate new private key** → download the JSON file
+3. Set on your backend:
+
+```env
+# Option A — file path
+FIREBASE_SERVICE_ACCOUNT=/path/to/serviceAccount.json
+
+# Option B — raw JSON string (better for cloud hosts)
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
+```
+
+### Step 5 — Install Firebase Admin SDK on backend
+
+```bash
+cd backend
+npm install firebase-admin
+```
+
+That's it — the backend's `lib/fcm.js` handles everything else automatically.
 
 ---
 
-### Step 12 — Build an App Bundle (for Google Play Store)
+## CI/CD
 
-```powershell
-flutter build appbundle --release
-```
+Three GitHub Actions workflows run automatically on every push:
 
-Output:
-```
-build\app\outputs\bundle\release\app-release.aab
-```
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| [backend.yml](.github/workflows/backend.yml) | Push to `backend/**` | Installs deps, runs all Jest tests with `mongodb-memory-server` |
+| [flutter.yml](.github/workflows/flutter.yml) | Push to `flutter_app/**` | `flutter analyze`, `flutter test --coverage`, builds debug APK (artifact uploaded) |
+| [frontend.yml](.github/workflows/frontend.yml) | Push to `frontend/**` | Lint, TypeScript type-check, `next build` |
 
-Upload this `.aab` file to the Google Play Console.
-
----
-
-### Quick Reference — All Build Commands
-
-```powershell
-# Get dependencies
-flutter pub get
-
-# Run in debug mode on connected device
-flutter run
-
-# Build debug APK
-flutter build apk --debug
-
-# Build release APK (single, all archs)
-flutter build apk --release
-
-# Build release APK (split by arch, smaller files)
-flutter build apk --split-per-abi --release
-
-# Build release App Bundle (Google Play)
-flutter build appbundle --release
-
-# Clean build cache (use when builds behave unexpectedly)
-flutter clean
-flutter pub get
-flutter build apk --release
-```
+All workflows use caching for faster runs. The Flutter workflow also uploads the built APK as a downloadable artifact on every successful run.
 
 ---
 
 ## Backend & Web Setup
 
 ### Prerequisites
-- Node.js 18+
-- MongoDB (local or Atlas)
-- Cloudinary account
+- Node.js 18+, MongoDB (local or Atlas), Cloudinary account
 
 ### Backend
 
-```powershell
+```bash
 cd backend
 npm install
-# Copy .env.example to .env and fill in values
-npm run dev     # starts on port 5001
+cp .env.example .env   # fill in values
+npm run dev            # port 5001
 ```
 
-### Web Frontend
+### Run tests
 
-```powershell
+```bash
+cd backend
+NODE_OPTIONS=--experimental-vm-modules npx jest
+NODE_OPTIONS=--experimental-vm-modules npx jest --coverage   # with coverage
+```
+
+### Web frontend
+
+```bash
 cd frontend
 npm install
-# Create .env.local (see Environment Variables section)
-npm run dev     # starts on http://localhost:3000
+# create .env.local with NEXT_PUBLIC_* vars
+npm run dev            # http://localhost:3000
 ```
-
-### First-run checklist
-1. Start MongoDB and backend
-2. Start web frontend
-3. Register a new account at `/signup`
-4. Complete onboarding (generates RSA keys automatically)
-5. On mobile, set `config.dart` to point to your backend
-6. Register a second account for testing
-7. Add each other via Discover
-8. Send an encrypted message
 
 ---
 
 ## Deployment Notes
 
-| Service | Suggested Host | Notes |
-|---------|---------------|-------|
-| Backend | Render, Railway, Fly.io | Set `FRONTEND_URL` to web domain |
+| Service | Host | Notes |
+|---------|------|-------|
+| Backend | Render / Railway / Fly.io | Set `FRONTEND_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON` |
 | Web | Vercel | Set `NEXT_PUBLIC_*` env vars |
-| MongoDB | MongoDB Atlas | Free tier works for development |
-| Cloudinary | cloudinary.com | Profile picture CDN |
+| MongoDB | MongoDB Atlas | Free tier fine for dev |
+| Cloudinary | cloudinary.com | Profile pictures CDN |
+| FCM | Firebase (free) | Required for push notifications |
 | Mobile | Google Play / sideload | Update `config.dart` to production URL |
-
-**CORS:** Add your production web URL to `FRONTEND_URL`.  
-**Cookies:** In production ensure `secure: true` and `sameSite` are correctly set for your domain.
 
 ---
 
@@ -1482,18 +1182,18 @@ npm run dev     # starts on http://localhost:3000
 | Problem | Fix |
 |---------|-----|
 | `flutter: command not found` | Add `C:\flutter\bin` to PATH, restart terminal |
-| `Android toolchain — No toolchain found` | Install/configure Android Studio SDK |
 | `cmdline-tools component is missing` | SDK Manager → SDK Tools → Android SDK Command-line Tools |
-| `License not accepted` | Run `flutter doctor --android-licenses` |
-| `Gradle build failed (JAVA_HOME)` | Set `JAVA_HOME` env variable to JDK 17 path |
-| `keytool: command not found` | Add JDK `bin` folder to PATH |
-| App crashes on launch | Verify `config.dart` URLs point to a running backend |
-| `[decryption failed]` in messages | Log out and log back in to regenerate/restore keys |
+| `License not accepted` | `flutter doctor --android-licenses` |
+| `Gradle JAVA_HOME error` | Set `JAVA_HOME` to JDK 17 path in environment variables |
+| `keytool not found` | Add JDK `bin` folder to PATH |
+| App crashes on launch | Verify `config.dart` URLs point to running backend |
+| `[decryption failed]` in messages | Log out and back in to regenerate keys |
 | QR scan not working | Grant Camera permission: Settings → Apps → Reon → Permissions |
-| Socket not connecting | Check backend is running; check firewall on port 5001 |
-| `MissingPluginException` | Run `flutter clean && flutter pub get` then rebuild |
-| Images not loading | Verify Cloudinary is configured in the backend `.env` |
+| Push notifications not received | Check `google-services.json` is in `android/app/`; verify `FIREBASE_SERVICE_ACCOUNT_JSON` on backend |
+| Socket not connecting | Check backend is running on port 5001; check firewall |
+| `MissingPluginException` | `flutter clean && flutter pub get` then rebuild |
+| Backend tests fail | Ensure `mongodb-memory-server` is installed: `npm install` in `backend/` |
 
 ---
 
-*Built with Flutter · Encrypted with PointyCastle · Real-time with Socket.IO*
+*Built with Flutter · Encrypted with PointyCastle · Real-time with Socket.IO · Tested with Jest*
