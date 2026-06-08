@@ -69,8 +69,9 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   void _onAccepted(dynamic d) {
     final m = d as Map?;
     final id = m?['receiverId'] as String?;
-    if (id != null && mounted)
+    if (id != null && mounted) {
       setState(() => _users.removeWhere((u) => u.id == id));
+    }
   }
 
   void _onRejected(dynamic d) {
@@ -100,10 +101,11 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   }
 
   Future<void> _load({required int page, required bool replace}) async {
-    if (page == 1)
+    if (page == 1) {
       setState(() => _loading = true);
-    else
+    } else {
       setState(() => _loadingMore = true);
+    }
     try {
       final results = await Future.wait([
         ApiService.instance.getRecommendations(search: _query, page: page),
@@ -113,21 +115,25 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
           Future.value(<FriendRequest>[]),
       ]);
       final rec = results[0] as ({List<RecommendedUser> users, int total});
-      if (mounted)
+      if (mounted) {
         setState(() {
           _users = replace ? rec.users : [..._users, ...rec.users];
           _total = rec.total;
           _page = page;
-          if (page == 1) _sent = results[1] as List<FriendRequest>;
+          if (page == 1) {
+            _sent = results[1] as List<FriendRequest>;
+          }
           _loading = false;
           _loadingMore = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _loadingMore = false;
         });
+      }
     }
   }
 
@@ -135,13 +141,16 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     setState(() => _pending.add(userId));
     try {
       await ApiService.instance.sendFriendRequest(userId);
-      if (mounted)
+      if (mounted) {
         setState(() => _users = _users
             .map((u) =>
                 u.id == userId ? u.copyWithFlags(friendRequestSent: true) : u)
             .toList());
+      }
     } catch (_) {}
-    if (mounted) setState(() => _pending.remove(userId));
+    if (mounted) {
+      setState(() => _pending.remove(userId));
+    }
   }
 
   Future<void> _withdraw(String userId) async {
@@ -154,11 +163,12 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     }
     if (req == null) return;
     await ApiService.instance.withdrawFriendRequest(req.id).catchError((_) {});
-    if (mounted)
+    if (mounted) {
       setState(() => _users = _users
           .map((u) =>
               u.id == userId ? u.copyWithFlags(friendRequestSent: false) : u)
           .toList());
+    }
     _load(page: 1, replace: true);
   }
 

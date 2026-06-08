@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reon/providers/auth_provider.dart';
 import 'package:reon/models/user.dart';
 
-final _testUser = ReonUser(
+const _testUser = ReonUser(
   id: 'user1',
   fullName: 'Alice',
   email: 'alice@reon.dev',

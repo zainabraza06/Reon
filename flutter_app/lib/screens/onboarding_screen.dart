@@ -44,6 +44,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       setState(() => _error = 'Username and language are required');
       return;
     }
+    final authProvider = context.read<AuthProvider>();
     setState(() {
       _loading = true;
       _error = null;
@@ -52,7 +53,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       // If a profile pic was selected, use updateProfile which supports multipart upload
       if (_imagePath != null) {
         await ApiService.instance.updateProfile(
-          fullName: context.read<AuthProvider>().user!.fullName,
+          fullName: authProvider.user!.fullName,
           bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
           location:
               _location.text.trim().isEmpty ? null : _location.text.trim(),
@@ -65,7 +66,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
         location: _location.text.trim().isEmpty ? null : _location.text.trim(),
       );
-      await context.read<AuthProvider>().checkAuth();
+      await authProvider.checkAuth();
     } catch (e) {
       setState(() {
         _error = e.toString();

@@ -37,11 +37,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ApiService.instance.getNotifications(),
       ]);
       final notifs = results[1] as List<AppNotification>;
-      if (mounted)
+      if (mounted) {
         setState(() {
           _friendsBadge = results[0] as int;
           _notifBadge = notifs.where((n) => !n.read).length;
         });
+      }
     } catch (_) {}
   }
 

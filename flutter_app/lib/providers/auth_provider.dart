@@ -138,8 +138,9 @@ class AuthProvider extends ChangeNotifier {
     // Upload FCM token NOW that we have an auth session — the token upload at app
     // start fails because there's no cookie yet.
     FirebaseMessaging.instance.getToken().then((token) {
-      if (token != null)
+      if (token != null) {
         ApiService.instance.updateFcmToken(token).catchError((_) {});
+      }
     }).catchError((_) {});
     await _ensureKeys();
   }
@@ -159,7 +160,9 @@ class AuthProvider extends ChangeNotifier {
       // Case 2: local key but not on server — re-upload (e.g. server was wiped)
       if (localExists && serverKeyRaw == null) {
         final pubJwk = await crypto.getStoredPublicKey();
-        if (pubJwk != null) await api.uploadPublicKey(pubJwk, userId);
+        if (pubJwk != null) {
+          await api.uploadPublicKey(pubJwk, userId);
+        }
         return;
       }
 

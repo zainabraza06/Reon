@@ -298,7 +298,7 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
         child: Container(
           width: 7,
           height: 7,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
               shape: BoxShape.circle, color: ReonColors.textMuted),
         ),
       );

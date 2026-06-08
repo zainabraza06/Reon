@@ -69,20 +69,21 @@ void main() {
 
       expect(updated.status, 'read');
       expect(updated.read, true);
-      expect(updated.id, msg.id);       // unchanged
+      expect(updated.id, msg.id); // unchanged
       expect(updated.sender, msg.sender); // unchanged
     });
 
     test('isSending is true only for sending status', () {
-      final sending = ChatMessage.fromJson({...sampleJson, 'status': 'sending'});
-      final sent    = ChatMessage.fromJson({...sampleJson, 'status': 'sent'});
+      final sending =
+          ChatMessage.fromJson({...sampleJson, 'status': 'sending'});
+      final sent = ChatMessage.fromJson({...sampleJson, 'status': 'sent'});
       expect(sending.isSending, true);
       expect(sent.isSending, false);
     });
 
     test('isFailed is true only for failed status', () {
       final failed = ChatMessage.fromJson({...sampleJson, 'status': 'failed'});
-      final sent   = ChatMessage.fromJson({...sampleJson, 'status': 'sent'});
+      final sent = ChatMessage.fromJson({...sampleJson, 'status': 'sent'});
       expect(failed.isFailed, true);
       expect(sent.isFailed, false);
     });

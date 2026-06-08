@@ -57,13 +57,14 @@ class _FriendsScreenState extends State<FriendsScreen>
         ApiService.instance.getReceivedRequests(),
         ApiService.instance.getSentRequests(),
       ]);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _friends = results[0] as List<ReonUser>;
           _received = results[1] as List<FriendRequest>;
           _sent = results[2] as List<FriendRequest>;
           _loading = false;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -88,8 +89,9 @@ class _FriendsScreenState extends State<FriendsScreen>
     final removedId = (m['userId'] as String?) == myId
         ? m['friendId'] as String?
         : m['userId'] as String?;
-    if (removedId != null && mounted)
+    if (removedId != null && mounted) {
       setState(() => _friends.removeWhere((f) => f.id == removedId));
+    }
   }
 
   Future<void> _accept(String requestId) async {
@@ -200,7 +202,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                     RefreshIndicator(
                         onRefresh: _load,
                         child: _friends.isEmpty
-                            ? _Empty('No friends yet')
+                            ? const _Empty('No friends yet')
                             : ListView.builder(
                                 itemCount: _friends.length,
                                 itemBuilder: (_, i) {
@@ -275,7 +277,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                             RefreshIndicator(
                                 onRefresh: _load,
                                 child: _received.isEmpty
-                                    ? _Empty('No received requests')
+                                    ? const _Empty('No received requests')
                                     : ListView(
                                         children: _received
                                             .map((r) => _FriendTile(
@@ -305,7 +307,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                             RefreshIndicator(
                                 onRefresh: _load,
                                 child: _sent.isEmpty
-                                    ? _Empty('No sent requests')
+                                    ? const _Empty('No sent requests')
                                     : ListView(
                                         children: _sent
                                             .map((r) => _FriendTile(
@@ -343,7 +345,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                       Navigator.of(ctx).pop();
                       _remove(f.id);
                     },
-                    child: Text('Remove',
+                    child: const Text('Remove',
                         style: TextStyle(color: ReonColors.danger))),
               ],
             ));
@@ -427,20 +429,6 @@ class _ActionBtn extends StatelessWidget {
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       color: gradient ? Colors.white : ReonColors.textMuted))));
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String text;
-  const _SectionHeader(this.text);
-  @override
-  Widget build(BuildContext context) => Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-      child: Text(text.toUpperCase(),
-          style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: ReonColors.textMuted)));
 }
 
 class _Empty extends StatelessWidget {

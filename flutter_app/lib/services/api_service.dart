@@ -283,8 +283,9 @@ class ApiService {
     int limit = 12,
   }) async {
     var path = '/users/recommendation?page=$page&limit=$limit';
-    if (search.isNotEmpty)
+    if (search.isNotEmpty) {
       path += '&search=${Uri.encodeQueryComponent(search)}';
+    }
     final res = await _get(path);
     final list = res['recommended'] as List? ?? [];
     return (

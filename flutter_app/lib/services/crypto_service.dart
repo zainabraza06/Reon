@@ -1,16 +1,14 @@
-/// E2E Encryption — RSA-OAEP-SHA256 + AES-GCM-256
-/// Compatible with the web app's Web Crypto API implementation.
-///
-/// Key format: JWK (JSON Web Key) — same structure as the web app so keys
-/// stored on the backend are interoperable across platforms.
+// E2E Encryption — RSA-OAEP-SHA256 + AES-GCM-256
+// Compatible with the web app's Web Crypto API implementation.
+//
+// Key format: JWK (JSON Web Key) — same structure as the web app so keys
+// stored on the backend are interoperable across platforms.
 
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/export.dart';
-import 'package:pointycastle/ecc/api.dart';
-import 'package:pointycastle/ecc/curves/prime256v1.dart';
 
 class CryptoService {
   CryptoService._();

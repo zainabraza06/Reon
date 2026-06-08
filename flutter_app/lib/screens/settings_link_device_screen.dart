@@ -52,17 +52,19 @@ class _SettingsLinkDeviceScreenState extends State<SettingsLinkDeviceScreen> {
         'ecdhPublicKey': pair.publicKey,
       })));
       final link = '$kSiteUrl/link-device?d=${Uri.encodeComponent(payload)}';
-      if (mounted)
+      if (mounted) {
         setState(() {
           _linkUrl = link;
           _step = 'waiting';
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
           _step = 'error';
         });
+      }
     }
   }
 
@@ -87,11 +89,12 @@ class _SettingsLinkDeviceScreenState extends State<SettingsLinkDeviceScreen> {
           .transferLinkKey(_sessionId!, enc.ciphertext, enc.iv);
       if (mounted) setState(() => _step = 'done');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
           _step = 'error';
         });
+      }
     }
   }
 

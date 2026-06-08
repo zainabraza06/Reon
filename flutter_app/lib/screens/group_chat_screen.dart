@@ -56,14 +56,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     try {
       final raw = await ApiService.instance
           .getGroupMessages(widget.groupId, before: before);
+      if (!mounted) return;
       final myId = context.read<AuthProvider>().user!.id;
       final dec = await Future.wait(raw.map((m) => _decrypt(m, myId)));
-      if (mounted)
+      if (mounted) {
         setState(() {
           _messages = before != null ? [...dec, ..._messages] : dec;
           _hasMore = raw.length == 50;
           _loading = false;
         });
+      }
       _scrollToBottom();
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -94,19 +96,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     if (text.isEmpty || _group == null) return;
     _input.clear();
 
-    final myId = context.read<AuthProvider>().user!.id;
-    final me = context.read<AuthProvider>().user!;
-
     // Gather member public keys
     final memberKeys = <Map<String, dynamic>>[];
     for (final mem in _group!.members) {
       try {
         final jwkStr = await ApiService.instance.tryGetPublicKey(mem.user.id);
-        if (jwkStr != null)
+        if (jwkStr != null) {
           memberKeys.add({
             'userId': mem.user.id,
             'encryptedKey': await _encryptForMember(text, jwkStr)
           });
+        }
       } catch (_) {}
     }
     if (memberKeys.isEmpty) return;
@@ -133,15 +133,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final sent =
           await ApiService.instance.sendGroupMessage(widget.groupId, fd);
       final dec = sent.copyWith(plaintext: text);
-      if (mounted)
+      if (mounted) {
         setState(() {
-          if (!_messages.any((m) => m.id == dec.id)) _messages.add(dec);
+          if (!_messages.any((m) => m.id == dec.id)) {
+            _messages.add(dec);
+          }
         });
+      }
       _scrollToBottom();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Send failed: $e')));
+      }
     }
     await ApiService.instance.markGroupRead(widget.groupId).catchError((_) {});
   }
@@ -183,8 +187,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final mid = m['messageId'] as String?;
     if (mid == null) return;
     final count = m['deliveredCount'] as int? ?? 0;
-    final total = m['memberCount'] as int? ?? 1;
-    if (mounted)
+    if (mounted) {
       setState(() {
         _messages = [
           for (final msg in _messages)
@@ -202,8 +205,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 : msg
         ];
       });
-    void _ignore(int x) {}
-    _ignore(total);
+    }
   }
 
   void _onRead(dynamic d) {
@@ -214,7 +216,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         (m['messageIds'] as List? ?? []).map((e) => e as String));
     final by = m['readBy'] as String? ?? '';
     final idSet = ids.toSet();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _messages = [
           for (final msg in _messages)
@@ -226,15 +228,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 : msg
         ];
       });
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
   void _scrollToBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients)
+        if (_scroll.hasClients) {
           _scroll.animateTo(_scroll.position.maxScrollExtent,
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut);
+        }
       });
 
   // ── Build ─────────────────────────────────────────────────────────────────────
@@ -475,12 +479,14 @@ class _GroupTick extends StatelessWidget {
         deliveredTo.where((d) => d['userId'] != senderId).length;
     final allRead = memberCount > 0 && otherRead >= memberCount;
 
-    if (allRead)
+    if (allRead) {
       return Icon(Icons.done_all_rounded,
           size: 14, color: ReonColors.accent.withValues(alpha: 0.9));
-    if (otherDelivered > 0)
+    }
+    if (otherDelivered > 0) {
       return Icon(Icons.done_all_rounded,
           size: 14, color: Colors.white.withValues(alpha: 0.6));
+    }
     return Icon(Icons.done_rounded,
         size: 14, color: Colors.white.withValues(alpha: 0.5));
   }

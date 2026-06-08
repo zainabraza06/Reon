@@ -54,15 +54,17 @@ class _LoginScreenState extends State<LoginScreen> {
       // AuthProvider already handles all errors internally — this is a safety net
       // to ensure _loading is always reset even if something unexpected throws.
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
           _slowNetwork = false;
         });
+      }
     }
   }
 
   Future<void> _googleSignIn() async {
+    final authProvider = context.read<AuthProvider>();
     try {
       // Sign out first so the account picker always appears
       await _googleSignInClient.signOut();
@@ -76,27 +78,30 @@ class _LoginScreenState extends State<LoginScreen> {
       final auth = await account.authentication;
       final idToken = auth.idToken;
       if (idToken == null) {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _loading = false;
           });
+        }
         return;
       }
 
       try {
-        await context.read<AuthProvider>().loginWithGoogle(idToken);
+        await authProvider.loginWithGoogle(idToken);
       } finally {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _loading = false;
             _slowNetwork = false;
           });
+        }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
         });
+      }
     }
   }
 
@@ -222,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const LinkDeviceScreen())),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.qr_code_scanner_rounded,
+              const Icon(Icons.qr_code_scanner_rounded,
                   size: 16, color: ReonColors.textMuted),
               const SizedBox(width: 6),
               Text('Transfer from another device',
@@ -348,7 +353,7 @@ class ErrorBox extends StatelessWidget {
 
 class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onTap;
-  const GoogleSignInButton({required this.onTap});
+  const GoogleSignInButton({super.key, required this.onTap});
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

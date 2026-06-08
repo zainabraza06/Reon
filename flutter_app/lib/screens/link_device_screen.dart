@@ -82,8 +82,9 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     try {
       final decoded = utf8.decode(base64.decode(raw));
       final parsed = jsonDecode(decoded) as Map<String, dynamic>;
-      if (parsed['sessionId'] != null && parsed['ecdhPublicKey'] != null)
+      if (parsed['sessionId'] != null && parsed['ecdhPublicKey'] != null) {
         return raw;
+      }
     } catch (_) {}
     return null;
   }
@@ -123,11 +124,12 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
       }
       throw Exception('Timed out waiting for key transfer');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
           _step = 'error';
         });
+      }
     }
   }
 

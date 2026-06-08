@@ -99,8 +99,9 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final jwkStr = await ApiService.instance.tryGetPublicKey(recipientId);
-      if (jwkStr != null)
+      if (jwkStr != null) {
         _recipientPubJwk = jsonDecode(jwkStr) as Map<String, dynamic>;
+      }
     } catch (_) {}
 
     notifyListeners();
@@ -128,8 +129,9 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_recipientPubJwk == null)
+      if (_recipientPubJwk == null) {
         throw Exception('Recipient key not available');
+      }
 
       final enc =
           await CryptoService.instance.encryptText(text, _recipientPubJwk!);

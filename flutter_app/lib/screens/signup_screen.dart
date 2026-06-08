@@ -34,6 +34,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _googleSignIn() async {
+    final authProvider = context.read<AuthProvider>();
     try {
       await _googleSignInClient.signOut();
       final account = await _googleSignInClient.signIn();
@@ -46,7 +47,7 @@ class _SignupScreenState extends State<SignupScreen> {
         return;
       }
       try {
-        await context.read<AuthProvider>().loginWithGoogle(idToken);
+        await authProvider.loginWithGoogle(idToken);
       } finally {
         if (mounted) setState(() => _loading = false);
       }
@@ -58,12 +59,16 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty ||
         _email.text.trim().isEmpty ||
-        _password.text.length < 8) return;
+        _password.text.length < 8) {
+      return;
+    }
     setState(() => _loading = true);
     final ok = await context
         .read<AuthProvider>()
         .signup(_name.text.trim(), _email.text.trim(), _password.text);
-    if (!ok && mounted) setState(() => _loading = false);
+    if (!ok && mounted) {
+      setState(() => _loading = false);
+    }
   }
 
   @override
@@ -170,7 +175,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     fontSize: 14, color: ReonColors.textMuted)),
             GestureDetector(
                 onTap: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => LoginScreen())),
+                    MaterialPageRoute(builder: (_) => const LoginScreen())),
                 child: Text('Sign in',
                     style: GoogleFonts.inter(
                         fontSize: 14,

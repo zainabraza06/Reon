@@ -89,17 +89,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } on ApiException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _profileMsg = e.message;
           _profileOk = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _profileMsg = 'Failed to save.';
           _profileOk = false;
         });
+      }
     }
     if (mounted) setState(() => _profileSaving = false);
   }
@@ -123,31 +125,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } on ApiException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _privacyMsg = e.message;
           _privacyOk = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _privacyMsg = 'Failed to save.';
           _privacyOk = false;
         });
+      }
     }
     if (mounted) setState(() => _privacySaving = false);
   }
 
   String? _validatePassword(String pw) {
-    if (pw.length < 8 || pw.length > 14)
+    if (pw.length < 8 || pw.length > 14) {
       return 'Password must be 8-14 characters long';
-    if (!RegExp(r'[A-Z]').hasMatch(pw))
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(pw)) {
       return 'Must contain an uppercase letter';
-    if (!RegExp(r'[a-z]').hasMatch(pw))
+    }
+    if (!RegExp(r'[a-z]').hasMatch(pw)) {
       return 'Must contain a lowercase letter';
-    if (!RegExp(r'\d').hasMatch(pw)) return 'Must contain a number';
-    if (!RegExp(r'[!@#$%^&*()_+\-=\[\]{};:"\\|,.<>\/?]').hasMatch(pw))
+    }
+    if (!RegExp(r'\d').hasMatch(pw)) {
+      return 'Must contain a number';
+    }
+    if (!RegExp(r'[!@#$%^&*()_+\-=\[\]{};:"\\|,.<>\/?]').hasMatch(pw)) {
       return 'Must contain a special character';
+    }
     return null;
   }
 
@@ -191,17 +201,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } on ApiException catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _pwMsg = e.message;
           _pwOk = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _pwMsg = 'Failed to change password.';
           _pwOk = false;
         });
+      }
     }
     if (mounted) setState(() => _pwSaving = false);
   }
@@ -269,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Container(
                       width: 28,
                       height: 28,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                           gradient: kBrandGradient, shape: BoxShape.circle),
                       child: const Icon(Icons.camera_alt_rounded,
                           size: 14, color: Colors.white),

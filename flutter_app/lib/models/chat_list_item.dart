@@ -39,8 +39,9 @@ class ChatListItem {
   }
 
   String get previewText {
-    if (lastMessageType != null && lastMessageType != 'text')
+    if (lastMessageType != null && lastMessageType != 'text') {
       return '📎 ${lastMessageType!}';
+    }
     return lastMessageContent ?? 'No messages yet';
   }
 }

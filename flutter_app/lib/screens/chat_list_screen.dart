@@ -52,12 +52,13 @@ class _ChatListScreenState extends State<ChatListScreen>
         ApiService.instance.getSidebarChats(),
         ApiService.instance.getGroups(),
       ]);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _chats = results[0] as List<ChatListItem>;
           _groups = results[1] as List<GroupChat>;
           _loading = false;
         });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -120,16 +121,20 @@ class _ChatListScreenState extends State<ChatListScreen>
     final m = d as Map?;
     if (m == null) return;
     final removedId = m['friendId'] as String? ?? m['userId'] as String?;
-    if (removedId != null)
+    if (removedId != null) {
       setState(() => _chats.removeWhere((c) => c.id == removedId));
+    }
   }
 
   String _fmt(DateTime? dt) {
     if (dt == null) return '';
     final now = DateTime.now();
-    if (dt.year == now.year && dt.month == now.month && dt.day == now.day)
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
       return DateFormat('HH:mm').format(dt);
-    if (now.difference(dt).inDays < 7) return DateFormat('EEE').format(dt);
+    }
+    if (now.difference(dt).inDays < 7) {
+      return DateFormat('EEE').format(dt);
+    }
     return DateFormat('dd/MM').format(dt);
   }
 
@@ -236,7 +241,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                 : TabBarView(controller: _tab, children: [
                     // DMs
                     filteredChats.isEmpty
-                        ? _Empty(
+                        ? const _Empty(
                             'No conversations yet\nAdd friends to start chatting')
                         : RefreshIndicator(
                             onRefresh: _load,
@@ -260,7 +265,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                                 })),
                     // Groups
                     filteredGroups.isEmpty
-                        ? _Empty('No groups yet')
+                        ? const _Empty('No groups yet')
                         : RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.builder(
