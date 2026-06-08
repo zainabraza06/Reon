@@ -5,6 +5,7 @@ import '../services/socket_service.dart';
 import '../services/crypto_service.dart';
 import '../services/notification_service.dart';
 import '../services/message_cache_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 enum AuthStatus { unknown, unauthenticated, authenticated }
 
@@ -119,9 +120,15 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Called after successful auth: connect socket + ensure crypto keys are set up.
+  /// Called after successful auth: connect socket, upload FCM token, set up keys.
   Future<void> _postLogin() async {
     SocketService.instance.connect(_user!.id);
+    // Upload FCM token NOW that we have an auth session — the token upload at app
+    // start fails because there's no cookie yet.
+    FirebaseMessaging.instance.getToken().then((token) {
+      if (token != null)
+        ApiService.instance.updateFcmToken(token).catchError((_) {});
+    }).catchError((_) {});
     await _ensureKeys();
   }
 
