@@ -16,31 +16,41 @@ class LinkDeviceScreen extends StatefulWidget {
 
 class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final _manual = TextEditingController();
+  final _scannerController = MobileScannerController(autoStart: false);
   String _step = 'scan';
   String _error = '';
   ECPrivateKey? _ecdhPrivate;
   String? _sessionId;
+
   @override
   void initState() {
     super.initState();
-    _requestCameraPermission();
+    _requestAndStart();
   }
 
-  Future<void> _requestCameraPermission() async {
+  Future<void> _requestAndStart() async {
     final status = await Permission.camera.request();
     if (!mounted) return;
-    if (status.isPermanentlyDenied) {
+    if (status.isGranted) {
+      try {
+        await _scannerController.start();
+      } catch (_) {}
+    } else if (status.isPermanentlyDenied) {
       setState(() {
-        _error = 'Camera access is permanently denied. Please enable it in Settings → Apps → Reon → Permissions.';
+        _error = 'Camera access is permanently denied.\nGo to Settings → Apps → Reon → Permissions and enable Camera.';
+        _step = 'error';
+      });
+    } else {
+      setState(() {
+        _error = 'Camera permission is required to scan the QR code.';
         _step = 'error';
       });
     }
-    // For granted or just-denied, let MobileScanner handle it — it requests
-    // permission on its own and shows its own error state if denied.
   }
 
   @override
   void dispose() {
+    _scannerController.dispose();
     _manual.dispose();
     super.dispose();
   }
@@ -143,7 +153,7 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
         ElevatedButton(
           onPressed: () {
             setState(() { _step = 'scan'; _error = ''; });
-            _requestCameraPermission();
+            _requestAndStart();
           },
           child: const Text('Grant Permission'),
         ),
@@ -158,7 +168,10 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
           borderRadius: BorderRadius.circular(16),
           child: SizedBox(
             height: 260,
-            child: MobileScanner(onDetect: _onScan),
+            child: MobileScanner(
+              controller: _scannerController,
+              onDetect: _onScan,
+            ),
           ),
         ),
         const SizedBox(height: 20),

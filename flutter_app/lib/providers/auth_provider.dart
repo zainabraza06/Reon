@@ -54,6 +54,26 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> loginWithGoogle(String idToken) async {
+    _error = null;
+    try {
+      _user = await ApiService.instance.loginWithGoogle(idToken);
+      _status = AuthStatus.authenticated;
+      await _postLogin();
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      if (_status == AuthStatus.authenticated) { notifyListeners(); return true; }
+      _error = 'Google sign-in failed. Please try again.';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> signup(String fullName, String email, String password) async {
     _error = null;
     try {

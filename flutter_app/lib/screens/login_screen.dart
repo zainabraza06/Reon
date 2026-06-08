@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../config.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import 'link_device_screen.dart';
 import 'signup_screen.dart';
+
+final _googleSignInClient = GoogleSignIn(scopes: ['email', 'profile']);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -40,16 +41,27 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _googleSignIn() async {
-    // Opens the Passport.js Google OAuth route in the system browser.
-    // canLaunchUrl is unreliable on Android 11+ for https — use launchUrl directly.
-    final uri = Uri.parse('$kApiBase/auth/google');
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open browser. Please check your connection.')));
+      // Sign out first so the account picker always appears
+      await _googleSignInClient.signOut();
+      final account = await _googleSignInClient.signIn();
+      if (account == null || !mounted) return; // user cancelled
+
+      setState(() { _loading = true; _slowNetwork = false; });
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
+      if (idToken == null) {
+        if (mounted) setState(() { _loading = false; });
+        return;
       }
+
+      try {
+        await context.read<AuthProvider>().loginWithGoogle(idToken);
+      } finally {
+        if (mounted) setState(() { _loading = false; _slowNetwork = false; });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; });
     }
   }
 

@@ -169,7 +169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Column(children: [
       Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 8, 16, 12),
         decoration: BoxDecoration(
           color: isDark ? ReonColors.surfaceDark : Colors.white,
           border: Border(bottom: BorderSide(color: isDark ? ReonColors.borderDark : ReonColors.borderLight)),

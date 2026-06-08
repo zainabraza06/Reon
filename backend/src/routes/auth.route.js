@@ -14,6 +14,7 @@ import {
   forgotPassword,
   resetForgotPassword,
   googleCallback,
+  googleMobileAuth,
   onboard,
   getMe, UserDetails
 } from "../controllers/auth.controller.js";
@@ -82,6 +83,9 @@ router.get(
   googleCallback
 );
 
+
+// 📱 GOOGLE SIGN-IN (mobile — accepts Google ID token from google_sign_in Flutter pkg)
+router.post("/google-mobile", googleMobileAuth);
 
 router.get("/me" , protectRoute,getMe);
 export default router;

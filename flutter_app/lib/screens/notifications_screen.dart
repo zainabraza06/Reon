@@ -188,7 +188,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Column(children: [
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 8, left: 16, right: 16, bottom: 12),
         decoration: BoxDecoration(
           color: isDark ? ReonColors.surfaceDark : Colors.white,
           border: Border(bottom: BorderSide(color: isDark ? ReonColors.borderDark : ReonColors.borderLight)),

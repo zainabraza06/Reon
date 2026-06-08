@@ -229,6 +229,54 @@ export async function googleCallback(req, res) {
   return res.redirect(`${FRONTEND_URL}/recommendations`);
 }
 
+// GOOGLE SIGN-IN (mobile — ID token from google_sign_in Flutter package)
+export async function googleMobileAuth(req, res) {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ message: "idToken required" });
+
+  // Verify the Google ID token against Google's tokeninfo endpoint
+  const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+  const payload = await verifyRes.json();
+
+  if (!verifyRes.ok || !payload.email) {
+    return res.status(401).json({ message: "Invalid Google token" });
+  }
+
+  // Audience must match our Web Client ID
+  const expectedAud = process.env.GOOGLE_CLIENT_ID;
+  if (expectedAud && payload.aud !== expectedAud) {
+    return res.status(401).json({ message: "Token audience mismatch" });
+  }
+
+  // Find or create the user
+  let user = await User.findOne({ email: payload.email });
+  if (!user) {
+    const randomAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${payload.email}`;
+    user = await User.create({
+      email: payload.email,
+      fullName: payload.name || payload.email.split("@")[0],
+      profilePic: payload.picture || randomAvatar,
+      googleId: payload.sub,
+      isVerified: true,
+      isOnboarded: false,
+    });
+  } else if (!user.googleId) {
+    user.googleId = payload.sub;
+    await user.save();
+  }
+
+  const token = generateToken(user._id);
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  return res.status(200).json({ user });
+}
+
 export async function forgotPassword(req, res) {
   return res.status(503).json({ message: "Password reset via email is not available." });
 }

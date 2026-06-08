@@ -63,6 +63,11 @@ class ApiService {
     await _post('/auth/signup', body: {'fullName': fullName, 'email': email, 'password': password});
   }
 
+  Future<ReonUser> loginWithGoogle(String idToken) async {
+    final res = await _post('/auth/google-mobile', body: {'idToken': idToken});
+    return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
+  }
+
   Future<ReonUser> me() async {
     final res = await _get('/auth/me');
     return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
