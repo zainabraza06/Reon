@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { MessageSquare, Search, Users, Plus } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
@@ -7,6 +7,7 @@ import CreateGroupModal from "@/components/chat/CreateGroupModal";
 import { api } from "@/lib/api";
 import { socketService } from "@/lib/socket";
 import { useAuth } from "@/context/AuthContext";
+import { decryptText, getStoredPrivateKey } from "@/lib/crypto";
 import type { ChatListItem, GroupChat } from "@/types";
 
 function groupMsgPreview(g: GroupChat, myUserId?: string): string {
@@ -60,13 +61,37 @@ export default function ChatLandingPage() {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const privateKeyRef = useRef<CryptoKey | null>(null);
+
+  const decryptChatList = async (list: ChatListItem[], key: CryptoKey | null) => {
+    if (!key) return list;
+    return Promise.all(
+      list.map(async (chat) => {
+        if (!chat.lastMessage?.ciphertext || chat.lastMessage.contentType !== "text") return chat;
+        try {
+          const content = await decryptText(chat.lastMessage.ciphertext, chat.lastMessage.encryptedKey || "", key);
+          return { ...chat, lastMessage: { ...chat.lastMessage, content } };
+        } catch {
+          return chat;
+        }
+      })
+    );
+  };
 
   useEffect(() => {
-    Promise.all([
-      api.messages.sidebar().then(({ chats: c }) => setChats(c ?? [])).catch(() => {}),
-      api.groups.list().then(({ groups: g }) => setGroups(g ?? [])).catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }, []);
+    (async () => {
+      const key = await getStoredPrivateKey();
+      privateKeyRef.current = key;
+      const [{ chats: c }, { groups: g }] = await Promise.all([
+        api.messages.sidebar().catch(() => ({ chats: [] as ChatListItem[] })),
+        api.groups.list().catch(() => ({ groups: [] as GroupChat[] })),
+      ]);
+      const decrypted = await decryptChatList(c ?? [], key);
+      setChats(decrypted);
+      setGroups(g ?? []);
+      setLoading(false);
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onStatus = (data: unknown) => {
@@ -77,10 +102,28 @@ export default function ChatLandingPage() {
         return next;
       });
     };
-    const onNewMsg = (data: unknown) => {
-      const msg = data as { sender: string; sentAt: string };
-      setChats((prev) => prev.map((c) => c._id === msg.sender
-        ? { ...c, lastMessage: { ...c.lastMessage, sentAt: msg.sentAt }, unreadCount: (c.unreadCount || 0) + 1 }
+    const onNewMsg = async (data: unknown) => {
+      const msg = data as import("@/types").Message;
+      let content: string | undefined;
+      if (msg.contentType === "text" && msg.ciphertext && privateKeyRef.current) {
+        try { content = await decryptText(msg.ciphertext, msg.encryptedKey || "", privateKeyRef.current); } catch {}
+      }
+      const otherParticipantId = String(msg.sender) === String(user?._id) ? String(msg.receiver) : String(msg.sender);
+      const isMine = String(msg.sender) === String(user?._id);
+      setChats((prev) => prev.map((c) => c._id === otherParticipantId
+        ? {
+            ...c,
+            lastMessage: {
+              ...c.lastMessage,
+              sentAt: msg.sentAt,
+              contentType: msg.contentType,
+              ciphertext: msg.ciphertext || "",
+              sender: String(msg.sender),
+              encryptedKey: msg.encryptedKey || "",
+              content,
+            },
+            unreadCount: isMine ? c.unreadCount : (c.unreadCount || 0) + 1,
+          }
         : c
       ));
     };
@@ -180,9 +223,14 @@ export default function ChatLandingPage() {
                         </div>
                         <div className="flex items-center justify-between gap-1 mt-0.5">
                           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                            {chat.lastMessage?.contentType && chat.lastMessage.contentType !== "text"
-                              ? `📎 ${chat.lastMessage.contentType}`
-                              : chat.lastMessage ? "Message" : "No messages yet"}
+                            {chat.lastMessage ? (
+                              <>
+                                {chat.lastMessage.sender === user?._id && "You: "}
+                                {chat.lastMessage.contentType && chat.lastMessage.contentType !== "text"
+                                  ? `📎 ${chat.lastMessage.contentType}`
+                                  : chat.lastMessage.content || "Message"}
+                              </>
+                            ) : "No messages yet"}
                           </p>
                           {(chat.unreadCount || 0) > 0 && (
                             <span className="btn-gradient text-white text-[10px] font-bold rounded-full min-w-4.5 h-4.5 flex items-center justify-center px-1 shrink-0">
