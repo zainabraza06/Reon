@@ -6,7 +6,7 @@
 | App | Stack | Purpose |
 |-----|-------|---------|
 | **Web** | Next.js 16, React 19, TypeScript, Tailwind CSS 4 | Full-featured web client |
-| **Mobile** | Flutter 3.x, Provider, Dio | Android (and iOS) client |
+| **Mobile** | Flutter 3.32.2, Provider, Dio | Android (and iOS) client |
 | **Backend** | Node.js, Express, MongoDB, Socket.io | REST API + real-time relay |
 
 [![Backend CI](https://github.com/zainabraza06/reon/actions/workflows/backend.yml/badge.svg)](https://github.com/zainabraza06/reon/actions/workflows/backend.yml)
@@ -290,19 +290,39 @@ App Start
     ▼
 Auth status?
     ├── unknown ────────────────▶  Loading spinner
-    ├── unauthenticated ─────────▶  LoginScreen
+    ├── unauthenticated ─────────▶  LoginScreen / SignupScreen
     └── authenticated
             │
             ▼
         isOnboarded?
             ├── No ──────────────▶  OnboardingScreen (generates RSA keypair)
-            └── Yes ─────────────▶  HomeScreen
+            └── Yes
+                    │
+                    ▼
+                needsDeviceLink?
+                    ├── Yes ──────▶  _DeviceLinkGateScreen
+                    │                   │
+                    │               (Scan QR from original device)
+                    │                   │
+                    │               LinkDeviceScreen
+                    │                   │ (success)
+                    │                   ▼
+                    └── No ───────▶  HomeScreen
 ```
 
 ### Auth methods
 - **Email + password** — `POST /api/auth/signup`, `POST /api/auth/login`
-- **Google OAuth** — `GET /api/auth/google` → callback sets JWT cookie
+- **Google Sign-In (mobile)** — `POST /api/auth/google-mobile` with Google ID token; available on both Login and Signup screens
+- **Google OAuth (web)** — `GET /api/auth/google` → callback sets JWT cookie
 - **Session** — JWT in httpOnly cookie; `protectRoute` middleware validates on every protected request
+
+### needsDeviceLink gate
+
+When a user logs in on a device that has never held their private key (e.g. a factory-reset phone or a second device), `AuthProvider._ensureKeys()` detects the mismatch — server has a public key but the device has no private key — and sets `needsDeviceLink = true`. The app shows `_DeviceLinkGateScreen` instead of `HomeScreen`.
+
+**Why this matters**: generating a new key pair here would upload a new public key, making every existing encrypted message unreadable. The user must transfer their original private key via ECDH QR linking instead.
+
+After `LinkDeviceScreen` completes, the gate calls `CryptoService.instance.hasKeyPair()` to confirm the key arrived, then calls `AuthProvider.clearNeedsDeviceLink()` to proceed to `HomeScreen`.
 
 ### Auth API routes
 
@@ -315,7 +335,8 @@ Auth status?
 | POST | `/api/auth/onboard` | ✓ | Complete profile setup |
 | POST | `/api/auth/forgot-password` | — | Send reset email |
 | POST | `/api/auth/forgot-password/reset` | — | Reset password |
-| GET | `/api/auth/google` | — | Google OAuth |
+| GET | `/api/auth/google` | — | Google OAuth (web) |
+| POST | `/api/auth/google-mobile` | — | Google Sign-In (mobile ID token) |
 
 ---
 
@@ -404,7 +425,7 @@ Fetch from API ──▶ Decrypt ──▶ Update UI ──▶ Save to Hive
 
 ## Mobile Screens — Full Walkthrough
 
-The Flutter app has **13 screens**. All shown below in mobile phone frames.
+The Flutter app has **14 screens**. All shown below in mobile phone frames.
 
 ---
 
@@ -433,7 +454,11 @@ The Flutter app has **13 screens**. All shown below in mobile phone frames.
   ║  ╔══════════════════╗ ║
   ║  ║     Sign In      ║ ║
   ║  ╚══════════════════╝ ║
-  ║                      ║
+  ║  ────── or ──────     ║
+  ║  ┌──────────────────┐║
+  ║  │ G  Continue with │║
+  ║  │    Google        │║  ← Google Sign-In
+  ║  └──────────────────┘║
   ║  Don't have an       ║
   ║  account?  Sign Up   ║
   ║                      ║
@@ -462,8 +487,13 @@ The Flutter app has **13 screens**. All shown below in mobile phone frames.
   ║  │ 🔒  Password   👁 │║
   ║  └──────────────────┘║
   ║  ╔══════════════════╗ ║
-  ║  ║     Sign Up      ║ ║
+  ║  ║   Create Account ║ ║
   ║  ╚══════════════════╝ ║
+  ║  ────── or ──────     ║
+  ║  ┌──────────────────┐║
+  ║  │ G  Continue with │║
+  ║  │    Google        │║  ← Google Sign-In
+  ║  └──────────────────┘║
   ║  Already have an     ║
   ║  account?  Sign In   ║
   ╚══════════════════════╝
@@ -738,24 +768,70 @@ Status ticks: sending → sent → delivered → read.
 
 ---
 
+### Screen 14 — Link This Device Gate
+
+Shown instead of HomeScreen when a user logs in on an unlinked device (server has their public key but this device has no private key).
+
+```
+  ╔══════════════════════╗
+  ║  9:41          ▐▌ ▓  ║
+  ╠══════════════════════╣
+  ║                      ║
+  ║         🔒           ║  ← lock icon (teal)
+  ║                      ║
+  ║   Link This Device   ║
+  ║                      ║
+  ║  Your encryption     ║
+  ║  keys are stored on  ║
+  ║  your original       ║
+  ║  device.             ║
+  ║                      ║
+  ║  On your original    ║
+  ║  device: go to       ║
+  ║  Settings → Link     ║
+  ║  New Device.         ║
+  ║                      ║
+  ║  ╔══════════════════╗ ║
+  ║  ║ [QR] Scan QR to  ║ ║  ← opens LinkDeviceScreen
+  ║  ║   Link           ║ ║
+  ║  ╚══════════════════╝ ║
+  ║                      ║
+  ║      Log Out         ║  ← returns to LoginScreen
+  ╚══════════════════════╝
+```
+
+Generating a new key pair here is intentionally blocked — doing so would upload a new public key to the server, making all existing encrypted messages unreadable.
+
+---
+
 ### Screen navigation map
 
 ```
            LoginScreen ──────────── SignupScreen
+                │                       │
+          (email/password            (email/password
+           or Google)                 or Google)
                 │
-          OnboardingScreen
+          OnboardingScreen (first login)
                 │
-           HomeScreen (IndexedStack)
-           │    │    │    │    │
-      tab0 │ tab1│ tab2│ tab3│ tab4│
-           │    │    │    │    │
-      ChatList  │  Discover │  Settings
-           │  Friends   │       │
-           │    │    Notifications│
-      ┌────┘    │              SettingsLinkDeviceScreen
-      │         │                     │
-  ChatScreen  (Friends/Discover   LinkDeviceScreen
-  GroupChatScreen push to ChatScreen)  (/link-device)
+          needsDeviceLink?
+                ├── Yes ──▶  _DeviceLinkGateScreen
+                │                   │
+                │            LinkDeviceScreen
+                │            (scan QR from original device)
+                │                   │ (success)
+                └── No ─────────────▼
+                              HomeScreen (IndexedStack)
+                              │    │    │    │    │
+                         tab0 │ tab1│ tab2│ tab3│ tab4│
+                              │    │    │    │    │
+                         ChatList  │  Discover │  Settings
+                              │  Friends   │       │
+                              │    │    Notifications│
+                         ┌────┘    │          SettingsLinkDeviceScreen
+                         │         │                 │
+                     ChatScreen  (Friends/Discover  LinkDeviceScreen
+                 GroupChatScreen  push to ChatScreen)
 ```
 
 ---
@@ -1124,7 +1200,7 @@ Three GitHub Actions workflows run automatically on every push:
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
 | [backend.yml](.github/workflows/backend.yml) | Push to `backend/**` | Installs deps, runs all Jest tests with `mongodb-memory-server` |
-| [flutter.yml](.github/workflows/flutter.yml) | Push to `flutter_app/**` | `flutter analyze`, `flutter test --coverage`, builds debug APK (artifact uploaded) |
+| [flutter.yml](.github/workflows/flutter.yml) | Push to `flutter_app/**` | `flutter analyze --no-fatal-infos`, `flutter test --coverage`, builds debug APK (artifact uploaded); pinned to Flutter 3.32.2 |
 | [frontend.yml](.github/workflows/frontend.yml) | Push to `frontend/**` | Lint, TypeScript type-check, `next build` |
 
 All workflows use caching for faster runs. The Flutter workflow also uploads the built APK as a downloadable artifact on every successful run.
@@ -1188,11 +1264,14 @@ npm run dev            # http://localhost:3000
 | `keytool not found` | Add JDK `bin` folder to PATH |
 | App crashes on launch | Verify `config.dart` URLs point to running backend |
 | `[decryption failed]` in messages | Log out and back in to regenerate keys |
+| Camera crash / NPE on Android (`null object reference` from `mobile_scanner`) | Camera permission must be granted before the `MobileScanner` widget mounts. The scanner uses `autoStart: false` and starts only in a second `addPostFrameCallback` after permission is confirmed. If the crash recurs, go to Settings → Apps → Reon → Permissions and grant Camera manually. |
 | QR scan not working | Grant Camera permission: Settings → Apps → Reon → Permissions |
+| "Link This Device" gate shown after login | You are on a new/unlinked device. Your private key lives on your original device. Go to your original device: Settings → Link New Device → show the QR. Then tap "Scan QR Code to Link" on this screen. **Do not log out and back in hoping it clears** — a new key pair would be generated and all existing encrypted messages would become unreadable. |
 | Push notifications not received | Check `google-services.json` is in `android/app/`; verify `FIREBASE_SERVICE_ACCOUNT_JSON` on backend |
 | Socket not connecting | Check backend is running on port 5001; check firewall |
 | `MissingPluginException` | `flutter clean && flutter pub get` then rebuild |
 | Backend tests fail | Ensure `mongodb-memory-server` is installed: `npm install` in `backend/` |
+| `flutter analyze` exits with code 1 | Run `flutter analyze --no-fatal-infos` — infos are suppressed; only warnings are build-breaking. Fix any remaining warnings before pushing. |
 
 ---
 
