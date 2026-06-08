@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/ecc/api.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
@@ -17,45 +16,11 @@ class LinkDeviceScreen extends StatefulWidget {
 
 class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final _manual = TextEditingController();
-  final _scannerController = MobileScannerController(autoStart: false);
+  final _scannerController = MobileScannerController();
   String _step = 'scan';
   String _error = '';
   ECPrivateKey? _ecdhPrivate;
   String? _sessionId;
-
-  @override
-  void initState() {
-    super.initState();
-    // Defer until after first frame so MobileScanner texture is ready
-    WidgetsBinding.instance.addPostFrameCallback((_) => _requestAndStart());
-  }
-
-  Future<void> _requestAndStart() async {
-    final status = await Permission.camera.request();
-    if (!mounted) return;
-    if (status.isGranted) {
-      try {
-        await _scannerController.start();
-      } catch (e) {
-        if (mounted)
-          setState(() {
-            _error = 'Could not start camera: $e';
-            _step = 'error';
-          });
-      }
-    } else if (status.isPermanentlyDenied) {
-      setState(() {
-        _error =
-            'Camera access is permanently denied.\nGo to Settings → Apps → Reon → Permissions and enable Camera.';
-        _step = 'error';
-      });
-    } else {
-      setState(() {
-        _error = 'Camera permission is required to scan the QR code.';
-        _step = 'error';
-      });
-    }
-  }
 
   @override
   void dispose() {
@@ -184,14 +149,11 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
               style: GoogleFonts.inter(fontSize: 14)),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _step = 'scan';
-                _error = '';
-              });
-              _requestAndStart();
-            },
-            child: const Text('Grant Permission'),
+            onPressed: () => setState(() {
+              _step = 'scan';
+              _error = '';
+            }),
+            child: const Text('Retry'),
           ),
         ])),
       _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -211,6 +173,25 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
               child: MobileScanner(
                 controller: _scannerController,
                 onDetect: _onScan,
+                errorBuilder: (context, error, child) => Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.camera_alt_outlined,
+                          color: Colors.white54, size: 40),
+                      const SizedBox(height: 8),
+                      Text(
+                        error.errorCode ==
+                                MobileScannerErrorCode.permissionDenied
+                            ? 'Camera permission denied.\nGo to Settings → Apps → Reon → Permissions'
+                            : 'Camera error: ${error.errorDetails?.message ?? error.errorCode.name}',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ]),
+                  ),
+                ),
               ),
             ),
           ),

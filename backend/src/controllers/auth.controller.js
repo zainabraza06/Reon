@@ -242,12 +242,6 @@ export async function googleMobileAuth(req, res) {
     return res.status(401).json({ message: "Invalid Google token" });
   }
 
-  // Audience must match our Web Client ID
-  const expectedAud = process.env.GOOGLE_CLIENT_ID;
-  if (expectedAud && payload.aud !== expectedAud) {
-    return res.status(401).json({ message: "Token audience mismatch" });
-  }
-
   // Find or create the user
   let user = await User.findOne({ email: payload.email });
   if (!user) {
