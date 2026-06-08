@@ -15,59 +15,76 @@ class LinkDeviceScreen extends StatefulWidget {
   State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
 }
 
-class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
+class _LinkDeviceScreenState extends State<LinkDeviceScreen>
+    with WidgetsBindingObserver {
   final _manual = TextEditingController();
   late final MobileScannerController _scannerController;
   String _step = 'scan';
   String _error = '';
   bool _permGranted = false;
   bool _permChecked = false;
+  bool _permPermanentlyDenied = false;
   ECPrivateKey? _ecdhPrivate;
 
   @override
   void initState() {
     super.initState();
-    _scannerController = MobileScannerController(autoStart: false);
+    // autoStart: true — MobileScanner only mounts when _permGranted=true,
+    // so permission is already confirmed by the time it auto-starts.
+    _scannerController = MobileScannerController();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _requestCameraPermission());
   }
 
+  // Restart / stop camera when app goes to background / foreground
+  // (needed so camera resumes after user returns from the Settings app).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_permGranted) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _scannerController.start();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+        _scannerController.stop();
+      default:
+        break;
+    }
+  }
+
   Future<void> _requestCameraPermission() async {
-    final status = await Permission.camera.request();
+    // Check existing status first — if already granted, skip the dialog.
+    var status = await Permission.camera.status;
     if (!mounted) return;
+
+    if (!status.isGranted) {
+      status = await Permission.camera.request();
+      if (!mounted) return;
+    }
+
     if (status.isGranted) {
       setState(() {
         _permGranted = true;
         _permChecked = true;
-      });
-      // Start scanner only after MobileScanner widget is in the tree
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        try {
-          await _scannerController.start();
-        } catch (e) {
-          if (mounted) {
-            setState(() {
-              _step = 'error';
-              _error = 'Camera failed to start. Please retry.';
-            });
-          }
-        }
+        _permPermanentlyDenied = false;
       });
     } else {
       setState(() {
         _permChecked = true;
         _permGranted = false;
+        _permPermanentlyDenied = status.isPermanentlyDenied;
         _step = 'error';
         _error = status.isPermanentlyDenied
-            ? 'Camera is permanently denied.\nGo to Settings → Apps → Reon → Permissions.'
-            : 'Camera permission is required to scan the QR code.';
+            ? 'Camera access is permanently blocked.\nTap "Open Settings" and enable Camera for Reon.'
+            : 'Camera permission is required to scan the QR code.\nTap Retry to grant access.';
       });
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scannerController.dispose();
     _manual.dispose();
     super.dispose();
@@ -193,27 +210,25 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(fontSize: 14)),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () async {
-              setState(() {
-                _step = 'scan';
-                _error = '';
-              });
-              if (!_permGranted) {
-                // Re-request camera permission
+          if (_permPermanentlyDenied)
+            ElevatedButton(
+              onPressed: () async {
+                await openAppSettings();
+                // Re-check permission after user returns from Settings
+                if (!mounted) return;
+                setState(() { _step = 'scan'; _error = ''; });
                 await _requestCameraPermission();
-              } else {
-                // Permission already granted — just restart the scanner
-                WidgetsBinding.instance.addPostFrameCallback((_) async {
-                  if (!mounted) return;
-                  try {
-                    await _scannerController.start();
-                  } catch (_) {}
-                });
-              }
-            },
-            child: const Text('Retry'),
-          ),
+              },
+              child: const Text('Open Settings'),
+            )
+          else
+            ElevatedButton(
+              onPressed: () async {
+                setState(() { _step = 'scan'; _error = ''; });
+                await _requestCameraPermission();
+              },
+              child: const Text('Retry'),
+            ),
         ])),
       _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('Scan QR Code',
@@ -233,6 +248,31 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
                   ? MobileScanner(
                       controller: _scannerController,
                       onDetect: _onScan,
+                      errorBuilder: (context, error, child) => ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.camera_alt_outlined,
+                                  color: Colors.white54, size: 40),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Camera error: ${error.errorCode.name}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () => _scannerController.start(),
+                                child: const Text('Tap to retry',
+                                    style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     )
                   : ColoredBox(
                       color: Colors.black,

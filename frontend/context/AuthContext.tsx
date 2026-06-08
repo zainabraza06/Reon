@@ -29,7 +29,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const localExists = await hasKeyPair();
       const serverKey   = await api.keys.get(userId).catch(() => null);
 
-      if (localExists && serverKey?.publicKey) return false; // everything is fine
+      if (localExists && serverKey?.publicKey) {
+        // Verify local public key matches server — mismatch means senders encrypt with
+        // a key this device can't decrypt. Re-upload local key to fix it.
+        const localPublicKey = await getStoredPublicKey();
+        if (localPublicKey && localPublicKey.n !== serverKey.publicKey.n) {
+          await api.keys.upload(localPublicKey, userId);
+        }
+        return false;
+      }
 
       if (localExists && !serverKey?.publicKey) {
         // Keys exist locally but the server copy is missing — re-upload
