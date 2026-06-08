@@ -1,7 +1,6 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: "node",
-  extensionsToTreatAsEsm: [".js"],
   transform: {},
   testMatch: ["**/src/tests/**/*.test.js"],
   globalSetup:    "./src/tests/globalSetup.js",
