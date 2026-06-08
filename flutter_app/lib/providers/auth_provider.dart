@@ -41,6 +41,16 @@ class AuthProvider extends ChangeNotifier {
       _error = e.message;
       notifyListeners();
       return false;
+    } catch (_) {
+      // Non-ApiException (e.g. DioException timeout from _ensureKeys) — if login
+      // itself succeeded, still navigate; otherwise surface a generic error.
+      if (_status == AuthStatus.authenticated) {
+        notifyListeners();
+        return true;
+      }
+      _error = 'Connection failed. Please try again.';
+      notifyListeners();
+      return false;
     }
   }
 
@@ -93,22 +103,27 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _ensureKeys() async {
-    final crypto = CryptoService.instance;
-    final api    = ApiService.instance;
-    final userId = _user!.id;
+    try {
+      final crypto = CryptoService.instance;
+      final api    = ApiService.instance;
+      final userId = _user!.id;
 
-    final localExists  = await crypto.hasKeyPair();
-    final serverKeyRaw = await api.tryGetPublicKey(userId);
+      final localExists  = await crypto.hasKeyPair();
+      final serverKeyRaw = await api.tryGetPublicKey(userId);
 
-    if (localExists && serverKeyRaw != null) return; // all good
+      if (localExists && serverKeyRaw != null) return; // all good
 
-    if (!localExists) {
-      final pubJwk = await crypto.generateKeyPair();
-      await api.uploadPublicKey(pubJwk, userId);
-    } else {
-      // Local key exists but not on server — re-upload
-      final pubJwk = await crypto.getStoredPublicKey();
-      if (pubJwk != null) await api.uploadPublicKey(pubJwk, userId);
+      if (!localExists) {
+        final pubJwk = await crypto.generateKeyPair();
+        await api.uploadPublicKey(pubJwk, userId);
+      } else {
+        // Local key exists but not on server — re-upload
+        final pubJwk = await crypto.getStoredPublicKey();
+        if (pubJwk != null) await api.uploadPublicKey(pubJwk, userId);
+      }
+    } catch (_) {
+      // Key setup is non-critical for login navigation — will be retried on
+      // first message send. Don't block the user from reaching HomeScreen.
     }
   }
 }

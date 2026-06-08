@@ -29,15 +29,27 @@ class _LoginScreenState extends State<LoginScreen> {
     Future.delayed(const Duration(seconds: 6), () {
       if (mounted && _loading) setState(() => _slowNetwork = true);
     });
-    final ok = await context.read<AuthProvider>().login(_email.text.trim(), _password.text);
-    if (mounted) setState(() { _loading = false; _slowNetwork = false; });
-    if (!ok) {} // error shown via AuthProvider.error
+    try {
+      await context.read<AuthProvider>().login(_email.text.trim(), _password.text);
+    } catch (_) {
+      // AuthProvider already handles all errors internally — this is a safety net
+      // to ensure _loading is always reset even if something unexpected throws.
+    } finally {
+      if (mounted) setState(() { _loading = false; _slowNetwork = false; });
+    }
   }
 
   Future<void> _googleSignIn() async {
-    final uri = Uri.parse('${kSiteUrl.replaceAll('/api', '')}/login');
-    if (await canLaunchUrl(uri)) {
+    // Opens the Passport.js Google OAuth route in the system browser.
+    // canLaunchUrl is unreliable on Android 11+ for https — use launchUrl directly.
+    final uri = Uri.parse('$kApiBase/auth/google');
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open browser. Please check your connection.')));
+      }
     }
   }
 

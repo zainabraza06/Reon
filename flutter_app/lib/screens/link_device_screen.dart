@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/ecc/api.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
@@ -19,6 +20,24 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   String _error = '';
   ECPrivateKey? _ecdhPrivate;
   String? _sessionId;
+  @override
+  void initState() {
+    super.initState();
+    _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+    if (status.isPermanentlyDenied) {
+      setState(() {
+        _error = 'Camera access is permanently denied. Please enable it in Settings → Apps → Reon → Permissions.';
+        _step = 'error';
+      });
+    }
+    // For granted or just-denied, let MobileScanner handle it — it requests
+    // permission on its own and shows its own error state if denied.
+  }
 
   @override
   void dispose() {
@@ -119,9 +138,15 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
       'error' => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.error_outline, color: ReonColors.danger, size: 48),
         const SizedBox(height: 12),
-        Text(_error, textAlign: TextAlign.center),
+        Text(_error, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 14)),
         const SizedBox(height: 16),
-        ElevatedButton(onPressed: () => setState(() { _step = 'scan'; _error = ''; }), child: const Text('Try Again')),
+        ElevatedButton(
+          onPressed: () {
+            setState(() { _step = 'scan'; _error = ''; });
+            _requestCameraPermission();
+          },
+          child: const Text('Grant Permission'),
+        ),
       ])),
       _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('Scan QR Code', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 17)),
