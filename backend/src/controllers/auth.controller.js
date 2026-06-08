@@ -144,7 +144,7 @@ export async function login(req, res) {
 
     if (!user) {
       console.log("User not found");
-      return res.status(400).json({ message: "User not found" });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
 

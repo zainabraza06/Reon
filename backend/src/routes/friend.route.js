@@ -17,12 +17,14 @@ import {
 const router = express.Router();
 router.use(protectRoute);
 
-// Rate limiter for friend actions (5 requests per minute per IP)
-const friendLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 15,
-  message: "Too many friend requests/actions from this IP, please try again later",
-});
+// Rate limiter for friend actions (bypassed in test environment)
+const friendLimiter = process.env.NODE_ENV === 'test'
+  ? (req, res, next) => next()
+  : rateLimit({
+      windowMs: 1 * 60 * 1000,
+      max: 15,
+      message: "Too many friend requests/actions from this IP, please try again later",
+    });
 
 // FRIEND RECOMMENDATIONS & FRIENDS 
 router.get("/recommendation", getRecommendedFriends);
