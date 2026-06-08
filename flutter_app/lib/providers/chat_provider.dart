@@ -29,14 +29,14 @@ class ChatProvider extends ChangeNotifier {
   bool _isOnline = false;
   bool _sending = false;
 
-  List<ChatMessage> get messages    => _messages;
-  ReonUser?         get recipient   => _recipient;
-  bool              get loading     => _loading;
-  bool              get hasMore     => _hasMore;
-  bool              get isTyping    => _isTyping;
-  bool              get isOnline    => _isOnline;
-  bool              get sending     => _sending;
-  bool              get canEncrypt  => _recipientPubJwk != null;
+  List<ChatMessage> get messages => _messages;
+  ReonUser? get recipient => _recipient;
+  bool get loading => _loading;
+  bool get hasMore => _hasMore;
+  bool get isTyping => _isTyping;
+  bool get isOnline => _isOnline;
+  bool get sending => _sending;
+  bool get canEncrypt => _recipientPubJwk != null;
 
   // ── Initialise ───────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ class ChatProvider extends ChangeNotifier {
       final cached = await MessageCacheService.instance.load(recipientId);
       if (cached.isNotEmpty) {
         _messages = cached;
-        _loading  = false;
+        _loading = false;
         notifyListeners();
       }
     }
@@ -67,10 +67,11 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final raw = await ApiService.instance.getMessages(recipientId, before: before);
+      final raw =
+          await ApiService.instance.getMessages(recipientId, before: before);
       final decrypted = await Future.wait(raw.map((m) => _decrypt(m)));
       _messages = before != null ? [...decrypted, ..._messages] : decrypted;
-      _hasMore  = raw.length == 50;
+      _hasMore = raw.length == 50;
       // Persist to cache (only the initial page, not older loads)
       if (before == null) {
         await MessageCacheService.instance.save(recipientId, _messages);
@@ -88,15 +89,18 @@ class ChatProvider extends ChangeNotifier {
       final friends = await ApiService.instance.getFriends();
       _recipient = friends.firstWhere(
         (f) => f.id == recipientId,
-        orElse: () => ReonUser(id: recipientId, fullName: recipientName, email: ''),
+        orElse: () =>
+            ReonUser(id: recipientId, fullName: recipientName, email: ''),
       );
     } catch (_) {
-      _recipient = ReonUser(id: recipientId, fullName: recipientName, email: '');
+      _recipient =
+          ReonUser(id: recipientId, fullName: recipientName, email: '');
     }
 
     try {
       final jwkStr = await ApiService.instance.tryGetPublicKey(recipientId);
-      if (jwkStr != null) _recipientPubJwk = jsonDecode(jwkStr) as Map<String, dynamic>;
+      if (jwkStr != null)
+        _recipientPubJwk = jsonDecode(jwkStr) as Map<String, dynamic>;
     } catch (_) {}
 
     notifyListeners();
@@ -110,9 +114,13 @@ class ChatProvider extends ChangeNotifier {
 
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final optimistic = ChatMessage(
-      id: tempId, sender: myId, receiver: recipientId,
-      plaintext: text, contentType: 'text',
-      sentAt: DateTime.now(), status: 'sending',
+      id: tempId,
+      sender: myId,
+      receiver: recipientId,
+      plaintext: text,
+      contentType: 'text',
+      sentAt: DateTime.now(),
+      status: 'sending',
     );
 
     _messages.add(optimistic);
@@ -120,18 +128,23 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_recipientPubJwk == null) throw Exception('Recipient key not available');
+      if (_recipientPubJwk == null)
+        throw Exception('Recipient key not available');
 
-      final enc = await CryptoService.instance.encryptText(text, _recipientPubJwk!);
+      final enc =
+          await CryptoService.instance.encryptText(text, _recipientPubJwk!);
       final payload = jsonEncode({
-        'sender': myId, 'receiver': recipientId, 'contentType': 'text',
+        'sender': myId,
+        'receiver': recipientId,
+        'contentType': 'text',
         'ciphertext': enc.ciphertext,
         'encryptedKey': enc.encryptedKey,
         'senderEncryptedKey': enc.senderEncryptedKey,
       });
 
-      final sent = await ApiService.instance.sendMessage(FormData.fromMap({'data': payload}));
-      final dec  = await _decrypt(sent.copyWith(plaintext: text));
+      final sent = await ApiService.instance
+          .sendMessage(FormData.fromMap({'data': payload}));
+      final dec = await _decrypt(sent.copyWith(plaintext: text));
 
       _messages = [for (final m in _messages) m.id == tempId ? dec : m];
       await MessageCacheService.instance.upsert(recipientId, dec);
@@ -140,9 +153,13 @@ class ChatProvider extends ChangeNotifier {
         for (final m in _messages)
           if (m.id == tempId)
             ChatMessage(
-              id: tempId, sender: myId, receiver: recipientId,
-              plaintext: text, contentType: 'text',
-              sentAt: optimistic.sentAt, status: 'failed',
+              id: tempId,
+              sender: myId,
+              receiver: recipientId,
+              plaintext: text,
+              contentType: 'text',
+              sentAt: optimistic.sentAt,
+              status: 'failed',
             )
           else
             m
@@ -164,28 +181,29 @@ class ChatProvider extends ChangeNotifier {
 
   void _subscribeSocket(String myId) {
     final s = SocketService.instance;
-    s.on('new-message',              (d) => _onNewMsg(d, myId));
-    s.on('message-sent',             _onMsgSent);
-    s.on('message-delivered',        _onDelivered);
+    s.on('new-message', (d) => _onNewMsg(d, myId));
+    s.on('message-sent', _onMsgSent);
+    s.on('message-delivered', _onDelivered);
     s.on('messages-delivered-batch', _onDeliveredBatch);
-    s.on('message-read',             (d) => _onRead(d, myId));
-    s.on('user-typing',              _onTyping);
-    s.on('user-status-changed',      _onStatus);
+    s.on('message-read', (d) => _onRead(d, myId));
+    s.on('user-typing', _onTyping);
+    s.on('user-status-changed', _onStatus);
   }
 
   void unsubscribeSocket() {
     final s = SocketService.instance;
-    s.off('new-message',              (d) => _onNewMsg(d, ''));
-    s.off('message-sent',             _onMsgSent);
-    s.off('message-delivered',        _onDelivered);
+    s.off('new-message', (d) => _onNewMsg(d, ''));
+    s.off('message-sent', _onMsgSent);
+    s.off('message-delivered', _onDelivered);
     s.off('messages-delivered-batch', _onDeliveredBatch);
-    s.off('message-read',             (d) => _onRead(d, ''));
-    s.off('user-typing',              _onTyping);
-    s.off('user-status-changed',      _onStatus);
+    s.off('message-read', (d) => _onRead(d, ''));
+    s.off('user-typing', _onTyping);
+    s.off('user-status-changed', _onStatus);
   }
 
   void _onNewMsg(dynamic d, String myId) async {
-    final m = d as Map?; if (m == null) return;
+    final m = d as Map?;
+    if (m == null) return;
     final msg = ChatMessage.fromJson(Map<String, dynamic>.from(m));
     if (msg.sender != recipientId && msg.receiver != recipientId) return;
     if (_messages.any((e) => e.id == msg.id)) return;
@@ -195,71 +213,90 @@ class ChatProvider extends ChangeNotifier {
     await MessageCacheService.instance.upsert(recipientId, dec);
     notifyListeners();
 
-    SocketService.instance.emit('message-read', {'messageId': msg.id, 'senderId': msg.sender});
+    SocketService.instance
+        .emit('message-read', {'messageId': msg.id, 'senderId': msg.sender});
     ApiService.instance.markChatRead(recipientId).catchError((_) {});
   }
 
   void _onMsgSent(dynamic d) {
-    final m = d as Map?; if (m == null) return;
-    final id     = m['_id'] as String?; if (id == null) return;
+    final m = d as Map?;
+    if (m == null) return;
+    final id = m['_id'] as String?;
+    if (id == null) return;
     final status = m['status'] as String? ?? 'sent';
-    _messages = [for (final msg in _messages) msg.id == id ? msg.copyWith(status: status) : msg];
+    _messages = [
+      for (final msg in _messages)
+        msg.id == id ? msg.copyWith(status: status) : msg
+    ];
     notifyListeners();
   }
 
   void _onDelivered(dynamic d) {
-    final m   = d as Map?; if (m == null) return;
-    final mid = m['messageId'] as String?; if (mid == null) return;
-    final at  = m['deliveredAt'] as String?;
+    final m = d as Map?;
+    if (m == null) return;
+    final mid = m['messageId'] as String?;
+    if (mid == null) return;
+    final at = m['deliveredAt'] as String?;
     _messages = [
       for (final msg in _messages)
         msg.id == mid
-          ? msg.copyWith(status: 'delivered', delivered: true,
-              deliveredAt: at != null ? DateTime.tryParse(at) : null)
-          : msg
+            ? msg.copyWith(
+                status: 'delivered',
+                delivered: true,
+                deliveredAt: at != null ? DateTime.tryParse(at) : null)
+            : msg
     ];
     notifyListeners();
   }
 
   void _onDeliveredBatch(dynamic d) {
-    final m    = d as Map?; if (m == null) return;
+    final m = d as Map?;
+    if (m == null) return;
     final list = m['messages'] as List? ?? [];
-    final ids  = {for (final e in list) (e as Map)['messageId'] as String? ?? ''};
+    final ids = {
+      for (final e in list) (e as Map)['messageId'] as String? ?? ''
+    };
     _messages = [
       for (final msg in _messages)
         ids.contains(msg.id)
-          ? msg.copyWith(status: 'delivered', delivered: true)
-          : msg
+            ? msg.copyWith(status: 'delivered', delivered: true)
+            : msg
     ];
     notifyListeners();
   }
 
   void _onRead(dynamic d, String myId) {
-    final m   = d as Map?; if (m == null) return;
-    final mid = m['messageId'] as String?; if (mid == null) return;
+    final m = d as Map?;
+    if (m == null) return;
+    final mid = m['messageId'] as String?;
+    if (mid == null) return;
     final target = _messages.firstWhere((e) => e.id == mid,
-        orElse: () => _messages.isNotEmpty ? _messages.first : ChatMessage(
-          id: '', sender: '', receiver: '', sentAt: DateTime.now()));
+        orElse: () => _messages.isNotEmpty
+            ? _messages.first
+            : ChatMessage(
+                id: '', sender: '', receiver: '', sentAt: DateTime.now()));
     if (target.id.isEmpty) return;
     final cutoff = target.sentAt;
     _messages = [
       for (final msg in _messages)
         msg.sender == myId && !msg.sentAt.isAfter(cutoff)
-          ? msg.copyWith(status: 'read', read: true)
-          : msg
+            ? msg.copyWith(status: 'read', read: true)
+            : msg
     ];
     notifyListeners();
   }
 
   void _onTyping(dynamic d) {
-    final m = d as Map?; if (m == null) return;
+    final m = d as Map?;
+    if (m == null) return;
     if ((m['senderId'] as String?) != recipientId) return;
     _isTyping = m['isTyping'] as bool? ?? false;
     notifyListeners();
   }
 
   void _onStatus(dynamic d) {
-    final m = d as Map?; if (m == null) return;
+    final m = d as Map?;
+    if (m == null) return;
     if ((m['userId'] as String?) != recipientId) return;
     _isOnline = m['isOnline'] as bool? ?? false;
     notifyListeners();
@@ -269,7 +306,8 @@ class ChatProvider extends ChangeNotifier {
 
   Future<ChatMessage> _decrypt(ChatMessage m) async {
     if (m.ciphertext == null || m.encryptedKey == null) return m;
-    final plain = await CryptoService.instance.decryptText(m.ciphertext!, m.encryptedKey!);
+    final plain = await CryptoService.instance
+        .decryptText(m.ciphertext!, m.encryptedKey!);
     return m.copyWith(plaintext: plain ?? '[decryption failed]');
   }
 

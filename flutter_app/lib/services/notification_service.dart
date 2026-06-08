@@ -14,10 +14,10 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  final _fcm   = FirebaseMessaging.instance;
+  final _fcm = FirebaseMessaging.instance;
   final _local = FlutterLocalNotificationsPlugin();
 
-  static const _channelId   = 'reon_messages';
+  static const _channelId = 'reon_messages';
   static const _channelName = 'Messages';
 
   Future<void> init() async {
@@ -26,24 +26,28 @@ class NotificationService {
 
     // Request permission (iOS + Android 13+)
     await _fcm.requestPermission(
-      alert: true, badge: true, sound: true,
+      alert: true,
+      badge: true,
+      sound: true,
     );
 
     // Set up local notifications for foreground messages
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios     = DarwinInitializationSettings();
+    const ios = DarwinInitializationSettings();
     await _local.initialize(
       const InitializationSettings(android: android, iOS: ios),
     );
 
     // Create Android notification channel
     const channel = AndroidNotificationChannel(
-      _channelId, _channelName,
+      _channelId,
+      _channelName,
       importance: Importance.high,
       enableVibration: true,
     );
     await _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
     // Show local notification when app is in foreground
@@ -66,7 +70,8 @@ class NotificationService {
       n.body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _channelId, _channelName,
+          _channelId,
+          _channelName,
           importance: Importance.high,
           priority: Priority.high,
         ),

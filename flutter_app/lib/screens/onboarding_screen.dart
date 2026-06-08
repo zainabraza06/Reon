@@ -11,22 +11,31 @@ import 'login_screen.dart' show AuthField, GradButton, ErrorBox;
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
-  @override State<OnboardingScreen> createState() => _OnboardingScreenState();
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _username = TextEditingController();
-  final _lang     = TextEditingController();
-  final _bio      = TextEditingController();
+  final _lang = TextEditingController();
+  final _bio = TextEditingController();
   final _location = TextEditingController();
   String? _imagePath;
   bool _loading = false;
   String? _error;
 
-  @override void dispose() { _username.dispose(); _lang.dispose(); _bio.dispose(); _location.dispose(); super.dispose(); }
+  @override
+  void dispose() {
+    _username.dispose();
+    _lang.dispose();
+    _bio.dispose();
+    _location.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
+    final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
     if (picked != null && mounted) setState(() => _imagePath = picked.path);
   }
 
@@ -35,14 +44,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       setState(() => _error = 'Username and language are required');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       // If a profile pic was selected, use updateProfile which supports multipart upload
       if (_imagePath != null) {
         await ApiService.instance.updateProfile(
           fullName: context.read<AuthProvider>().user!.fullName,
           bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
-          location: _location.text.trim().isEmpty ? null : _location.text.trim(),
+          location:
+              _location.text.trim().isEmpty ? null : _location.text.trim(),
           imagePath: _imagePath,
         );
       }
@@ -54,7 +67,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
       await context.read<AuthProvider>().checkAuth();
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -65,15 +81,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     return Scaffold(
       backgroundColor: isDark ? ReonColors.bgDark : ReonColors.bgLight,
-      body: SafeArea(child: SingleChildScrollView(
+      body: SafeArea(
+          child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const SizedBox(height: 32),
-          Text('Set up your profile', textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: isDark ? Colors.white : ReonColors.textLight)),
+          Text('Set up your profile',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : ReonColors.textLight)),
           const SizedBox(height: 4),
-          Text('Tell others who you are', textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 14, color: ReonColors.textMuted)),
+          Text('Tell others who you are',
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.inter(fontSize: 14, color: ReonColors.textMuted)),
           const SizedBox(height: 28),
           // Profile picture picker
           Center(
@@ -81,33 +105,66 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               onTap: _pickImage,
               child: Stack(children: [
                 _imagePath != null
-                    ? CircleAvatar(radius: 48, backgroundImage: FileImage(File(_imagePath!)))
-                    : ChatAvatar(name: user?.fullName ?? 'U', imageUrl: user?.profilePic, size: 96),
+                    ? CircleAvatar(
+                        radius: 48,
+                        backgroundImage: FileImage(File(_imagePath!)))
+                    : ChatAvatar(
+                        name: user?.fullName ?? 'U',
+                        imageUrl: user?.profilePic,
+                        size: 96),
                 Positioned(
-                  right: 0, bottom: 0,
+                  right: 0,
+                  bottom: 0,
                   child: Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(gradient: kBrandGradient, shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: ReonColors.primary.withValues(alpha: 0.35), blurRadius: 8)]),
-                    child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                        gradient: kBrandGradient,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                              color: ReonColors.primary.withValues(alpha: 0.35),
+                              blurRadius: 8)
+                        ]),
+                    child: const Icon(Icons.camera_alt_rounded,
+                        size: 16, color: Colors.white),
                   ),
                 ),
               ]),
             ),
           ),
           const SizedBox(height: 8),
-          Center(child: Text('Tap to add photo', style: GoogleFonts.inter(fontSize: 12, color: ReonColors.textMuted))),
+          Center(
+              child: Text('Tap to add photo',
+                  style: GoogleFonts.inter(
+                      fontSize: 12, color: ReonColors.textMuted))),
           const SizedBox(height: 24),
-          AuthField(controller: _username, hint: 'Username *',       icon: Icons.alternate_email_rounded),
+          AuthField(
+              controller: _username,
+              hint: 'Username *',
+              icon: Icons.alternate_email_rounded),
           const SizedBox(height: 12),
-          AuthField(controller: _lang,     hint: 'Native language *', icon: Icons.language_rounded),
+          AuthField(
+              controller: _lang,
+              hint: 'Native language *',
+              icon: Icons.language_rounded),
           const SizedBox(height: 12),
-          AuthField(controller: _bio,      hint: 'Bio',              icon: Icons.edit_note_rounded),
+          AuthField(
+              controller: _bio, hint: 'Bio', icon: Icons.edit_note_rounded),
           const SizedBox(height: 12),
-          AuthField(controller: _location, hint: 'Location',         icon: Icons.location_on_outlined),
-          if (_error != null) ...[const SizedBox(height: 12), ErrorBox(_error!)],
+          AuthField(
+              controller: _location,
+              hint: 'Location',
+              icon: Icons.location_on_outlined),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            ErrorBox(_error!)
+          ],
           const SizedBox(height: 28),
-          GradButton(label: 'Complete Setup', loading: _loading, onTap: _loading ? null : _submit),
+          GradButton(
+              label: 'Complete Setup',
+              loading: _loading,
+              onTap: _loading ? null : _submit),
         ]),
       )),
     );

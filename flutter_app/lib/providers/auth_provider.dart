@@ -10,12 +10,12 @@ enum AuthStatus { unknown, unauthenticated, authenticated }
 
 class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.unknown;
-  ReonUser?  _user;
-  String?    _error;
+  ReonUser? _user;
+  String? _error;
 
   AuthStatus get status => _status;
-  ReonUser?  get user   => _user;
-  String?    get error  => _error;
+  ReonUser? get user => _user;
+  String? get error => _error;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
 
   Future<void> checkAuth() async {
@@ -67,7 +67,10 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (_) {
-      if (_status == AuthStatus.authenticated) { notifyListeners(); return true; }
+      if (_status == AuthStatus.authenticated) {
+        notifyListeners();
+        return true;
+      }
       _error = 'Google sign-in failed. Please try again.';
       notifyListeners();
       return false;
@@ -92,7 +95,7 @@ class AuthProvider extends ChangeNotifier {
     await ApiService.instance.logout();
     SocketService.instance.disconnect();
     await CryptoService.instance.clearKeys();
-    _user   = null;
+    _user = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
@@ -125,10 +128,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _ensureKeys() async {
     try {
       final crypto = CryptoService.instance;
-      final api    = ApiService.instance;
+      final api = ApiService.instance;
       final userId = _user!.id;
 
-      final localExists  = await crypto.hasKeyPair();
+      final localExists = await crypto.hasKeyPair();
       final serverKeyRaw = await api.tryGetPublicKey(userId);
 
       if (localExists && serverKeyRaw != null) return; // all good

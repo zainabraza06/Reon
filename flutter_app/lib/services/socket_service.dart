@@ -20,12 +20,14 @@ class SocketService {
     if (_socket?.connected == true && _userId == userId) return;
     _userId = userId;
 
-    _socket = sio.io(kSocketUrl, sio.OptionBuilder()
-        .setTransports(['websocket', 'polling'])
-        .enableReconnection()
-        .setReconnectionAttempts(10)
-        .setReconnectionDelay(1000)
-        .build());
+    _socket = sio.io(
+        kSocketUrl,
+        sio.OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .enableReconnection()
+            .setReconnectionAttempts(10)
+            .setReconnectionDelay(1000)
+            .build());
 
     _socket!.onConnect((_) {
       _socket!.emit('authenticate', userId);

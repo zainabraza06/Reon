@@ -16,10 +16,10 @@ class FriendRequest {
   });
 
   factory FriendRequest.fromJson(Map<String, dynamic> j) => FriendRequest(
-    id:        j['_id'] as String,
-    sender:    ReonUser.fromJson(j['sender'] as Map<String, dynamic>),
-    receiver:  ReonUser.fromJson(j['receiver'] as Map<String, dynamic>),
-    status:    j['status'] as String? ?? 'pending',
-    createdAt: DateTime.parse(j['createdAt'] as String),
-  );
+        id: j['_id'] as String,
+        sender: ReonUser.fromJson(j['sender'] as Map<String, dynamic>),
+        receiver: ReonUser.fromJson(j['receiver'] as Map<String, dynamic>),
+        status: j['status'] as String? ?? 'pending',
+        createdAt: DateTime.parse(j['createdAt'] as String),
+      );
 }

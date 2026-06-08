@@ -14,7 +14,8 @@ import 'settings_screen.dart';
 /// Root scaffold that shows bottom nav + listens to global socket events.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-  @override State<HomeScreen> createState() => _HomeScreenState();
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -36,45 +37,52 @@ class _HomeScreenState extends State<HomeScreen> {
         ApiService.instance.getNotifications(),
       ]);
       final notifs = results[1] as List<AppNotification>;
-      if (mounted) setState(() {
-        _friendsBadge = results[0] as int;
-        _notifBadge = notifs.where((n) => !n.read).length;
-      });
+      if (mounted)
+        setState(() {
+          _friendsBadge = results[0] as int;
+          _notifBadge = notifs.where((n) => !n.read).length;
+        });
     } catch (_) {}
   }
 
   void _listenSocket() {
     final s = SocketService.instance;
-    s.on('friend-request-received',       _onFriendReqReceived);
+    s.on('friend-request-received', _onFriendReqReceived);
     s.on('friend-request-accepted-realtime', _onFriendReqAccepted);
-    s.on('friend-request-rejected',        _onFriendReqRejected);
+    s.on('friend-request-rejected', _onFriendReqRejected);
     s.on('pending-requests-count-updated', _onPendingCount);
     s.on('user-status-changed', _onStatusChange);
     s.on('new-message', _onNotifBump);
     s.on('new-group-message', _onNotifBump);
   }
 
-  void _onFriendReqReceived(_) => setState(() { _friendsBadge++; _notifBadge++; });
-  void _onFriendReqAccepted(_) => setState(() => _friendsBadge = (_friendsBadge - 1).clamp(0, 999));
-  void _onFriendReqRejected(_) => setState(() => _friendsBadge = (_friendsBadge - 1).clamp(0, 999));
+  void _onFriendReqReceived(_) => setState(() {
+        _friendsBadge++;
+        _notifBadge++;
+      });
+  void _onFriendReqAccepted(_) =>
+      setState(() => _friendsBadge = (_friendsBadge - 1).clamp(0, 999));
+  void _onFriendReqRejected(_) =>
+      setState(() => _friendsBadge = (_friendsBadge - 1).clamp(0, 999));
   void _onPendingCount(dynamic d) {
     final count = (d as Map?)?['count'] as int? ?? 0;
     if (mounted) setState(() => _friendsBadge = count);
   }
+
   void _onNotifBump(_) => setState(() => _notifBadge++);
   void _onStatusChange(dynamic d) {
     final m = d as Map?;
     if (m == null) return;
     context.read<AuthProvider>().updateOnlineStatus(
-      m['userId'] as String? ?? '', m['isOnline'] as bool? ?? false);
+        m['userId'] as String? ?? '', m['isOnline'] as bool? ?? false);
   }
 
   @override
   void dispose() {
     final s = SocketService.instance;
-    s.off('friend-request-received',       _onFriendReqReceived);
+    s.off('friend-request-received', _onFriendReqReceived);
     s.off('friend-request-accepted-realtime', _onFriendReqAccepted);
-    s.off('friend-request-rejected',        _onFriendReqRejected);
+    s.off('friend-request-rejected', _onFriendReqRejected);
     s.off('pending-requests-count-updated', _onPendingCount);
     s.off('user-status-changed', _onStatusChange);
     s.off('new-message', _onNotifBump);
@@ -89,7 +97,8 @@ class _HomeScreenState extends State<HomeScreen> {
       const ChatListScreen(),
       const FriendsScreen(),
       const RecommendationsScreen(),
-      NotificationsScreen(onUnreadChanged: (n) => setState(() => _notifBadge = n)),
+      NotificationsScreen(
+          onUnreadChanged: (n) => setState(() => _notifBadge = n)),
       const SettingsScreen(),
     ];
 

@@ -63,6 +63,17 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
     api.messages.markRead(userId).catch(() => {});
   }, [userId]);
 
+  // Seed initial online status — don't wait for a status-change event
+  useEffect(() => {
+    const onOnlineFriends = (data: unknown) => {
+      const { onlineFriends } = data as { onlineFriends?: string[] };
+      if (Array.isArray(onlineFriends)) setIsOnline(onlineFriends.includes(userId));
+    };
+    socketService.on("online-friends-response", onOnlineFriends);
+    socketService.emit("request-online-friends");
+    return () => socketService.off("online-friends-response", onOnlineFriends);
+  }, [userId]);
+
   useEffect(() => {
     const onStatus = (d: unknown) => {
       const { userId: u, isOnline: o, lastSeen: ls } = d as { userId: string; isOnline: boolean; lastSeen?: string };
@@ -87,6 +98,11 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
     socketService.on("user-typing", onTyping);
     return () => socketService.off("user-typing", onTyping);
   }, [userId]);
+
+  // Scroll to bottom when typing indicator appears so it's fully visible
+  useEffect(() => {
+    if (isTyping) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [isTyping]);
 
   // Infinite scroll sentinel observer
   useEffect(() => {

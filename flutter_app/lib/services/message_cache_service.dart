@@ -32,7 +32,8 @@ class MessageCacheService {
         .toList();
   }
 
-  Future<void> save(String conversationUserId, List<ChatMessage> messages) async {
+  Future<void> save(
+      String conversationUserId, List<ChatMessage> messages) async {
     final box = await _openBox(conversationUserId);
     await box.clear();
     // Keep only the most recent N messages to cap storage
@@ -80,34 +81,38 @@ class MessageCacheService {
   }
 
   Map<String, dynamic> _toCache(ChatMessage m) => {
-    'id':            m.id,
-    'sender':        m.sender,
-    'receiver':      m.receiver,
-    'plaintext':     m.plaintext,
-    'contentType':   m.contentType,
-    'sentAt':        m.sentAt.toIso8601String(),
-    'delivered':     m.delivered,
-    'deliveredAt':   m.deliveredAt?.toIso8601String(),
-    'read':          m.read,
-    'readAt':        m.readAt?.toIso8601String(),
-    'status':        m.status,
-    'isVoiceMessage': m.isVoiceMessage,
-    'tempId':        m.tempId,
-  };
+        'id': m.id,
+        'sender': m.sender,
+        'receiver': m.receiver,
+        'plaintext': m.plaintext,
+        'contentType': m.contentType,
+        'sentAt': m.sentAt.toIso8601String(),
+        'delivered': m.delivered,
+        'deliveredAt': m.deliveredAt?.toIso8601String(),
+        'read': m.read,
+        'readAt': m.readAt?.toIso8601String(),
+        'status': m.status,
+        'isVoiceMessage': m.isVoiceMessage,
+        'tempId': m.tempId,
+      };
 
   ChatMessage _fromCache(Map<String, dynamic> c) => ChatMessage(
-    id:            c['id'] as String,
-    sender:        c['sender'] as String,
-    receiver:      c['receiver'] as String,
-    plaintext:     c['plaintext'] as String?,
-    contentType:   c['contentType'] as String? ?? 'text',
-    sentAt:        DateTime.parse(c['sentAt'] as String),
-    delivered:     c['delivered'] as bool? ?? false,
-    deliveredAt:   c['deliveredAt'] != null ? DateTime.tryParse(c['deliveredAt'] as String) : null,
-    read:          c['read'] as bool? ?? false,
-    readAt:        c['readAt'] != null ? DateTime.tryParse(c['readAt'] as String) : null,
-    status:        c['status'] as String? ?? 'sent',
-    isVoiceMessage: c['isVoiceMessage'] as bool? ?? false,
-    tempId:        c['tempId'] as String?,
-  );
+        id: c['id'] as String,
+        sender: c['sender'] as String,
+        receiver: c['receiver'] as String,
+        plaintext: c['plaintext'] as String?,
+        contentType: c['contentType'] as String? ?? 'text',
+        sentAt: DateTime.parse(c['sentAt'] as String),
+        delivered: c['delivered'] as bool? ?? false,
+        deliveredAt: c['deliveredAt'] != null
+            ? DateTime.tryParse(c['deliveredAt'] as String)
+            : null,
+        read: c['read'] as bool? ?? false,
+        readAt: c['readAt'] != null
+            ? DateTime.tryParse(c['readAt'] as String)
+            : null,
+        status: c['status'] as String? ?? 'sent',
+        isVoiceMessage: c['isVoiceMessage'] as bool? ?? false,
+        tempId: c['tempId'] as String?,
+      );
 }

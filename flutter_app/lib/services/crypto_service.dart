@@ -20,13 +20,13 @@ class CryptoService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _kPrivKey = 'reon_priv_key_jwk';
-  static const _kPubKey  = 'reon_pub_key_jwk';
+  static const _kPubKey = 'reon_pub_key_jwk';
 
   // ── Secure storage ────────────────────────────────────────────────────────────
 
   Future<bool> hasKeyPair() async {
     final priv = await _storage.read(key: _kPrivKey);
-    final pub  = await _storage.read(key: _kPubKey);
+    final pub = await _storage.read(key: _kPubKey);
     return priv != null && pub != null;
   }
 
@@ -49,12 +49,15 @@ class CryptoService {
 
   Future<void> importKeyPairFromPrivateJwk(Map<String, dynamic> privJwk) async {
     final pubJwk = {
-      'kty': 'RSA', 'alg': 'RSA-OAEP-256',
-      'n': privJwk['n'], 'e': privJwk['e'],
-      'ext': true, 'key_ops': ['encrypt'],
+      'kty': 'RSA',
+      'alg': 'RSA-OAEP-256',
+      'n': privJwk['n'],
+      'e': privJwk['e'],
+      'ext': true,
+      'key_ops': ['encrypt'],
     };
     await _storage.write(key: _kPrivKey, value: jsonEncode(privJwk));
-    await _storage.write(key: _kPubKey,  value: jsonEncode(pubJwk));
+    await _storage.write(key: _kPubKey, value: jsonEncode(pubJwk));
   }
 
   // ── Key generation ────────────────────────────────────────────────────────────
@@ -63,15 +66,15 @@ class CryptoService {
     final rng = _buildSecureRandom();
     final gen = RSAKeyGenerator()
       ..init(ParametersWithRandom(
-        RSAKeyGeneratorParameters(BigInt.from(65537), 2048, 64), rng));
-    final pair  = gen.generateKeyPair();
-    final pub   = pair.publicKey  as RSAPublicKey;
-    final priv  = pair.privateKey as RSAPrivateKey;
+          RSAKeyGeneratorParameters(BigInt.from(65537), 2048, 64), rng));
+    final pair = gen.generateKeyPair();
+    final pub = pair.publicKey as RSAPublicKey;
+    final priv = pair.privateKey as RSAPrivateKey;
 
-    final pubJwk  = _rsaPublicToJwk(pub);
+    final pubJwk = _rsaPublicToJwk(pub);
     final privJwk = _rsaPrivateToJwk(priv);
 
-    await _storage.write(key: _kPubKey,  value: jsonEncode(pubJwk));
+    await _storage.write(key: _kPubKey, value: jsonEncode(pubJwk));
     await _storage.write(key: _kPrivKey, value: jsonEncode(privJwk));
 
     return pubJwk;
@@ -80,11 +83,13 @@ class CryptoService {
   // ── JWK ↔ pointycastle ───────────────────────────────────────────────────────
 
   Map<String, dynamic> _rsaPublicToJwk(RSAPublicKey k) => {
-    'kty': 'RSA', 'alg': 'RSA-OAEP-256',
-    'n': _b64url(k.modulus!),
-    'e': _b64url(k.publicExponent!),
-    'ext': true, 'key_ops': ['encrypt'],
-  };
+        'kty': 'RSA',
+        'alg': 'RSA-OAEP-256',
+        'n': _b64url(k.modulus!),
+        'e': _b64url(k.publicExponent!),
+        'ext': true,
+        'key_ops': ['encrypt'],
+      };
 
   Map<String, dynamic> _rsaPrivateToJwk(RSAPrivateKey k) {
     final p = k.p!, q = k.q!, d = k.privateExponent!, n = k.modulus!;
@@ -93,23 +98,30 @@ class CryptoService {
     final dq = d % (q - BigInt.one);
     final qi = q.modInverse(p);
     return {
-      'kty': 'RSA', 'alg': 'RSA-OAEP-256',
-      'n': _b64url(n), 'e': _b64url(e), 'd': _b64url(d),
-      'p': _b64url(p), 'q': _b64url(q),
-      'dp': _b64url(dp), 'dq': _b64url(dq), 'qi': _b64url(qi),
-      'ext': true, 'key_ops': ['decrypt'],
+      'kty': 'RSA',
+      'alg': 'RSA-OAEP-256',
+      'n': _b64url(n),
+      'e': _b64url(e),
+      'd': _b64url(d),
+      'p': _b64url(p),
+      'q': _b64url(q),
+      'dp': _b64url(dp),
+      'dq': _b64url(dq),
+      'qi': _b64url(qi),
+      'ext': true,
+      'key_ops': ['decrypt'],
     };
   }
 
-  RSAPublicKey _jwkToPublic(Map<String, dynamic> jwk) =>
-      RSAPublicKey(_b64urlToBigInt(jwk['n'] as String), _b64urlToBigInt(jwk['e'] as String));
+  RSAPublicKey _jwkToPublic(Map<String, dynamic> jwk) => RSAPublicKey(
+      _b64urlToBigInt(jwk['n'] as String), _b64urlToBigInt(jwk['e'] as String));
 
   RSAPrivateKey _jwkToPrivate(Map<String, dynamic> jwk) => RSAPrivateKey(
-    _b64urlToBigInt(jwk['n'] as String),
-    _b64urlToBigInt(jwk['d'] as String),
-    _b64urlToBigInt(jwk['p'] as String),
-    _b64urlToBigInt(jwk['q'] as String),
-  );
+        _b64urlToBigInt(jwk['n'] as String),
+        _b64urlToBigInt(jwk['d'] as String),
+        _b64urlToBigInt(jwk['p'] as String),
+        _b64urlToBigInt(jwk['q'] as String),
+      );
 
   // ── RSA-OAEP encrypt/decrypt ──────────────────────────────────────────────────
 
@@ -126,7 +138,8 @@ class CryptoService {
   }
 
   // Encrypt an AES key (raw bytes) with a JWK public key → base64
-  String rsaEncryptAesKey(Uint8List aesKeyBytes, Map<String, dynamic> recipientPubJwk) {
+  String rsaEncryptAesKey(
+      Uint8List aesKeyBytes, Map<String, dynamic> recipientPubJwk) {
     final pub = _jwkToPublic(recipientPubJwk);
     return base64.encode(_rsaEncrypt(aesKeyBytes, pub));
   }
@@ -145,66 +158,75 @@ class CryptoService {
 
   Uint8List _aesGcmEncrypt(Uint8List key, Uint8List iv, Uint8List plain) {
     final gcm = GCMBlockCipher(AESEngine())
-      ..init(true, AEADParameters(KeyParameter(key), _tagBits, iv, Uint8List(0)));
+      ..init(
+          true, AEADParameters(KeyParameter(key), _tagBits, iv, Uint8List(0)));
     return gcm.process(plain);
   }
 
   Uint8List _aesGcmDecrypt(Uint8List key, Uint8List iv, Uint8List cipher) {
     final gcm = GCMBlockCipher(AESEngine())
-      ..init(false, AEADParameters(KeyParameter(key), _tagBits, iv, Uint8List(0)));
+      ..init(
+          false, AEADParameters(KeyParameter(key), _tagBits, iv, Uint8List(0)));
     return gcm.process(cipher);
   }
 
   // ── Text message encrypt ──────────────────────────────────────────────────────
   // Output matches web app: base64(12-byte IV ++ ciphertext) + RSA-encrypted AES keys
 
-  Future<({String ciphertext, String encryptedKey, String senderEncryptedKey})> encryptText(
+  Future<({String ciphertext, String encryptedKey, String senderEncryptedKey})>
+      encryptText(
     String plaintext,
     Map<String, dynamic> receiverPubJwk,
   ) async {
     final myPubJwk = await getStoredPublicKey();
     if (myPubJwk == null) throw Exception('No public key stored');
 
-    final aesKey  = _randomBytes(32);
-    final iv      = _randomBytes(12);
+    final aesKey = _randomBytes(32);
+    final iv = _randomBytes(12);
     final encoded = Uint8List.fromList(utf8.encode(plaintext));
-    final cipher  = _aesGcmEncrypt(aesKey, iv, encoded);
+    final cipher = _aesGcmEncrypt(aesKey, iv, encoded);
 
     // Prepend IV (matches web app's decryptText)
     final combined = Uint8List(12 + cipher.length)
       ..setRange(0, 12, iv)
       ..setRange(12, 12 + cipher.length, cipher);
 
-    final encKey       = rsaEncryptAesKey(aesKey, receiverPubJwk);
+    final encKey = rsaEncryptAesKey(aesKey, receiverPubJwk);
     final senderEncKey = rsaEncryptAesKey(aesKey, myPubJwk);
 
     return (
-      ciphertext:          base64.encode(combined),
-      encryptedKey:        encKey,
-      senderEncryptedKey:  senderEncKey,
+      ciphertext: base64.encode(combined),
+      encryptedKey: encKey,
+      senderEncryptedKey: senderEncKey,
     );
   }
 
   // ── Text message decrypt ──────────────────────────────────────────────────────
 
-  Future<String?> decryptText(String ciphertextB64, String encryptedKeyB64) async {
+  Future<String?> decryptText(
+      String ciphertextB64, String encryptedKeyB64) async {
     try {
       final aesKeyBytes = await rsaDecryptAesKey(encryptedKeyB64);
-      final combined    = base64.decode(ciphertextB64);
-      final iv          = combined.sublist(0, 12);
-      final cipher      = combined.sublist(12);
-      final plain       = _aesGcmDecrypt(Uint8List.fromList(aesKeyBytes), Uint8List.fromList(iv), Uint8List.fromList(cipher));
+      final combined = base64.decode(ciphertextB64);
+      final iv = combined.sublist(0, 12);
+      final cipher = combined.sublist(12);
+      final plain = _aesGcmDecrypt(Uint8List.fromList(aesKeyBytes),
+          Uint8List.fromList(iv), Uint8List.fromList(cipher));
       return utf8.decode(plain);
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Device-linking (ECDH P-256 + AES-GCM) ───────────────────────────────────
 
   ECDomainParameters get _p256 => ECDomainParameters('prime256v1');
 
-  Future<({Map<String, dynamic> publicKey, ECPrivateKey privateKey})> generateECDHKeyPair() async {
+  Future<({Map<String, dynamic> publicKey, ECPrivateKey privateKey})>
+      generateECDHKeyPair() async {
     final keyGen = ECKeyGenerator()
-      ..init(ParametersWithRandom(ECKeyGeneratorParameters(_p256), _buildSecureRandom()));
+      ..init(ParametersWithRandom(
+          ECKeyGeneratorParameters(_p256), _buildSecureRandom()));
     final pair = keyGen.generateKeyPair();
     return (
       publicKey: _ecPublicToJwk(pair.publicKey as ECPublicKey),
@@ -216,7 +238,8 @@ class CryptoService {
     final x = _fixedBytes(pub.Q!.x!.toBigInteger()!, 32);
     final y = _fixedBytes(pub.Q!.y!.toBigInteger()!, 32);
     return {
-      'kty': 'EC', 'crv': 'P-256',
+      'kty': 'EC',
+      'crv': 'P-256',
       'x': base64Url.encode(x).replaceAll('=', ''),
       'y': base64Url.encode(y).replaceAll('=', ''),
       'ext': true,
@@ -229,7 +252,8 @@ class CryptoService {
     return ECPublicKey(_p256.curve.createPoint(x, y), _p256);
   }
 
-  Uint8List deriveTransferAesKey(ECPrivateKey myPrivate, Map<String, dynamic> theirPubJwk) {
+  Uint8List deriveTransferAesKey(
+      ECPrivateKey myPrivate, Map<String, dynamic> theirPubJwk) {
     final agreement = ECDHBasicAgreement()..init(myPrivate);
     final secret = agreement.calculateAgreement(_jwkToEcPublic(theirPubJwk));
     return _fixedBytes(secret, 32);
@@ -245,8 +269,10 @@ class CryptoService {
     return (ciphertext: base64.encode(cipher), iv: base64.encode(iv));
   }
 
-  Map<String, dynamic> decryptFromTransfer(String ciphertextB64, String ivB64, Uint8List aesKey) {
-    final plain = _aesGcmDecrypt(aesKey, base64.decode(ivB64), base64.decode(ciphertextB64));
+  Map<String, dynamic> decryptFromTransfer(
+      String ciphertextB64, String ivB64, Uint8List aesKey) {
+    final plain = _aesGcmDecrypt(
+        aesKey, base64.decode(ivB64), base64.decode(ciphertextB64));
     return jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
   }
 
@@ -297,7 +323,9 @@ class CryptoService {
 
   BigInt _bytesToBigInt(Uint8List bytes) {
     BigInt result = BigInt.zero;
-    for (final b in bytes) { result = (result << 8) | BigInt.from(b); }
+    for (final b in bytes) {
+      result = (result << 8) | BigInt.from(b);
+    }
     return result;
   }
 }

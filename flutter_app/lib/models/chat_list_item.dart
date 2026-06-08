@@ -24,20 +24,23 @@ class ChatListItem {
   factory ChatListItem.fromJson(Map<String, dynamic> j) {
     final lm = j['lastMessage'] as Map<String, dynamic>?;
     return ChatListItem(
-      id:                 j['_id'] as String,
-      fullName:           j['fullName'] as String,
-      username:           j['username'] as String?,
-      profilePic:         j['profilePic'] as String?,
+      id: j['_id'] as String,
+      fullName: j['fullName'] as String,
+      username: j['username'] as String?,
+      profilePic: j['profilePic'] as String?,
       lastMessageContent: lm?['content'] as String?,
-      lastMessageType:    lm?['contentType'] as String?,
-      lastMessageAt:      lm?['sentAt'] != null ? DateTime.tryParse(lm!['sentAt'] as String) : null,
-      unreadCount:        j['unreadCount'] as int? ?? 0,
-      isOnline:           j['isOnline'] as bool? ?? false,
+      lastMessageType: lm?['contentType'] as String?,
+      lastMessageAt: lm?['sentAt'] != null
+          ? DateTime.tryParse(lm!['sentAt'] as String)
+          : null,
+      unreadCount: j['unreadCount'] as int? ?? 0,
+      isOnline: j['isOnline'] as bool? ?? false,
     );
   }
 
   String get previewText {
-    if (lastMessageType != null && lastMessageType != 'text') return '📎 ${lastMessageType!}';
+    if (lastMessageType != null && lastMessageType != 'text')
+      return '📎 ${lastMessageType!}';
     return lastMessageContent ?? 'No messages yet';
   }
 }

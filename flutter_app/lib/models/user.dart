@@ -2,12 +2,13 @@ class PrivacySettings {
   final bool showLastSeen;
   final bool showActiveStatus;
 
-  const PrivacySettings({this.showLastSeen = true, this.showActiveStatus = true});
+  const PrivacySettings(
+      {this.showLastSeen = true, this.showActiveStatus = true});
 
   factory PrivacySettings.fromJson(Map<String, dynamic>? j) => PrivacySettings(
-    showLastSeen:     j?['showLastSeen'] as bool? ?? true,
-    showActiveStatus: j?['showActiveStatus'] as bool? ?? true,
-  );
+        showLastSeen: j?['showLastSeen'] as bool? ?? true,
+        showActiveStatus: j?['showActiveStatus'] as bool? ?? true,
+      );
 }
 
 class ReonUser {
@@ -40,19 +41,20 @@ class ReonUser {
   });
 
   factory ReonUser.fromJson(Map<String, dynamic> j) => ReonUser(
-    id:              j['_id'] as String,
-    fullName:        j['fullName'] as String,
-    email:           j['email'] as String? ?? '',
-    username:        j['username'] as String?,
-    profilePic:      j['profilePic'] as String?,
-    bio:             j['bio'] as String?,
-    location:        j['location'] as String?,
-    nativeLanguage:  j['nativeLanguage'] as String?,
-    isOnboarded:     j['isOnboarded'] as bool? ?? false,
-    isOnline:        j['isOnline'] as bool? ?? false,
-    hasPassword:     j['hasPassword'] as bool? ?? true,
-    privacySettings: PrivacySettings.fromJson(j['privacySettings'] as Map<String, dynamic>?),
-  );
+        id: j['_id'] as String,
+        fullName: j['fullName'] as String,
+        email: j['email'] as String? ?? '',
+        username: j['username'] as String?,
+        profilePic: j['profilePic'] as String?,
+        bio: j['bio'] as String?,
+        location: j['location'] as String?,
+        nativeLanguage: j['nativeLanguage'] as String?,
+        isOnboarded: j['isOnboarded'] as bool? ?? false,
+        isOnline: j['isOnline'] as bool? ?? false,
+        hasPassword: j['hasPassword'] as bool? ?? true,
+        privacySettings: PrivacySettings.fromJson(
+            j['privacySettings'] as Map<String, dynamic>?),
+      );
 
   ReonUser copyWith({
     bool? isOnline,
@@ -61,15 +63,21 @@ class ReonUser {
     String? location,
     String? profilePic,
     PrivacySettings? privacySettings,
-  }) => ReonUser(
-    id: id, fullName: fullName ?? this.fullName, email: email, username: username,
-    profilePic: profilePic ?? this.profilePic, bio: bio ?? this.bio,
-    location: location ?? this.location, nativeLanguage: nativeLanguage,
-    isOnboarded: isOnboarded,
-    isOnline: isOnline ?? this.isOnline,
-    hasPassword: hasPassword,
-    privacySettings: privacySettings ?? this.privacySettings,
-  );
+  }) =>
+      ReonUser(
+        id: id,
+        fullName: fullName ?? this.fullName,
+        email: email,
+        username: username,
+        profilePic: profilePic ?? this.profilePic,
+        bio: bio ?? this.bio,
+        location: location ?? this.location,
+        nativeLanguage: nativeLanguage,
+        isOnboarded: isOnboarded,
+        isOnline: isOnline ?? this.isOnline,
+        hasPassword: hasPassword,
+        privacySettings: privacySettings ?? this.privacySettings,
+      );
 
   String get displayName => username != null ? '@$username' : email;
 }

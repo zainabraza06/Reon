@@ -492,7 +492,7 @@ export default function Sidebar({ onNewGroup }: Props) {
                 <li key={chat._id}>
                   <Link
                     href={`/chat/${chat._id}`}
-                    className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all ${
+                    className={`flex items-center gap-3 mx-2 px-3 py-2.5 rounded-xl transition-all min-w-0 ${
                       active
                         ? "bg-violet-50 dark:bg-violet-500/10"
                         : "hover:bg-gray-50 dark:hover:bg-white/[0.04]"

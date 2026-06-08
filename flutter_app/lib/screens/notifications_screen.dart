@@ -10,7 +10,8 @@ import '../widgets/chat_avatar.dart';
 class NotificationsScreen extends StatefulWidget {
   final ValueChanged<int>? onUnreadChanged;
   const NotificationsScreen({super.key, this.onUnreadChanged});
-  @override State<NotificationsScreen> createState() => _NotificationsScreenState();
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
@@ -44,7 +45,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final list = await ApiService.instance.getNotifications();
       if (mounted) {
-        setState(() { _items = list; _loading = false; });
+        setState(() {
+          _items = list;
+          _loading = false;
+        });
         _notifyUnread();
       }
     } catch (_) {
@@ -89,7 +93,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'friend_accepted',
       title: 'Friend Request Accepted',
-      body: '${receiver?['fullName'] ?? 'Someone'} accepted your friend request',
+      body:
+          '${receiver?['fullName'] ?? 'Someone'} accepted your friend request',
       avatar: receiver?['profilePic'] as String?,
       read: false,
       timestamp: DateTime.now(),
@@ -136,19 +141,37 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _markRead(String id) async {
-    setState(() => _items = _items.map((n) => n.id == id ? AppNotification(
-      id: n.id, type: n.type, title: n.title, body: n.body,
-      avatar: n.avatar, link: n.link, read: true, timestamp: n.timestamp,
-    ) : n).toList());
+    setState(() => _items = _items
+        .map((n) => n.id == id
+            ? AppNotification(
+                id: n.id,
+                type: n.type,
+                title: n.title,
+                body: n.body,
+                avatar: n.avatar,
+                link: n.link,
+                read: true,
+                timestamp: n.timestamp,
+              )
+            : n)
+        .toList());
     _notifyUnread();
     await ApiService.instance.markNotificationRead(id).catchError((_) {});
   }
 
   Future<void> _markAllRead() async {
-    setState(() => _items = _items.map((n) => AppNotification(
-      id: n.id, type: n.type, title: n.title, body: n.body,
-      avatar: n.avatar, link: n.link, read: true, timestamp: n.timestamp,
-    )).toList());
+    setState(() => _items = _items
+        .map((n) => AppNotification(
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              body: n.body,
+              avatar: n.avatar,
+              link: n.link,
+              read: true,
+              timestamp: n.timestamp,
+            ))
+        .toList());
     _notifyUnread();
     await ApiService.instance.markAllNotificationsRead().catchError((_) {});
   }
@@ -174,13 +197,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   IconData _iconFor(String type) => switch (type) {
-    'friend_request' => Icons.person_add_rounded,
-    'friend_accepted' => Icons.check_circle_outline_rounded,
-    'group_added' => Icons.group_add_rounded,
-    'group_removed' => Icons.group_remove_rounded,
-    'new_message' => Icons.chat_bubble_outline_rounded,
-    _ => Icons.forum_outlined,
-  };
+        'friend_request' => Icons.person_add_rounded,
+        'friend_accepted' => Icons.check_circle_outline_rounded,
+        'group_added' => Icons.group_add_rounded,
+        'group_removed' => Icons.group_remove_rounded,
+        'new_message' => Icons.chat_bubble_outline_rounded,
+        _ => Icons.forum_outlined,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -188,39 +211,72 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     return Column(children: [
       Container(
-        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 8, left: 16, right: 16, bottom: 12),
+        padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 16,
+            right: 16,
+            bottom: 12),
         decoration: BoxDecoration(
           color: isDark ? ReonColors.surfaceDark : Colors.white,
-          border: Border(bottom: BorderSide(color: isDark ? ReonColors.borderDark : ReonColors.borderLight)),
+          border: Border(
+              bottom: BorderSide(
+                  color:
+                      isDark ? ReonColors.borderDark : ReonColors.borderLight)),
         ),
         child: Row(children: [
-          const Icon(Icons.notifications_outlined, color: ReonColors.primary, size: 20),
+          const Icon(Icons.notifications_outlined,
+              color: ReonColors.primary, size: 20),
           const SizedBox(width: 8),
-          Text('Notifications', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
+          Text('Notifications',
+              style:
+                  GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16)),
           if (_unread > 0) ...[
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(gradient: kBrandGradient, borderRadius: BorderRadius.circular(10)),
-              child: Text('$_unread', style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+              decoration: BoxDecoration(
+                  gradient: kBrandGradient,
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text('$_unread',
+                  style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700)),
             ),
           ],
           const Spacer(),
           if (_unread > 0)
-            TextButton(onPressed: _markAllRead, child: Text('Mark all read', style: GoogleFonts.inter(fontSize: 12, color: ReonColors.primary))),
+            TextButton(
+                onPressed: _markAllRead,
+                child: Text('Mark all read',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: ReonColors.primary))),
           if (_items.isNotEmpty)
-            TextButton(onPressed: _clearAll, child: Text('Clear', style: GoogleFonts.inter(fontSize: 12, color: ReonColors.textMuted))),
+            TextButton(
+                onPressed: _clearAll,
+                child: Text('Clear',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: ReonColors.textMuted))),
         ]),
       ),
       Expanded(
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: ReonColors.primary))
+            ? const Center(
+                child: CircularProgressIndicator(color: ReonColors.primary))
             : _items.isEmpty
-                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.notifications_none_rounded, size: 48, color: ReonColors.textMuted.withValues(alpha: 0.4)),
+                ? Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.notifications_none_rounded,
+                        size: 48,
+                        color: ReonColors.textMuted.withValues(alpha: 0.4)),
                     const SizedBox(height: 12),
-                    Text('All caught up!', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: ReonColors.textMuted)),
-                    Text('No notifications yet', style: GoogleFonts.inter(fontSize: 12, color: ReonColors.textMuted)),
+                    Text('All caught up!',
+                        style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            color: ReonColors.textMuted)),
+                    Text('No notifications yet',
+                        style: GoogleFonts.inter(
+                            fontSize: 12, color: ReonColors.textMuted)),
                   ]))
                 : ListView.builder(
                     itemCount: _items.length,
@@ -234,30 +290,62 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
                           color: ReonColors.danger.withValues(alpha: 0.15),
-                          child: const Icon(Icons.delete_outline, color: ReonColors.danger),
+                          child: const Icon(Icons.delete_outline,
+                              color: ReonColors.danger),
                         ),
                         child: InkWell(
-                          onTap: () { if (!n.read) _markRead(n.id); },
+                          onTap: () {
+                            if (!n.read) _markRead(n.id);
+                          },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            color: !n.read ? ReonColors.primary.withValues(alpha: 0.05) : null,
-                            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              n.avatar != null
-                                  ? ChatAvatar(name: n.title, imageUrl: n.avatar, size: 42)
-                                  : CircleAvatar(
-                                      radius: 21,
-                                      backgroundColor: ReonColors.primary.withValues(alpha: 0.12),
-                                      child: Icon(_iconFor(n.type), size: 18, color: ReonColors.primary),
-                                    ),
-                              const SizedBox(width: 12),
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(n.title, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14)),
-                                Text(n.body, style: GoogleFonts.inter(fontSize: 13, color: ReonColors.textMuted)),
-                                Text(_formatTime(n.timestamp), style: GoogleFonts.inter(fontSize: 11, color: ReonColors.textMuted)),
-                              ])),
-                              if (!n.read)
-                                Container(width: 8, height: 8, decoration: const BoxDecoration(color: ReonColors.primary, shape: BoxShape.circle)),
-                            ]),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            color: !n.read
+                                ? ReonColors.primary.withValues(alpha: 0.05)
+                                : null,
+                            child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  n.avatar != null
+                                      ? ChatAvatar(
+                                          name: n.title,
+                                          imageUrl: n.avatar,
+                                          size: 42)
+                                      : CircleAvatar(
+                                          radius: 21,
+                                          backgroundColor: ReonColors.primary
+                                              .withValues(alpha: 0.12),
+                                          child: Icon(_iconFor(n.type),
+                                              size: 18,
+                                              color: ReonColors.primary),
+                                        ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text(n.title,
+                                            style: GoogleFonts.inter(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14)),
+                                        Text(n.body,
+                                            style: GoogleFonts.inter(
+                                                fontSize: 13,
+                                                color: ReonColors.textMuted)),
+                                        Text(_formatTime(n.timestamp),
+                                            style: GoogleFonts.inter(
+                                                fontSize: 11,
+                                                color: ReonColors.textMuted)),
+                                      ])),
+                                  if (!n.read)
+                                    Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                            color: ReonColors.primary,
+                                            shape: BoxShape.circle)),
+                                ]),
                           ),
                         ),
                       );

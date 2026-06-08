@@ -11,7 +11,8 @@ import '../services/crypto_service.dart';
 
 class LinkDeviceScreen extends StatefulWidget {
   const LinkDeviceScreen({super.key});
-  @override State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
+  @override
+  State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
 }
 
 class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
@@ -37,7 +38,8 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
       } catch (_) {}
     } else if (status.isPermanentlyDenied) {
       setState(() {
-        _error = 'Camera access is permanently denied.\nGo to Settings → Apps → Reon → Permissions and enable Camera.';
+        _error =
+            'Camera access is permanently denied.\nGo to Settings → Apps → Reon → Permissions and enable Camera.';
         _step = 'error';
       });
     } else {
@@ -64,15 +66,21 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     try {
       final decoded = utf8.decode(base64.decode(raw));
       final parsed = jsonDecode(decoded) as Map<String, dynamic>;
-      if (parsed['sessionId'] != null && parsed['ecdhPublicKey'] != null) return raw;
+      if (parsed['sessionId'] != null && parsed['ecdhPublicKey'] != null)
+        return raw;
     } catch (_) {}
     return null;
   }
 
   Future<void> _processPayload(String encoded) async {
-    setState(() { _step = 'connecting'; _error = ''; });
+    setState(() {
+      _step = 'connecting';
+      _error = '';
+    });
     try {
-      final json = jsonDecode(utf8.decode(base64.decode(Uri.decodeComponent(encoded)))) as Map<String, dynamic>;
+      final json =
+          jsonDecode(utf8.decode(base64.decode(Uri.decodeComponent(encoded))))
+              as Map<String, dynamic>;
       final sessionId = json['sessionId'] as String;
       final ecdhPubA = json['ecdhPublicKey'] as Map<String, dynamic>;
 
@@ -85,10 +93,13 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
       // Poll until keys are ready
       for (var i = 0; i < 60; i++) {
         final session = await ApiService.instance.getLinkSession(sessionId);
-        if (session.status == 'ready' && session.encryptedPrivateKey != null && session.iv != null) {
-          final aesKey = CryptoService.instance.deriveTransferAesKey(_ecdhPrivate!, ecdhPubA);
+        if (session.status == 'ready' &&
+            session.encryptedPrivateKey != null &&
+            session.iv != null) {
+          final aesKey = CryptoService.instance
+              .deriveTransferAesKey(_ecdhPrivate!, ecdhPubA);
           final privJwk = CryptoService.instance.decryptFromTransfer(
-            session.encryptedPrivateKey!, session.iv!, aesKey);
+              session.encryptedPrivateKey!, session.iv!, aesKey);
           await CryptoService.instance.importKeyPairFromPrivateJwk(privJwk);
           if (mounted) setState(() => _step = 'done');
           return;
@@ -97,7 +108,11 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
       }
       throw Exception('Timed out waiting for key transfer');
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _step = 'error'; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _step = 'error';
+        });
     }
   }
 
@@ -130,66 +145,87 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
 
   Widget _buildBody() {
     return switch (_step) {
-      'connecting' => const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        CircularProgressIndicator(color: ReonColors.primary),
-        SizedBox(height: 16),
-        Text('Receiving encryption keys…'),
-      ])),
-      'done' => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.shield_rounded, color: Colors.teal, size: 56),
-        const SizedBox(height: 12),
-        Text('Device linked!', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
-        const SizedBox(height: 8),
-        Text('Your encryption keys are ready. You can now read your encrypted messages on this device.',
-          style: GoogleFonts.inter(color: ReonColors.textMuted), textAlign: TextAlign.center),
-        const SizedBox(height: 20),
-        ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
-      ])),
-      'error' => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.error_outline, color: ReonColors.danger, size: 48),
-        const SizedBox(height: 12),
-        Text(_error, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 14)),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () {
-            setState(() { _step = 'scan'; _error = ''; });
-            _requestAndStart();
-          },
-          child: const Text('Grant Permission'),
-        ),
-      ])),
+      'connecting' => const Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CircularProgressIndicator(color: ReonColors.primary),
+          SizedBox(height: 16),
+          Text('Receiving encryption keys…'),
+        ])),
+      'done' => Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.shield_rounded, color: Colors.teal, size: 56),
+          const SizedBox(height: 12),
+          Text('Device linked!',
+              style:
+                  GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
+          const SizedBox(height: 8),
+          Text(
+              'Your encryption keys are ready. You can now read your encrypted messages on this device.',
+              style: GoogleFonts.inter(color: ReonColors.textMuted),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done')),
+        ])),
+      'error' => Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.error_outline, color: ReonColors.danger, size: 48),
+          const SizedBox(height: 12),
+          Text(_error,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 14)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _step = 'scan';
+                _error = '';
+              });
+              _requestAndStart();
+            },
+            child: const Text('Grant Permission'),
+          ),
+        ])),
       _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Scan QR Code', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 17)),
-        const SizedBox(height: 8),
-        Text('Scan the QR code shown on your other device, or paste the link below.',
-          style: GoogleFonts.inter(fontSize: 13, color: ReonColors.textMuted)),
-        const SizedBox(height: 16),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            height: 260,
-            child: MobileScanner(
-              controller: _scannerController,
-              onDetect: _onScan,
+          Text('Scan QR Code',
+              style:
+                  GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 17)),
+          const SizedBox(height: 8),
+          Text(
+              'Scan the QR code shown on your other device, or paste the link below.',
+              style:
+                  GoogleFonts.inter(fontSize: 13, color: ReonColors.textMuted)),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: 260,
+              child: MobileScanner(
+                controller: _scannerController,
+                onDetect: _onScan,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _manual,
-          decoration: const InputDecoration(
-            hintText: 'Paste link or payload here…',
-            prefixIcon: Icon(Icons.link_rounded),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _manual,
+            decoration: const InputDecoration(
+              hintText: 'Paste link or payload here…',
+              prefixIcon: Icon(Icons.link_rounded),
+            ),
+            maxLines: 2,
           ),
-          maxLines: 2,
-        ),
-        if (_error.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(_error, style: GoogleFonts.inter(color: ReonColors.danger, fontSize: 13)),
-        ],
-        const SizedBox(height: 12),
-        ElevatedButton(onPressed: _submitManual, child: const Text('Connect')),
-      ]),
+          if (_error.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(_error,
+                style:
+                    GoogleFonts.inter(color: ReonColors.danger, fontSize: 13)),
+          ],
+          const SizedBox(height: 12),
+          ElevatedButton(
+              onPressed: _submitManual, child: const Text('Connect')),
+        ]),
     };
   }
 }

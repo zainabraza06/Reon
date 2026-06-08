@@ -25,8 +25,8 @@ class ChatScreen extends StatelessWidget {
 
     return ChangeNotifierProvider(
       create: (_) => ChatProvider(
-        recipientId:    userId,
-        recipientName:  userName,
+        recipientId: userId,
+        recipientName: userName,
         recipientAvatar: userAvatar,
       )..init(myId),
       child: const _ChatView(),
@@ -41,7 +41,7 @@ class _ChatView extends StatefulWidget {
 }
 
 class _ChatViewState extends State<_ChatView> {
-  final _input  = TextEditingController();
+  final _input = TextEditingController();
   final _scroll = ScrollController();
 
   @override
@@ -75,8 +75,8 @@ class _ChatViewState extends State<_ChatView> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final me     = context.watch<AuthProvider>().user!;
-    final chat   = context.watch<ChatProvider>();
+    final me = context.watch<AuthProvider>().user!;
+    final chat = context.watch<ChatProvider>();
 
     // Auto-scroll when messages are added
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -87,14 +87,15 @@ class _ChatViewState extends State<_ChatView> {
     });
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF080816) : const Color(0xFFEEF2FF),
+      backgroundColor:
+          isDark ? const Color(0xFF080816) : const Color(0xFFEEF2FF),
       appBar: AppBar(
         backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
         elevation: 0,
         titleSpacing: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, size: 18,
-              color: isDark ? Colors.white : ReonColors.textLight),
+          icon: Icon(Icons.arrow_back_ios_new,
+              size: 18, color: isDark ? Colors.white : ReonColors.textLight),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Row(children: [
@@ -113,7 +114,8 @@ class _ChatViewState extends State<_ChatView> {
                 Text(
                   chat.recipientName,
                   style: GoogleFonts.inter(
-                    fontSize: 15, fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : ReonColors.textLight,
                   ),
                 ),
@@ -121,7 +123,8 @@ class _ChatViewState extends State<_ChatView> {
                   chat.isTyping ? 'typing…' : (chat.isOnline ? 'Online' : ''),
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: chat.isTyping ? ReonColors.primary : ReonColors.online,
+                    color:
+                        chat.isTyping ? ReonColors.primary : ReonColors.online,
                   ),
                 ),
               ],
@@ -134,7 +137,8 @@ class _ChatViewState extends State<_ChatView> {
           GestureDetector(
             onTap: () {
               if (chat.messages.isNotEmpty) {
-                chat.loadMessages(me.id, before: chat.messages.first.sentAt.toIso8601String());
+                chat.loadMessages(me.id,
+                    before: chat.messages.first.sentAt.toIso8601String());
               }
             },
             child: Container(
@@ -142,7 +146,9 @@ class _ChatViewState extends State<_ChatView> {
               child: Text(
                 'Load earlier',
                 style: GoogleFonts.inter(
-                  fontSize: 12, color: ReonColors.primary, fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: ReonColors.primary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -173,7 +179,9 @@ class _ChatViewState extends State<_ChatView> {
         Container(
           color: isDark ? ReonColors.surfaceDark : Colors.white,
           padding: EdgeInsets.only(
-            left: 8, right: 8, top: 8,
+            left: 8,
+            right: 8,
+            top: 8,
             bottom: MediaQuery.of(context).padding.bottom + 8,
           ),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -187,15 +195,18 @@ class _ChatViewState extends State<_ChatView> {
                 child: TextField(
                   controller: _input,
                   maxLines: null,
-                  onChanged: (v) => chat.handleTyping(v.trim().isNotEmpty, me.id),
+                  onChanged: (v) =>
+                      chat.handleTyping(v.trim().isNotEmpty, me.id),
                   style: GoogleFonts.inter(
                     fontSize: 14.5,
                     color: isDark ? ReonColors.textDark : ReonColors.textLight,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Message…',
-                    hintStyle: GoogleFonts.inter(fontSize: 14.5, color: ReonColors.textMuted),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    hintStyle: GoogleFonts.inter(
+                        fontSize: 14.5, color: ReonColors.textMuted),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                     border: InputBorder.none,
                   ),
                 ),
@@ -205,7 +216,8 @@ class _ChatViewState extends State<_ChatView> {
             GestureDetector(
               onTap: () => _send(chat, me.id),
               child: Container(
-                width: 44, height: 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   gradient: kBrandGradient,
                   shape: BoxShape.circle,
@@ -217,7 +229,8 @@ class _ChatViewState extends State<_ChatView> {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                child: const Icon(Icons.send_rounded,
+                    color: Colors.white, size: 20),
               ),
             ),
           ]),
@@ -234,22 +247,22 @@ class _TypingBubble extends StatelessWidget {
   const _TypingBubble({required this.isDark});
   @override
   Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: Container(
-      margin: const EdgeInsets.only(left: 12, top: 2, bottom: 2, right: 64),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? ReonColors.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (int i = 0; i < 3; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          _Dot(delay: Duration(milliseconds: i * 200)),
-        ],
-      ]),
-    ),
-  );
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.only(left: 12, top: 2, bottom: 2, right: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isDark ? ReonColors.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            for (int i = 0; i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 3),
+              _Dot(delay: Duration(milliseconds: i * 200)),
+            ],
+          ]),
+        ),
+      );
 }
 
 class _Dot extends StatefulWidget {
@@ -268,17 +281,27 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true, period: const Duration(milliseconds: 1200));
-    Future.delayed(widget.delay, () { if (mounted) _c.forward(); });
+    Future.delayed(widget.delay, () {
+      if (mounted) _c.forward();
+    });
   }
-  @override void dispose() { _c.dispose(); super.dispose(); }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => FadeTransition(
-    opacity: _c,
-    child: Container(
-      width: 7, height: 7,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: ReonColors.textMuted),
-    ),
-  );
+        opacity: _c,
+        child: Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+              shape: BoxShape.circle, color: ReonColors.textMuted),
+        ),
+      );
 }
 
 class _DotGrid extends CustomPainter {
@@ -295,6 +318,7 @@ class _DotGrid extends CustomPainter {
       }
     }
   }
+
   @override
   bool shouldRepaint(_DotGrid o) => o.isDark != isDark;
 }

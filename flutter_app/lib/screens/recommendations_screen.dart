@@ -10,7 +10,8 @@ import '../widgets/chat_avatar.dart';
 
 class RecommendationsScreen extends StatefulWidget {
   const RecommendationsScreen({super.key});
-  @override State<RecommendationsScreen> createState() => _RecommendationsScreenState();
+  @override
+  State<RecommendationsScreen> createState() => _RecommendationsScreenState();
 }
 
 class _RecommendationsScreenState extends State<RecommendationsScreen> {
@@ -49,7 +50,10 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   void _onSearchChanged() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      setState(() { _query = _search.text.trim(); _page = 1; });
+      setState(() {
+        _query = _search.text.trim();
+        _page = 1;
+      });
       _load(page: 1, replace: true);
     });
   }
@@ -65,7 +69,8 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   void _onAccepted(dynamic d) {
     final m = d as Map?;
     final id = m?['receiverId'] as String?;
-    if (id != null && mounted) setState(() => _users.removeWhere((u) => u.id == id));
+    if (id != null && mounted)
+      setState(() => _users.removeWhere((u) => u.id == id));
   }
 
   void _onRejected(dynamic d) {
@@ -86,29 +91,43 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     final m = d as Map?;
     final receiverId = m?['receiverId'] as String?;
     if (receiverId != null && mounted) {
-      setState(() => _users = _users.map((u) =>
-        u.id == receiverId ? u.copyWithFlags(friendRequestSent: false) : u).toList());
+      setState(() => _users = _users
+          .map((u) => u.id == receiverId
+              ? u.copyWithFlags(friendRequestSent: false)
+              : u)
+          .toList());
     }
   }
 
   Future<void> _load({required int page, required bool replace}) async {
-    if (page == 1) setState(() => _loading = true); else setState(() => _loadingMore = true);
+    if (page == 1)
+      setState(() => _loading = true);
+    else
+      setState(() => _loadingMore = true);
     try {
       final results = await Future.wait([
         ApiService.instance.getRecommendations(search: _query, page: page),
-        if (page == 1) ApiService.instance.getSentRequests() else Future.value(<FriendRequest>[]),
+        if (page == 1)
+          ApiService.instance.getSentRequests()
+        else
+          Future.value(<FriendRequest>[]),
       ]);
       final rec = results[0] as ({List<RecommendedUser> users, int total});
-      if (mounted) setState(() {
-        _users = replace ? rec.users : [..._users, ...rec.users];
-        _total = rec.total;
-        _page = page;
-        if (page == 1) _sent = results[1] as List<FriendRequest>;
-        _loading = false;
-        _loadingMore = false;
-      });
+      if (mounted)
+        setState(() {
+          _users = replace ? rec.users : [..._users, ...rec.users];
+          _total = rec.total;
+          _page = page;
+          if (page == 1) _sent = results[1] as List<FriendRequest>;
+          _loading = false;
+          _loadingMore = false;
+        });
     } catch (_) {
-      if (mounted) setState(() { _loading = false; _loadingMore = false; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
     }
   }
 
@@ -116,8 +135,11 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     setState(() => _pending.add(userId));
     try {
       await ApiService.instance.sendFriendRequest(userId);
-      if (mounted) setState(() => _users = _users.map((u) =>
-        u.id == userId ? u.copyWithFlags(friendRequestSent: true) : u).toList());
+      if (mounted)
+        setState(() => _users = _users
+            .map((u) =>
+                u.id == userId ? u.copyWithFlags(friendRequestSent: true) : u)
+            .toList());
     } catch (_) {}
     if (mounted) setState(() => _pending.remove(userId));
   }
@@ -125,12 +147,18 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   Future<void> _withdraw(String userId) async {
     FriendRequest? req;
     for (final r in _sent) {
-      if (r.receiver.id == userId) { req = r; break; }
+      if (r.receiver.id == userId) {
+        req = r;
+        break;
+      }
     }
     if (req == null) return;
     await ApiService.instance.withdrawFriendRequest(req.id).catchError((_) {});
-    if (mounted) setState(() => _users = _users.map((u) =>
-      u.id == userId ? u.copyWithFlags(friendRequestSent: false) : u).toList());
+    if (mounted)
+      setState(() => _users = _users
+          .map((u) =>
+              u.id == userId ? u.copyWithFlags(friendRequestSent: false) : u)
+          .toList());
     _load(page: 1, replace: true);
   }
 
@@ -139,7 +167,10 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
       final received = await ApiService.instance.getReceivedRequests();
       FriendRequest? req;
       for (final r in received) {
-        if (r.sender.id == userId) { req = r; break; }
+        if (r.sender.id == userId) {
+          req = r;
+          break;
+        }
       }
       if (req == null) return;
       await ApiService.instance.acceptFriendRequest(req.id);
@@ -155,26 +186,40 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
     return Column(
       children: [
         Container(
-          padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 8, 16, 12),
+          padding: EdgeInsets.fromLTRB(
+              16, MediaQuery.of(context).padding.top + 8, 16, 12),
           decoration: BoxDecoration(
             color: isDark ? ReonColors.surfaceDark : Colors.white,
-            border: Border(bottom: BorderSide(color: isDark ? ReonColors.borderDark : ReonColors.borderLight)),
+            border: Border(
+                bottom: BorderSide(
+                    color: isDark
+                        ? ReonColors.borderDark
+                        : ReonColors.borderLight)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
                 Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(color: ReonColors.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.explore_rounded, color: ReonColors.primary, size: 20),
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                      color: ReonColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.explore_rounded,
+                      color: ReonColors.primary, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Discover People', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 17)),
+                  Text('Discover People',
+                      style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700, fontSize: 17)),
                   Text(
-                    _total > 0 ? '$_total people to connect with' : 'Find new people to connect with',
-                    style: GoogleFonts.inter(fontSize: 12, color: ReonColors.textMuted),
+                    _total > 0
+                        ? '$_total people to connect with'
+                        : 'Find new people to connect with',
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: ReonColors.textMuted),
                   ),
                 ]),
               ]),
@@ -192,13 +237,21 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: ReonColors.primary))
+              ? const Center(
+                  child: CircularProgressIndicator(color: ReonColors.primary))
               : _users.isEmpty
-                  ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.person_add_outlined, size: 48, color: ReonColors.textMuted.withValues(alpha: 0.5)),
+                  ? Center(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.person_add_outlined,
+                          size: 48,
+                          color: ReonColors.textMuted.withValues(alpha: 0.5)),
                       const SizedBox(height: 12),
-                      Text(_query.isNotEmpty ? 'No results for "$_query"' : 'No suggestions right now',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                      Text(
+                          _query.isNotEmpty
+                              ? 'No results for "$_query"'
+                              : 'No suggestions right now',
+                          style:
+                              GoogleFonts.inter(fontWeight: FontWeight.w600)),
                     ]))
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
@@ -207,14 +260,21 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
                         if (i == _users.length) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Center(child: TextButton(
-                              onPressed: _loadingMore ? null : () => _load(page: _page + 1, replace: false),
-                              child: Text(_loadingMore ? 'Loading…' : 'Load more (${_total - _users.length} remaining)'),
+                            child: Center(
+                                child: TextButton(
+                              onPressed: _loadingMore
+                                  ? null
+                                  : () =>
+                                      _load(page: _page + 1, replace: false),
+                              child: Text(_loadingMore
+                                  ? 'Loading…'
+                                  : 'Load more (${_total - _users.length} remaining)'),
                             )),
                           );
                         }
                         final u = _users[i];
-                        final hasSent = u.friendRequestSent || _sent.any((r) => r.receiver.id == u.id);
+                        final hasSent = u.friendRequestSent ||
+                            _sent.any((r) => r.receiver.id == u.id);
                         return _UserCard(
                           user: u,
                           hasSent: hasSent,
@@ -240,8 +300,12 @@ class _UserCard extends StatelessWidget {
   final VoidCallback onAccept;
 
   const _UserCard({
-    required this.user, required this.hasSent, required this.isPending,
-    required this.onAdd, required this.onWithdraw, required this.onAccept,
+    required this.user,
+    required this.hasSent,
+    required this.isPending,
+    required this.onAdd,
+    required this.onWithdraw,
+    required this.onAccept,
   });
 
   @override
@@ -253,28 +317,66 @@ class _UserCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? ReonColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)
+              ],
       ),
       child: Row(children: [
         ChatAvatar(name: user.fullName, imageUrl: user.profilePic, size: 46),
         const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(user.fullName, style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-          if (user.username != null) Text('@${user.username}', style: GoogleFonts.inter(fontSize: 12, color: ReonColors.textMuted)),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(user.fullName,
+              style:
+                  GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          if (user.username != null)
+            Text('@${user.username}',
+                style: GoogleFonts.inter(
+                    fontSize: 12, color: ReonColors.textMuted)),
           if ((user.mutualFriendsCount ?? 0) > 0)
-            Text('${user.mutualFriendsCount} mutual', style: GoogleFonts.inter(fontSize: 11, color: ReonColors.primary, fontWeight: FontWeight.w600)),
+            Text('${user.mutualFriendsCount} mutual',
+                style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: ReonColors.primary,
+                    fontWeight: FontWeight.w600)),
         ])),
         if (user.friendRequestReceived)
-          _actionBtn(label: 'Accept', color: Colors.teal, icon: Icons.check_rounded, onTap: onAccept)
+          _actionBtn(
+              label: 'Accept',
+              color: Colors.teal,
+              icon: Icons.check_rounded,
+              onTap: onAccept)
         else if (hasSent)
-          _actionBtn(label: 'Withdraw', color: ReonColors.danger, icon: Icons.close_rounded, onTap: onWithdraw, outline: true)
+          _actionBtn(
+              label: 'Withdraw',
+              color: ReonColors.danger,
+              icon: Icons.close_rounded,
+              onTap: onWithdraw,
+              outline: true)
         else
-          _actionBtn(label: 'Add', color: ReonColors.primary, icon: Icons.person_add_rounded, onTap: onAdd, loading: isPending),
+          _actionBtn(
+              label: 'Add',
+              color: ReonColors.primary,
+              icon: Icons.person_add_rounded,
+              onTap: onAdd,
+              loading: isPending),
       ]),
     );
   }
 
-  Widget _actionBtn({required String label, required Color color, required IconData icon, required VoidCallback onTap, bool outline = false, bool loading = false}) {
+  Widget _actionBtn(
+      {required String label,
+      required Color color,
+      required IconData icon,
+      required VoidCallback onTap,
+      bool outline = false,
+      bool loading = false}) {
     return Material(
       color: outline ? Colors.transparent : color,
       borderRadius: BorderRadius.circular(10),
@@ -283,13 +385,25 @@ class _UserCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: outline ? BoxDecoration(border: Border.all(color: color.withValues(alpha: 0.5)), borderRadius: BorderRadius.circular(10)) : null,
+          decoration: outline
+              ? BoxDecoration(
+                  border: Border.all(color: color.withValues(alpha: 0.5)),
+                  borderRadius: BorderRadius.circular(10))
+              : null,
           child: loading
-              ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: outline ? color : Colors.white))
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: outline ? color : Colors.white))
               : Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(icon, size: 14, color: outline ? color : Colors.white),
                   const SizedBox(width: 4),
-                  Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: outline ? color : Colors.white)),
+                  Text(label,
+                      style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: outline ? color : Colors.white)),
                 ]),
         ),
       ),

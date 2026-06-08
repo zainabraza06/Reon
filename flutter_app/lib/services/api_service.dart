@@ -15,7 +15,8 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
   const ApiException(this.message, [this.statusCode]);
-  @override String toString() => message;
+  @override
+  String toString() => message;
 }
 
 class ApiService {
@@ -28,7 +29,8 @@ class ApiService {
   void init() {
     _dio = Dio(BaseOptions(
       baseUrl: kApiBase,
-      connectTimeout: const Duration(seconds: 90),  // Render free tier cold-start
+      connectTimeout:
+          const Duration(seconds: 90), // Render free tier cold-start
       receiveTimeout: const Duration(seconds: 120),
       headers: {'Content-Type': 'application/json'},
       validateStatus: (_) => true,
@@ -36,31 +38,42 @@ class ApiService {
     _dio.interceptors.add(CookieManager(_cookieJar));
   }
 
-  Future<Map<String, dynamic>> _req(String method, String path, {dynamic body, Map<String, String>? headers}) async {
+  Future<Map<String, dynamic>> _req(String method, String path,
+      {dynamic body, Map<String, String>? headers}) async {
     final opts = Options(method: method, headers: headers);
     final res = await _dio.request(path, data: body, options: opts);
-    if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
-      return res.data is Map ? Map<String, dynamic>.from(res.data as Map) : {'data': res.data};
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
+      return res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : {'data': res.data};
     }
-    final msg = (res.data is Map ? (res.data as Map)['message'] : null) as String? ?? 'Request failed';
+    final msg =
+        (res.data is Map ? (res.data as Map)['message'] : null) as String? ??
+            'Request failed';
     throw ApiException(msg, res.statusCode);
   }
 
-  Future<Map<String, dynamic>> _get(String path)                => _req('GET', path);
-  Future<Map<String, dynamic>> _post(String path, {dynamic body}) => _req('POST', path, body: body);
-  Future<Map<String, dynamic>> _put(String path, {dynamic body})  => _req('PUT', path, body: body);
-  Future<Map<String, dynamic>> _del(String path)                  => _req('DELETE', path);
-  Future<Map<String, dynamic>> _patch(String path)                => _req('PATCH', path);
+  Future<Map<String, dynamic>> _get(String path) => _req('GET', path);
+  Future<Map<String, dynamic>> _post(String path, {dynamic body}) =>
+      _req('POST', path, body: body);
+  Future<Map<String, dynamic>> _put(String path, {dynamic body}) =>
+      _req('PUT', path, body: body);
+  Future<Map<String, dynamic>> _del(String path) => _req('DELETE', path);
+  Future<Map<String, dynamic>> _patch(String path) => _req('PATCH', path);
 
   // ── Auth ──────────────────────────────────────────────────────────────────────
 
   Future<ReonUser> login(String email, String password) async {
-    final res = await _post('/auth/login', body: {'email': email, 'password': password});
+    final res = await _post('/auth/login',
+        body: {'email': email, 'password': password});
     return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
   }
 
   Future<void> signup(String fullName, String email, String password) async {
-    await _post('/auth/signup', body: {'fullName': fullName, 'email': email, 'password': password});
+    await _post('/auth/signup',
+        body: {'fullName': fullName, 'email': email, 'password': password});
   }
 
   Future<ReonUser> loginWithGoogle(String idToken) async {
@@ -75,7 +88,11 @@ class ApiService {
 
   Future<void> logout() => _post('/auth/logout');
 
-  Future<void> onboard({required String username, required String nativeLanguage, String? bio, String? location}) async {
+  Future<void> onboard(
+      {required String username,
+      required String nativeLanguage,
+      String? bio,
+      String? location}) async {
     await _post('/auth/onboard', body: {
       'username': username,
       'nativeLanguage': nativeLanguage,
@@ -86,8 +103,10 @@ class ApiService {
 
   // ── Keys ──────────────────────────────────────────────────────────────────────
 
-  Future<void> uploadPublicKey(Map<String, dynamic> publicKeyJwk, String userId) async {
-    await _post('/keys/uploadPublicKey', body: {'publicKey': publicKeyJwk, 'userId': userId});
+  Future<void> uploadPublicKey(
+      Map<String, dynamic> publicKeyJwk, String userId) async {
+    await _post('/keys/uploadPublicKey',
+        body: {'publicKey': publicKeyJwk, 'userId': userId});
   }
 
   Future<Map<String, dynamic>> getPublicKey(String userId) async {
@@ -99,7 +118,9 @@ class ApiService {
     try {
       final k = await getPublicKey(userId);
       return jsonEncode(k);
-    } catch (_) { return null; }
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Messages ──────────────────────────────────────────────────────────────────
@@ -107,49 +128,68 @@ class ApiService {
   Future<List<ChatListItem>> getSidebarChats() async {
     final res = await _get('/messages/sidebar/list');
     final list = res['chats'] as List? ?? [];
-    return list.map((c) => ChatListItem.fromJson(c as Map<String, dynamic>)).toList();
+    return list
+        .map((c) => ChatListItem.fromJson(c as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<List<ChatMessage>> getMessages(String receiverId, {int limit = 50, String? before}) async {
+  Future<List<ChatMessage>> getMessages(String receiverId,
+      {int limit = 50, String? before}) async {
     var path = '/messages/$receiverId?limit=$limit';
     if (before != null) path += '&before=${Uri.encodeQueryComponent(before)}';
     final res = await _get(path);
     final list = (res['data'] ?? res['messages']) as List? ?? [];
-    return list.map((m) => ChatMessage.fromJson(m as Map<String, dynamic>)).toList();
+    return list
+        .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
+        .toList();
   }
 
   Future<ChatMessage> sendMessage(FormData formData) async {
-    final res = await _dio.post('/messages/send', data: formData,
+    final res = await _dio.post('/messages/send',
+        data: formData,
         options: Options(headers: {'Content-Type': 'multipart/form-data'}));
-    if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
       final data = res.data as Map;
-      return ChatMessage.fromJson((data['data'] ?? data) as Map<String, dynamic>);
+      return ChatMessage.fromJson(
+          (data['data'] ?? data) as Map<String, dynamic>);
     }
-    throw ApiException((res.data as Map?)?['message'] as String? ?? 'Send failed', res.statusCode);
+    throw ApiException(
+        (res.data as Map?)?['message'] as String? ?? 'Send failed',
+        res.statusCode);
   }
 
-  Future<void> markChatRead(String userId) => _put('/messages/chat/read/$userId');
+  Future<void> markChatRead(String userId) =>
+      _put('/messages/chat/read/$userId');
 
-  Future<Map<String, dynamic>> getMessageInfo(String messageId) => _get('/messages/$messageId/info');
+  Future<Map<String, dynamic>> getMessageInfo(String messageId) =>
+      _get('/messages/$messageId/info');
 
   // ── Friends ───────────────────────────────────────────────────────────────────
 
   Future<List<ReonUser>> getFriends() async {
     final res = await _get('/users/friends');
     final list = res['friends'] as List? ?? [];
-    return list.map((u) => ReonUser.fromJson(u as Map<String, dynamic>)).toList();
+    return list
+        .map((u) => ReonUser.fromJson(u as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<FriendRequest>> getReceivedRequests() async {
     final res = await _get('/users/friend-requests/received');
     final list = res['requests'] as List? ?? [];
-    return list.map((r) => FriendRequest.fromJson(r as Map<String, dynamic>)).toList();
+    return list
+        .map((r) => FriendRequest.fromJson(r as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<FriendRequest>> getSentRequests() async {
     final res = await _get('/users/friend-requests/sent');
     final list = res['requests'] as List? ?? [];
-    return list.map((r) => FriendRequest.fromJson(r as Map<String, dynamic>)).toList();
+    return list
+        .map((r) => FriendRequest.fromJson(r as Map<String, dynamic>))
+        .toList();
   }
 
   Future<int> getPendingCount() async {
@@ -157,16 +197,23 @@ class ApiService {
     return (res['pendingCount'] ?? res['count'] ?? 0) as int;
   }
 
-  Future<void> sendFriendRequest(String userId)     => _post('/users/friend-request/$userId');
-  Future<void> acceptFriendRequest(String requestId) => _post('/users/friend-request/$requestId/accept');
-  Future<void> rejectFriendRequest(String requestId) => _del('/users/friend-request/$requestId');
-  Future<void> withdrawFriendRequest(String requestId) => _post('/users/friend-request/$requestId/withdraw');
-  Future<void> removeFriend(String userId)           => _patch('/users/friends/$userId');
+  Future<void> sendFriendRequest(String userId) =>
+      _post('/users/friend-request/$userId');
+  Future<void> acceptFriendRequest(String requestId) =>
+      _post('/users/friend-request/$requestId/accept');
+  Future<void> rejectFriendRequest(String requestId) =>
+      _del('/users/friend-request/$requestId');
+  Future<void> withdrawFriendRequest(String requestId) =>
+      _post('/users/friend-request/$requestId/withdraw');
+  Future<void> removeFriend(String userId) => _patch('/users/friends/$userId');
 
   Future<List<ReonUser>> searchUsers(String query) async {
-    final res = await _get('/messages/search?q=${Uri.encodeQueryComponent(query)}');
+    final res =
+        await _get('/messages/search?q=${Uri.encodeQueryComponent(query)}');
     final list = res['users'] as List? ?? [];
-    return list.map((u) => ReonUser.fromJson(u as Map<String, dynamic>)).toList();
+    return list
+        .map((u) => ReonUser.fromJson(u as Map<String, dynamic>))
+        .toList();
   }
 
   // ── Groups ────────────────────────────────────────────────────────────────────
@@ -174,7 +221,9 @@ class ApiService {
   Future<List<GroupChat>> getGroups() async {
     final res = await _get('/groups');
     final list = res['groups'] as List? ?? [];
-    return list.map((g) => GroupChat.fromJson(g as Map<String, dynamic>)).toList();
+    return list
+        .map((g) => GroupChat.fromJson(g as Map<String, dynamic>))
+        .toList();
   }
 
   Future<GroupChat> getGroup(String id) async {
@@ -182,26 +231,43 @@ class ApiService {
     return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
   }
 
-  Future<GroupChat> createGroup({required String name, String? description, required List<String> memberIds}) async {
-    final res = await _post('/groups', body: {'name': name, 'description': description ?? '', 'memberIds': memberIds});
+  Future<GroupChat> createGroup(
+      {required String name,
+      String? description,
+      required List<String> memberIds}) async {
+    final res = await _post('/groups', body: {
+      'name': name,
+      'description': description ?? '',
+      'memberIds': memberIds
+    });
     return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
   }
 
-  Future<List<GroupMessage>> getGroupMessages(String groupId, {int limit = 50, String? before}) async {
+  Future<List<GroupMessage>> getGroupMessages(String groupId,
+      {int limit = 50, String? before}) async {
     var path = '/groups/$groupId/messages?limit=$limit';
     if (before != null) path += '&before=${Uri.encodeQueryComponent(before)}';
     final res = await _get(path);
     final list = res['messages'] as List? ?? [];
-    return list.map((m) => GroupMessage.fromJson(m as Map<String, dynamic>)).toList();
+    return list
+        .map((m) => GroupMessage.fromJson(m as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<GroupMessage> sendGroupMessage(String groupId, FormData formData) async {
-    final res = await _dio.post('/groups/$groupId/messages', data: formData,
+  Future<GroupMessage> sendGroupMessage(
+      String groupId, FormData formData) async {
+    final res = await _dio.post('/groups/$groupId/messages',
+        data: formData,
         options: Options(headers: {'Content-Type': 'multipart/form-data'}));
-    if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
-      return GroupMessage.fromJson((res.data as Map)['message'] as Map<String, dynamic>);
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
+      return GroupMessage.fromJson(
+          (res.data as Map)['message'] as Map<String, dynamic>);
     }
-    throw ApiException((res.data as Map?)?['message'] as String? ?? 'Send failed', res.statusCode);
+    throw ApiException(
+        (res.data as Map?)?['message'] as String? ?? 'Send failed',
+        res.statusCode);
   }
 
   Future<void> markGroupRead(String groupId) => _put('/groups/$groupId/read');
@@ -217,11 +283,14 @@ class ApiService {
     int limit = 12,
   }) async {
     var path = '/users/recommendation?page=$page&limit=$limit';
-    if (search.isNotEmpty) path += '&search=${Uri.encodeQueryComponent(search)}';
+    if (search.isNotEmpty)
+      path += '&search=${Uri.encodeQueryComponent(search)}';
     final res = await _get(path);
     final list = res['recommended'] as List? ?? [];
     return (
-      users: list.map((u) => RecommendedUser.fromJson(u as Map<String, dynamic>)).toList(),
+      users: list
+          .map((u) => RecommendedUser.fromJson(u as Map<String, dynamic>))
+          .toList(),
       total: (res['total'] as int?) ?? list.length,
     );
   }
@@ -231,10 +300,13 @@ class ApiService {
   Future<List<AppNotification>> getNotifications() async {
     final res = await _get('/notifications');
     final list = res['notifications'] as List? ?? [];
-    return list.map((n) => AppNotification.fromJson(n as Map<String, dynamic>)).toList();
+    return list
+        .map((n) => AppNotification.fromJson(n as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<void> markNotificationRead(String id) => _patch('/notifications/$id/read');
+  Future<void> markNotificationRead(String id) =>
+      _patch('/notifications/$id/read');
   Future<void> markAllNotificationsRead() => _patch('/notifications/read-all');
   Future<void> deleteNotification(String id) => _del('/notifications/$id');
   Future<void> clearNotifications() => _del('/notifications');
@@ -251,16 +323,23 @@ class ApiService {
       'fullName': fullName,
       if (bio != null) 'bio': bio,
       if (location != null) 'location': location,
-      if (imagePath != null) 'profilePic': await MultipartFile.fromFile(imagePath),
+      if (imagePath != null)
+        'profilePic': await MultipartFile.fromFile(imagePath),
     });
     final res = await _dio.put('/settings/profile', data: form);
-    if (res.statusCode != null && res.statusCode! >= 200 && res.statusCode! < 300) {
-      return ReonUser.fromJson((res.data as Map)['user'] as Map<String, dynamic>);
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
+      return ReonUser.fromJson(
+          (res.data as Map)['user'] as Map<String, dynamic>);
     }
-    throw ApiException((res.data as Map?)?['message'] as String? ?? 'Update failed', res.statusCode);
+    throw ApiException(
+        (res.data as Map?)?['message'] as String? ?? 'Update failed',
+        res.statusCode);
   }
 
-  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+  Future<void> changePassword(
+      {required String currentPassword, required String newPassword}) async {
     await _put('/settings/change-password', body: {
       'currentPassword': currentPassword,
       'newPassword': newPassword,
@@ -270,7 +349,8 @@ class ApiService {
   Future<void> updateFcmToken(String token) =>
       _put('/settings/fcm-token', body: {'fcmToken': token});
 
-  Future<ReonUser> updatePrivacy({bool? showLastSeen, bool? showActiveStatus}) async {
+  Future<ReonUser> updatePrivacy(
+      {bool? showLastSeen, bool? showActiveStatus}) async {
     final res = await _req('PATCH', '/settings/privacy', body: {
       if (showLastSeen != null) 'showLastSeen': showLastSeen,
       if (showActiveStatus != null) 'showActiveStatus': showActiveStatus,
@@ -281,23 +361,28 @@ class ApiService {
   // ── Device linking ────────────────────────────────────────────────────────────
 
   Future<String> createLinkSession(Map<String, dynamic> ecdhPublicKey) async {
-    final res = await _post('/keys/link-session/create', body: {'ecdhPublicKey': ecdhPublicKey});
+    final res = await _post('/keys/link-session/create',
+        body: {'ecdhPublicKey': ecdhPublicKey});
     return res['sessionId'] as String;
   }
 
-  Future<Map<String, dynamic>> claimLinkSession(String sessionId, Map<String, dynamic> ecdhPublicKey) async {
-    final res = await _req('PUT', '/keys/link-session/$sessionId/claim', body: {'ecdhPublicKey': ecdhPublicKey});
+  Future<Map<String, dynamic>> claimLinkSession(
+      String sessionId, Map<String, dynamic> ecdhPublicKey) async {
+    final res = await _req('PUT', '/keys/link-session/$sessionId/claim',
+        body: {'ecdhPublicKey': ecdhPublicKey});
     return res['ecdhPublicKey_A'] as Map<String, dynamic>;
   }
 
-  Future<void> transferLinkKey(String sessionId, String encryptedPrivateKey, String iv) async {
+  Future<void> transferLinkKey(
+      String sessionId, String encryptedPrivateKey, String iv) async {
     await _req('PUT', '/keys/link-session/$sessionId/transfer', body: {
       'encryptedPrivateKey': encryptedPrivateKey,
       'iv': iv,
     });
   }
 
-  Future<({String status, String? encryptedPrivateKey, String? iv})> getLinkSession(String sessionId) async {
+  Future<({String status, String? encryptedPrivateKey, String? iv})>
+      getLinkSession(String sessionId) async {
     final res = await _get('/keys/link-session/$sessionId');
     return (
       status: res['status'] as String,

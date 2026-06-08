@@ -48,16 +48,16 @@ class ReonApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Reon',
-    debugShowCheckedModeBanner: false,
-    theme: AppTheme.light,
-    darkTheme: AppTheme.dark,
-    themeMode: ThemeMode.system,
-    home: const _Root(),
-    routes: {
-      '/link-device': (_) => const LinkDeviceScreen(),
-    },
-  );
+        title: 'Reon',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeMode.system,
+        home: const _Root(),
+        routes: {
+          '/link-device': (_) => const LinkDeviceScreen(),
+        },
+      );
 }
 
 class _Root extends StatelessWidget {
