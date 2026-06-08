@@ -469,7 +469,8 @@ export const getReceivedRequests = async (req, res) => {
     const userId = req.user._id;
 
     const requests = await FriendRequest.find({ receiver: userId })
-      .populate("sender", "fullName username profilePic")
+      .populate("sender", "fullName username profilePic isOnline")
+      .populate("receiver", "fullName username profilePic isOnline")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ total: requests.length, requests });
@@ -485,7 +486,8 @@ export const getSentRequests = async (req, res) => {
     const userId = req.user._id;
 
     const requests = await FriendRequest.find({ sender: userId })
-      .populate("receiver", "fullName username profilePic")
+      .populate("sender", "fullName username profilePic isOnline")
+      .populate("receiver", "fullName username profilePic isOnline")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ total: requests.length, requests });
