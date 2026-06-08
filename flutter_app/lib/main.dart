@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'services/api_service.dart';
+import 'services/crypto_service.dart';
 import 'services/notification_service.dart';
 import 'services/message_cache_service.dart';
 import 'providers/auth_provider.dart';
@@ -73,7 +74,80 @@ class _Root extends StatelessWidget {
         return const LoginScreen();
       case AuthStatus.authenticated:
         if (!auth.user!.isOnboarded) return const OnboardingScreen();
+        if (auth.needsDeviceLink) return const _DeviceLinkGateScreen();
         return const HomeScreen();
     }
+  }
+}
+
+/// Shown when the user logs in on a device that hasn't been linked yet.
+/// Their encryption keys live on another device and must be transferred
+/// via the QR-code flow before they can read encrypted messages.
+class _DeviceLinkGateScreen extends StatelessWidget {
+  const _DeviceLinkGateScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_rounded, size: 72, color: Colors.teal),
+              const SizedBox(height: 24),
+              Text(
+                'Link This Device',
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Your encryption keys are stored on your original device. '
+                'To read your encrypted messages here, scan the QR code from your other device.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withAlpha(160)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'On your original device: go to Settings → Link New Device.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withAlpha(120)),
+              ),
+              const SizedBox(height: 36),
+              FilledButton.icon(
+                icon: const Icon(Icons.qr_code_scanner_rounded),
+                label: const Text('Scan QR Code to Link'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LinkDeviceScreen()),
+                  );
+                  if (!context.mounted) return;
+                  // If keys are now present, linking succeeded — clear the gate
+                  final hasKeys = await CryptoService.instance.hasKeyPair();
+                  if (hasKeys && context.mounted) {
+                    context.read<AuthProvider>().clearNeedsDeviceLink();
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => context.read<AuthProvider>().logout(),
+                child: const Text('Log Out'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

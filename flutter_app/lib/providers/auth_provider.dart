@@ -13,11 +13,22 @@ class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.unknown;
   ReonUser? _user;
   String? _error;
+  bool _needsDeviceLink = false;
 
   AuthStatus get status => _status;
   ReonUser? get user => _user;
   String? get error => _error;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
+
+  /// True when the server has this user's public key but the current device
+  /// has no private key — meaning the user must link this device from their
+  /// original device before reading encrypted messages.
+  bool get needsDeviceLink => _needsDeviceLink;
+
+  void clearNeedsDeviceLink() {
+    _needsDeviceLink = false;
+    notifyListeners();
+  }
 
   Future<void> checkAuth() async {
     try {
@@ -98,6 +109,7 @@ class AuthProvider extends ChangeNotifier {
     await CryptoService.instance.clearKeys();
     _user = null;
     _status = AuthStatus.unauthenticated;
+    _needsDeviceLink = false;
     notifyListeners();
   }
 
@@ -141,16 +153,27 @@ class AuthProvider extends ChangeNotifier {
       final localExists = await crypto.hasKeyPair();
       final serverKeyRaw = await api.tryGetPublicKey(userId);
 
-      if (localExists && serverKeyRaw != null) return; // all good
+      // Case 1: all good — both local and server have the key
+      if (localExists && serverKeyRaw != null) return;
 
-      if (!localExists) {
-        final pubJwk = await crypto.generateKeyPair();
-        await api.uploadPublicKey(pubJwk, userId);
-      } else {
-        // Local key exists but not on server — re-upload
+      // Case 2: local key but not on server — re-upload (e.g. server was wiped)
+      if (localExists && serverKeyRaw == null) {
         final pubJwk = await crypto.getStoredPublicKey();
         if (pubJwk != null) await api.uploadPublicKey(pubJwk, userId);
+        return;
       }
+
+      // Case 3: new user — no key anywhere — generate fresh key pair
+      if (!localExists && serverKeyRaw == null) {
+        final pubJwk = await crypto.generateKeyPair();
+        await api.uploadPublicKey(pubJwk, userId);
+        return;
+      }
+
+      // Case 4: server has a key but this device doesn't — existing user on a
+      // new/unlinked device. Do NOT generate new keys (that would invalidate all
+      // their existing encrypted messages). Prompt device linking instead.
+      _needsDeviceLink = true;
     } catch (_) {
       // Key setup is non-critical for login navigation — will be retried on
       // first message send. Don't block the user from reaching HomeScreen.

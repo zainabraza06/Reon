@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/ecc/api.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
@@ -16,11 +17,54 @@ class LinkDeviceScreen extends StatefulWidget {
 
 class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final _manual = TextEditingController();
-  final _scannerController = MobileScannerController();
+  late final MobileScannerController _scannerController;
   String _step = 'scan';
   String _error = '';
+  bool _permGranted = false;
+  bool _permChecked = false;
   ECPrivateKey? _ecdhPrivate;
-  String? _sessionId;
+
+  @override
+  void initState() {
+    super.initState();
+    _scannerController = MobileScannerController(autoStart: false);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _requestCameraPermission());
+  }
+
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+    if (status.isGranted) {
+      setState(() {
+        _permGranted = true;
+        _permChecked = true;
+      });
+      // Start scanner only after MobileScanner widget is in the tree
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        try {
+          await _scannerController.start();
+        } catch (e) {
+          if (mounted) {
+            setState(() {
+              _step = 'error';
+              _error = 'Camera failed to start. Please retry.';
+            });
+          }
+        }
+      });
+    } else {
+      setState(() {
+        _permChecked = true;
+        _permGranted = false;
+        _step = 'error';
+        _error = status.isPermanentlyDenied
+            ? 'Camera is permanently denied.\nGo to Settings → Apps → Reon → Permissions.'
+            : 'Camera permission is required to scan the QR code.';
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -58,7 +102,6 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
 
       final pair = await CryptoService.instance.generateECDHKeyPair();
       _ecdhPrivate = pair.privateKey;
-      _sessionId = sessionId;
 
       await ApiService.instance.claimLinkSession(sessionId, pair.publicKey);
 
@@ -149,10 +192,24 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
               style: GoogleFonts.inter(fontSize: 14)),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () => setState(() {
-              _step = 'scan';
-              _error = '';
-            }),
+            onPressed: () async {
+              setState(() {
+                _step = 'scan';
+                _error = '';
+              });
+              if (!_permGranted) {
+                // Re-request camera permission
+                await _requestCameraPermission();
+              } else {
+                // Permission already granted — just restart the scanner
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  if (!mounted) return;
+                  try {
+                    await _scannerController.start();
+                  } catch (_) {}
+                });
+              }
+            },
             child: const Text('Retry'),
           ),
         ])),
@@ -170,29 +227,28 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
             borderRadius: BorderRadius.circular(16),
             child: SizedBox(
               height: 260,
-              child: MobileScanner(
-                controller: _scannerController,
-                onDetect: _onScan,
-                errorBuilder: (context, error, child) => Container(
-                  color: Colors.black,
-                  child: Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.camera_alt_outlined,
-                          color: Colors.white54, size: 40),
-                      const SizedBox(height: 8),
-                      Text(
-                        error.errorCode ==
-                                MobileScannerErrorCode.permissionDenied
-                            ? 'Camera permission denied.\nGo to Settings → Apps → Reon → Permissions'
-                            : 'Camera error: ${error.errorDetails?.message ?? error.errorCode.name}',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                        textAlign: TextAlign.center,
+              child: _permGranted
+                  ? MobileScanner(
+                      controller: _scannerController,
+                      onDetect: _onScan,
+                    )
+                  : ColoredBox(
+                      color: Colors.black,
+                      child: Center(
+                        child: _permChecked
+                            ? Column(mainAxisSize: MainAxisSize.min, children: [
+                                const Icon(Icons.no_photography_outlined,
+                                    color: Colors.white54, size: 40),
+                                const SizedBox(height: 8),
+                                Text(_error,
+                                    style: const TextStyle(
+                                        color: Colors.white70, fontSize: 12),
+                                    textAlign: TextAlign.center),
+                              ])
+                            : const CircularProgressIndicator(
+                                color: Colors.white),
                       ),
-                    ]),
-                  ),
-                ),
-              ),
+                    ),
             ),
           ),
           const SizedBox(height: 20),
