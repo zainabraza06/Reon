@@ -28,10 +28,10 @@ class ApiService {
   void init() {
     _dio = Dio(BaseOptions(
       baseUrl: kApiBase,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 90),  // Render free tier cold-start
+      receiveTimeout: const Duration(seconds: 120),
       headers: {'Content-Type': 'application/json'},
-      validateStatus: (_) => true, // handle errors manually
+      validateStatus: (_) => true,
     ));
     _dio.interceptors.add(CookieManager(_cookieJar));
   }

@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
-import 'login_screen.dart' show AuthField, GradButton, ErrorBox;
+import 'login_screen.dart' show LoginScreen, AuthField, GradButton, ErrorBox;
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -66,7 +66,7 @@ class _SignupScreenState extends State<SignupScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('Already have an account? ', style: GoogleFonts.inter(fontSize: 14, color: ReonColors.textMuted)),
             GestureDetector(
-              onTap: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen())),
+              onTap: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => LoginScreen())),
               child: Text('Sign in', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: ReonColors.primary))),
           ]),
         ]),

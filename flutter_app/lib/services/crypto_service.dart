@@ -62,7 +62,7 @@ class CryptoService {
   Future<Map<String, dynamic>> generateKeyPair() async {
     final rng = _buildSecureRandom();
     final gen = RSAKeyGenerator()
-      ..init(ParameteredKeyGeneratorParameters(
+      ..init(ParametersWithRandom(
         RSAKeyGeneratorParameters(BigInt.from(65537), 2048, 64), rng));
     final pair  = gen.generateKeyPair();
     final pub   = pair.publicKey  as RSAPublicKey;
