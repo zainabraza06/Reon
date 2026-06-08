@@ -7,7 +7,14 @@ import '../providers/auth_provider.dart';
 import 'link_device_screen.dart';
 import 'signup_screen.dart';
 
-final _googleSignInClient = GoogleSignIn(scopes: ['email', 'profile']);
+// Web Client ID from google-services.json — required to get idToken on Android
+const _kGoogleWebClientId =
+    '249071341323-ofvmks221dsp7m7fnjv5oooetphff0sa.apps.googleusercontent.com';
+
+final _googleSignInClient = GoogleSignIn(
+  scopes: ['email', 'profile'],
+  serverClientId: _kGoogleWebClientId,
+);
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -195,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: ReonColors.textMuted.withValues(alpha: 0.3))),
           ]),
           const SizedBox(height: 16),
-          _GoogleButton(onTap: _googleSignIn),
+          GoogleSignInButton(onTap: _googleSignIn),
           const SizedBox(height: 20),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text("Don't have an account? ",
@@ -339,9 +346,9 @@ class ErrorBox extends StatelessWidget {
           style: GoogleFonts.inter(fontSize: 13, color: ReonColors.danger)));
 }
 
-class _GoogleButton extends StatelessWidget {
+class GoogleSignInButton extends StatelessWidget {
   final VoidCallback onTap;
-  const _GoogleButton({required this.onTap});
+  const GoogleSignInButton({required this.onTap});
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

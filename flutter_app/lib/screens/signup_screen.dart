@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
-import 'login_screen.dart' show LoginScreen, AuthField, GradButton, ErrorBox;
+import 'login_screen.dart'
+    show LoginScreen, AuthField, GradButton, ErrorBox, GoogleSignInButton;
+
+final _googleSignInClient = GoogleSignIn(
+  scopes: ['email', 'profile'],
+  serverClientId:
+      '249071341323-ofvmks221dsp7m7fnjv5oooetphff0sa.apps.googleusercontent.com',
+);
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -23,6 +31,28 @@ class _SignupScreenState extends State<SignupScreen> {
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  Future<void> _googleSignIn() async {
+    try {
+      await _googleSignInClient.signOut();
+      final account = await _googleSignInClient.signIn();
+      if (account == null || !mounted) return;
+      setState(() => _loading = true);
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
+      if (idToken == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      try {
+        await context.read<AuthProvider>().loginWithGoogle(idToken);
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -116,6 +146,23 @@ class _SignupScreenState extends State<SignupScreen> {
               label: 'Create Account',
               loading: _loading,
               onTap: _loading ? null : _submit),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(
+                child: Divider(
+                    color: ReonColors.textMuted.withValues(alpha: 0.3))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('or',
+                  style: GoogleFonts.inter(
+                      fontSize: 13, color: ReonColors.textMuted)),
+            ),
+            Expanded(
+                child: Divider(
+                    color: ReonColors.textMuted.withValues(alpha: 0.3))),
+          ]),
+          const SizedBox(height: 16),
+          GoogleSignInButton(onTap: _googleSignIn),
           const SizedBox(height: 20),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('Already have an account? ',

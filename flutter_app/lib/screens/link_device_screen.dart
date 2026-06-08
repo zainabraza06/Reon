@@ -26,7 +26,8 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   @override
   void initState() {
     super.initState();
-    _requestAndStart();
+    // Defer until after first frame so MobileScanner texture is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requestAndStart());
   }
 
   Future<void> _requestAndStart() async {
@@ -35,7 +36,13 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
     if (status.isGranted) {
       try {
         await _scannerController.start();
-      } catch (_) {}
+      } catch (e) {
+        if (mounted)
+          setState(() {
+            _error = 'Could not start camera: $e';
+            _step = 'error';
+          });
+      }
     } else if (status.isPermanentlyDenied) {
       setState(() {
         _error =
