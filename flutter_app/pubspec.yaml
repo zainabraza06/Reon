@@ -55,6 +55,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Excludes unused platform record implementations (e.g. Linux) from Android builds
+  record_use: ^0.6.0
 
 flutter:
   uses-material-design: true
