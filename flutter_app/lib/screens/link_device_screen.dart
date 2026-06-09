@@ -18,33 +18,29 @@ class LinkDeviceScreen extends StatefulWidget {
 class _LinkDeviceScreenState extends State<LinkDeviceScreen>
     with WidgetsBindingObserver {
   final _manual = TextEditingController();
-  late final MobileScannerController _scannerController;
+  MobileScannerController _scannerController = MobileScannerController(autoStart: false);
   String _step = 'scan';
   String _error = '';
   bool _permGranted = false;
   bool _permChecked = false;
   bool _permPermanentlyDenied = false;
+  bool _cameraLoading = false;
   ECPrivateKey? _ecdhPrivate;
 
   @override
   void initState() {
     super.initState();
-    // autoStart: true — MobileScanner only mounts when _permGranted=true,
-    // so permission is already confirmed by the time it auto-starts.
-    _scannerController = MobileScannerController();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _requestCameraPermission());
   }
 
-  // Restart / stop camera when app goes to background / foreground
-  // (needed so camera resumes after user returns from the Settings app).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!_permGranted) return;
     switch (state) {
       case AppLifecycleState.resumed:
-        _scannerController.start();
+        _startCameraWithDelay();
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
         _scannerController.stop();
@@ -53,8 +49,28 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
     }
   }
 
+  Future<void> _startCameraWithDelay() async {
+    // Brief delay prevents genericError on devices where camera
+    // takes a moment to become available after permission/resume.
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (mounted) _scannerController.start();
+  }
+
+  /// Disposes the current controller and creates a fresh one, then starts it.
+  /// Required because a controller in an error state cannot be recovered with start().
+  Future<void> _recreateAndStartCamera() async {
+    if (!mounted) return;
+    setState(() => _cameraLoading = true);
+    await _scannerController.dispose();
+    if (!mounted) return;
+    setState(() {
+      _scannerController = MobileScannerController(autoStart: false);
+      _cameraLoading = false;
+    });
+    await _startCameraWithDelay();
+  }
+
   Future<void> _requestCameraPermission() async {
-    // Check existing status first — if already granted, skip the dialog.
     var status = await Permission.camera.status;
     if (!mounted) return;
 
@@ -69,6 +85,7 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
         _permChecked = true;
         _permPermanentlyDenied = false;
       });
+      await _startCameraWithDelay();
     } else {
       setState(() {
         _permChecked = true;
@@ -248,31 +265,29 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
                   ? MobileScanner(
                       controller: _scannerController,
                       onDetect: _onScan,
-                      errorBuilder: (context, error, child) => ColoredBox(
-                        color: Colors.black,
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.camera_alt_outlined,
-                                  color: Colors.white54, size: 40),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Camera error: ${error.errorCode.name}',
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: () => _scannerController.start(),
-                                child: const Text('Tap to retry',
-                                    style: TextStyle(color: Colors.white)),
-                              ),
-                            ],
+                      errorBuilder: (context, error, child) {
+                        // Auto-recreate controller on first error — broken
+                        // controllers cannot recover with start() alone.
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && !_cameraLoading) {
+                            _recreateAndStartCamera();
+                          }
+                        });
+                        return const ColoredBox(
+                          color: Colors.black,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(color: Colors.white54),
+                                SizedBox(height: 10),
+                                Text('Starting camera…',
+                                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     )
                   : ColoredBox(
                       color: Colors.black,

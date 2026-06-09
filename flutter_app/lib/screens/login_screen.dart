@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import 'link_device_screen.dart';
-import 'signup_screen.dart';
 
 // Web Client ID from google-services.json — required to get idToken on Android
 const _kGoogleWebClientId =
@@ -17,7 +16,8 @@ final _googleSignInClient = GoogleSignIn(
 );
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.onSwitchToSignup});
+  final VoidCallback? onSwitchToSignup;
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -214,8 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: GoogleFonts.inter(
                     fontSize: 14, color: ReonColors.textMuted)),
             GestureDetector(
-                onTap: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const SignupScreen())),
+                onTap: widget.onSwitchToSignup,
                 child: Text('Sign up',
                     style: GoogleFonts.inter(
                         fontSize: 14,

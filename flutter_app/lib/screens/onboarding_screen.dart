@@ -50,23 +50,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _error = null;
     });
     try {
-      // If a profile pic was selected, use updateProfile which supports multipart upload
-      if (_imagePath != null) {
-        await ApiService.instance.updateProfile(
-          fullName: authProvider.user!.fullName,
-          bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
-          location:
-              _location.text.trim().isEmpty ? null : _location.text.trim(),
-          imagePath: _imagePath,
-        );
-      }
-      await ApiService.instance.onboard(
+      final updatedUser = await ApiService.instance.onboard(
         username: _username.text.trim(),
         nativeLanguage: _lang.text.trim(),
         bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
         location: _location.text.trim().isEmpty ? null : _location.text.trim(),
+        imagePath: _imagePath,
       );
-      await authProvider.checkAuth();
+      authProvider.updateUser(updatedUser);
     } catch (e) {
       setState(() {
         _error = e.toString();

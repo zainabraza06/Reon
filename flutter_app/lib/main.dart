@@ -10,6 +10,7 @@ import 'services/notification_service.dart';
 import 'services/message_cache_service.dart';
 import 'providers/auth_provider.dart';
 import 'screens/login_screen.dart';
+import 'screens/signup_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/link_device_screen.dart';
@@ -61,8 +62,14 @@ class ReonApp extends StatelessWidget {
       );
 }
 
-class _Root extends StatelessWidget {
-  const _Root();
+class _Root extends StatefulWidget {
+  const _Root({super.key});
+  @override
+  State<_Root> createState() => _RootState();
+}
+
+class _RootState extends State<_Root> {
+  bool _showSignup = false;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +78,14 @@ class _Root extends StatelessWidget {
       case AuthStatus.unknown:
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       case AuthStatus.unauthenticated:
-        return const LoginScreen();
+        if (_showSignup) {
+          return SignupScreen(
+            onSwitchToLogin: () => setState(() => _showSignup = false),
+          );
+        }
+        return LoginScreen(
+          onSwitchToSignup: () => setState(() => _showSignup = true),
+        );
       case AuthStatus.authenticated:
         if (!auth.user!.isOnboarded) return const OnboardingScreen();
         if (auth.needsDeviceLink) return const _DeviceLinkGateScreen();

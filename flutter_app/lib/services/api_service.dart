@@ -49,9 +49,10 @@ class ApiService {
           ? Map<String, dynamic>.from(res.data as Map)
           : {'data': res.data};
     }
-    final msg =
-        (res.data is Map ? (res.data as Map)['message'] : null) as String? ??
-            'Request failed';
+    final data = res.data is Map ? res.data as Map : null;
+    final msg = data?['message'] as String? ??
+        (data?['errors'] as List?)?.firstOrNull?['msg'] as String? ??
+        'Request failed';
     throw ApiException(msg, res.statusCode);
   }
 
@@ -88,17 +89,41 @@ class ApiService {
 
   Future<void> logout() => _post('/auth/logout');
 
-  Future<void> onboard(
+  Future<ReonUser> onboard(
       {required String username,
       required String nativeLanguage,
       String? bio,
-      String? location}) async {
-    await _post('/auth/onboard', body: {
-      'username': username,
-      'nativeLanguage': nativeLanguage,
-      if (bio != null) 'bio': bio,
-      if (location != null) 'location': location,
-    });
+      String? location,
+      String? imagePath}) async {
+    late Response res;
+    if (imagePath != null) {
+      final form = FormData.fromMap({
+        'username': username,
+        'nativeLanguage': nativeLanguage,
+        if (bio != null && bio.isNotEmpty) 'bio': bio,
+        if (location != null && location.isNotEmpty) 'location': location,
+        'profilePic': await MultipartFile.fromFile(imagePath),
+      });
+      res = await _dio.post('/auth/onboard', data: form);
+    } else {
+      res = await _dio.post('/auth/onboard',
+          data: {
+            'username': username,
+            'nativeLanguage': nativeLanguage,
+            if (bio != null && bio.isNotEmpty) 'bio': bio,
+            if (location != null && location.isNotEmpty) 'location': location,
+          },
+          options: Options(headers: {'Content-Type': 'application/json'}));
+    }
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
+      return ReonUser.fromJson(
+          (res.data as Map)['user'] as Map<String, dynamic>);
+    }
+    throw ApiException(
+        (res.data as Map?)?['message'] as String? ?? 'Onboarding failed',
+        res.statusCode);
   }
 
   // ── Keys ──────────────────────────────────────────────────────────────────────

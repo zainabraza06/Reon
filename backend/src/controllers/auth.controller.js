@@ -325,8 +325,8 @@ export async function onboard(req, res) {
 
     // Update user data
     user.nativeLanguage = nativeLanguage;
-    user.location = location;
-    user.bio = bio;
+    if (location) user.location = location;
+    if (bio) user.bio = bio;
     user.username = username;
     user.profilePic = profilePicUrl;
     user.isOnboarded = true;

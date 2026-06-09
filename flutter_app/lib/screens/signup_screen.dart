@@ -14,7 +14,8 @@ final _googleSignInClient = GoogleSignIn(
 );
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+  const SignupScreen({super.key, this.onSwitchToLogin});
+  final VoidCallback? onSwitchToLogin;
   @override
   State<SignupScreen> createState() => _SignupScreenState();
 }
@@ -174,8 +175,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: GoogleFonts.inter(
                     fontSize: 14, color: ReonColors.textMuted)),
             GestureDetector(
-                onTap: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const LoginScreen())),
+                onTap: widget.onSwitchToLogin,
                 child: Text('Sign in',
                     style: GoogleFonts.inter(
                         fontSize: 14,

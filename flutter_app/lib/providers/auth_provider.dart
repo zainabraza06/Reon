@@ -46,16 +46,17 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await ApiService.instance.login(email, password);
       _status = AuthStatus.authenticated;
-      await _postLogin();
+      // Redirect immediately — don't make the user wait for key setup.
       notifyListeners();
+      // Run post-login work in background; call notifyListeners again so the
+      // device-link gate appears if _ensureKeys sets _needsDeviceLink = true.
+      _postLogin().then((_) => notifyListeners()).catchError((_) {});
       return true;
     } on ApiException catch (e) {
       _error = e.message;
       notifyListeners();
       return false;
     } catch (_) {
-      // Non-ApiException (e.g. DioException timeout from _ensureKeys) — if login
-      // itself succeeded, still navigate; otherwise surface a generic error.
       if (_status == AuthStatus.authenticated) {
         notifyListeners();
         return true;
@@ -71,8 +72,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await ApiService.instance.loginWithGoogle(idToken);
       _status = AuthStatus.authenticated;
-      await _postLogin();
       notifyListeners();
+      _postLogin().then((_) => notifyListeners()).catchError((_) {});
       return true;
     } on ApiException catch (e) {
       _error = e.message;

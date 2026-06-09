@@ -38,17 +38,17 @@ export const onboardValidator = [
     .isString()
     .isLength({ min: 2, max: 50 }).withMessage("Native language must be between 2 and 50 characters"),
 
-  // location (mandatory)
+  // location (optional)
   body("location")
+    .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .notEmpty().withMessage("Location is mandatory")
     .isString()
     .isLength({ min: 2, max: 50 }).withMessage("Location must be between 2 and 50 characters"),
 
-  // bio (mandatory)
+  // bio (optional)
   body("bio")
+    .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .notEmpty().withMessage("Bio is mandatory")
     .isString()
     .isLength({ min: 2, max: 300 }).withMessage("Bio can't exceed 300 characters"),
 
