@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -187,6 +188,19 @@ class ApiService {
 
   Future<void> markChatRead(String userId) =>
       _put('/messages/chat/read/$userId');
+
+  /// Downloads raw (encrypted) bytes for a media file.
+  /// [url] is the relative path returned by the server, e.g. /api/messages/media/abc
+  Future<Uint8List> downloadMedia(String url) async {
+    final fullUrl =
+        url.startsWith('http') ? url : '${kApiBase.replaceAll(RegExp(r'/api$'), '')}$url';
+    final res = await _dio.get<List<int>>(fullUrl,
+        options: Options(responseType: ResponseType.bytes));
+    if (res.statusCode == 200 && res.data != null) {
+      return Uint8List.fromList(res.data!);
+    }
+    throw ApiException('Media download failed', res.statusCode);
+  }
 
   Future<Map<String, dynamic>> getMessageInfo(String messageId) =>
       _get('/messages/$messageId/info');

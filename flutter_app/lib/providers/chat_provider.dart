@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../models/message.dart';
@@ -28,6 +29,11 @@ class ChatProvider extends ChangeNotifier {
   bool _isTyping = false;
   bool _isOnline = false;
   bool _sending = false;
+  bool _uploading = false;
+
+  // Stored callback refs so off() can actually remove them
+  late final EventCallback _onNewMsgCb;
+  late final EventCallback _onReadCb;
 
   List<ChatMessage> get messages => _messages;
   ReonUser? get recipient => _recipient;
@@ -36,6 +42,7 @@ class ChatProvider extends ChangeNotifier {
   bool get isTyping => _isTyping;
   bool get isOnline => _isOnline;
   bool get sending => _sending;
+  bool get uploading => _uploading;
   bool get canEncrypt => _recipientPubJwk != null;
 
   // ── Initialise ───────────────────────────────────────────────────────────────
@@ -53,7 +60,6 @@ class ChatProvider extends ChangeNotifier {
   Future<void> loadMessages(String myId, {String? before}) async {
     if (!_hasMore && before != null) return;
 
-    // Show cached messages immediately on first load (before == null)
     if (before == null) {
       final cached = await MessageCacheService.instance.load(recipientId);
       if (cached.isNotEmpty) {
@@ -72,7 +78,6 @@ class ChatProvider extends ChangeNotifier {
       final decrypted = await Future.wait(raw.map((m) => _decrypt(m)));
       _messages = before != null ? [...decrypted, ..._messages] : decrypted;
       _hasMore = raw.length == 50;
-      // Persist to cache (only the initial page, not older loads)
       if (before == null) {
         await MessageCacheService.instance.save(recipientId, _messages);
       }
@@ -107,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Send ─────────────────────────────────────────────────────────────────────
+  // ── Send text ─────────────────────────────────────────────────────────────────
 
   Future<void> sendMessage(String text, String myId) async {
     if (text.isEmpty || _sending) return;
@@ -129,9 +134,7 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_recipientPubJwk == null) {
-        throw Exception('Recipient key not available');
-      }
+      if (_recipientPubJwk == null) throw Exception('Recipient key not available');
 
       final enc =
           await CryptoService.instance.encryptText(text, _recipientPubJwk!);
@@ -170,6 +173,99 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Send media / voice ────────────────────────────────────────────────────────
+
+  Future<void> sendMediaMessage(
+    Uint8List fileBytes,
+    String contentType,
+    String myId, {
+    String? fileName,
+    bool isVoiceMessage = false,
+  }) async {
+    if (_uploading) return;
+    if (_recipientPubJwk == null) return;
+
+    _uploading = true;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+    final optimistic = ChatMessage(
+      id: tempId,
+      sender: myId,
+      receiver: recipientId,
+      contentType: contentType,
+      sentAt: DateTime.now(),
+      status: 'sending',
+      isVoiceMessage: isVoiceMessage,
+    );
+    _messages.add(optimistic);
+    notifyListeners();
+
+    try {
+      final enc = await CryptoService.instance
+          .encryptMedia(fileBytes, _recipientPubJwk!);
+
+      final metadata = jsonEncode({
+        'sender': myId,
+        'receiver': recipientId,
+        'contentType': contentType,
+        'ciphertext': '',
+        'encryptedKey': '',
+        'senderEncryptedKey': '',
+        'isVoiceMessage': isVoiceMessage,
+      });
+
+      final form = FormData.fromMap({
+        'data': metadata,
+        'file': MultipartFile.fromBytes(
+          enc.encryptedBytes,
+          filename: fileName ?? '$contentType.bin',
+          contentType: DioMediaType.parse(_mimeFor(contentType, fileName)),
+        ),
+        'mediaType': contentType,
+        'mediaEncryptedKey': enc.encryptedKey,
+        'mediaSenderEncryptedKey': enc.senderEncryptedKey,
+        'encryptionIV': enc.iv,
+        if (isVoiceMessage) 'isVoiceMessage': 'true',
+      });
+
+      final sent = await ApiService.instance.sendMessage(form);
+      _messages = [for (final m in _messages) m.id == tempId ? sent : m];
+      await MessageCacheService.instance.upsert(recipientId, sent);
+    } catch (_) {
+      _messages = [
+        for (final m in _messages)
+          if (m.id == tempId)
+            ChatMessage(
+              id: tempId,
+              sender: myId,
+              receiver: recipientId,
+              contentType: contentType,
+              sentAt: optimistic.sentAt,
+              status: 'failed',
+              isVoiceMessage: isVoiceMessage,
+            )
+          else
+            m
+      ];
+    }
+
+    _uploading = false;
+    notifyListeners();
+  }
+
+  String _mimeFor(String contentType, String? fileName) {
+    if (contentType == 'image') {
+      final ext = fileName?.split('.').last.toLowerCase();
+      if (ext == 'png') return 'image/png';
+      if (ext == 'gif') return 'image/gif';
+      if (ext == 'webp') return 'image/webp';
+      return 'image/jpeg';
+    }
+    if (contentType == 'video') return 'video/mp4';
+    if (contentType == 'audio') return 'audio/aac';
+    return 'application/octet-stream';
+  }
+
   // ── Typing ───────────────────────────────────────────────────────────────────
 
   void handleTyping(bool typing, String myId) {
@@ -182,23 +278,27 @@ class ChatProvider extends ChangeNotifier {
   // ── Socket ───────────────────────────────────────────────────────────────────
 
   void _subscribeSocket(String myId) {
+    // Store closures so unsubscribeSocket can remove the exact same references
+    _onNewMsgCb = (d) => _onNewMsg(d, myId);
+    _onReadCb = (d) => _onRead(d, myId);
+
     final s = SocketService.instance;
-    s.on('new-message', (d) => _onNewMsg(d, myId));
+    s.on('new-message', _onNewMsgCb);
     s.on('message-sent', _onMsgSent);
     s.on('message-delivered', _onDelivered);
     s.on('messages-delivered-batch', _onDeliveredBatch);
-    s.on('message-read', (d) => _onRead(d, myId));
+    s.on('message-read', _onReadCb);
     s.on('user-typing', _onTyping);
     s.on('user-status-changed', _onStatus);
   }
 
   void unsubscribeSocket() {
     final s = SocketService.instance;
-    s.off('new-message', (d) => _onNewMsg(d, ''));
+    s.off('new-message', _onNewMsgCb);
     s.off('message-sent', _onMsgSent);
     s.off('message-delivered', _onDelivered);
     s.off('messages-delivered-batch', _onDeliveredBatch);
-    s.off('message-read', (d) => _onRead(d, ''));
+    s.off('message-read', _onReadCb);
     s.off('user-typing', _onTyping);
     s.off('user-status-changed', _onStatus);
   }

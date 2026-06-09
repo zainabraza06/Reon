@@ -9,6 +9,7 @@ import '../services/socket_service.dart';
 import '../widgets/chat_avatar.dart';
 import 'chat_screen.dart';
 import 'group_chat_screen.dart';
+import 'create_group_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   const ChatListScreen({super.key});
@@ -30,6 +31,7 @@ class _ChatListScreenState extends State<ChatListScreen>
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
+    _tab.addListener(() => setState(() {}));
     _load();
     _listenSocket();
   }
@@ -76,18 +78,21 @@ class _ChatListScreenState extends State<ChatListScreen>
     if (m == null) return;
     final sender = m['sender'] as String?;
     final sentAt = m['sentAt'] as String?;
+    final contentType = m['contentType'] as String? ?? 'text';
     if (sender == null) return;
     setState(() {
       final idx = _chats.indexWhere((c) => c.id == sender);
       if (idx >= 0) {
+        final prev = _chats[idx];
         _chats[idx] = ChatListItem(
-          id: _chats[idx].id,
-          fullName: _chats[idx].fullName,
-          username: _chats[idx].username,
-          profilePic: _chats[idx].profilePic,
-          isOnline: _chats[idx].isOnline,
+          id: prev.id,
+          fullName: prev.fullName,
+          username: prev.username,
+          profilePic: prev.profilePic,
+          isOnline: prev.isOnline,
           lastMessageAt: sentAt != null ? DateTime.tryParse(sentAt) : null,
-          unreadCount: _chats[idx].unreadCount + 1,
+          lastMessageType: contentType,
+          unreadCount: prev.unreadCount + 1,
         );
       }
     });
@@ -115,6 +120,12 @@ class _ChatListScreenState extends State<ChatListScreen>
         if (c.id == uid) c.isOnline = online;
       }
     });
+  }
+
+  Future<void> _openCreateGroup() async {
+    final created = await Navigator.push<bool>(
+        context, MaterialPageRoute(builder: (_) => const CreateGroupScreen()));
+    if (created == true) _load();
   }
 
   void _onFriendRemoved(dynamic d) {
@@ -154,6 +165,16 @@ class _ChatListScreenState extends State<ChatListScreen>
 
     return Scaffold(
       backgroundColor: isDark ? ReonColors.bgDark : ReonColors.bgLight,
+      floatingActionButton: (_tab.index == 1 && _groups.isNotEmpty)
+          ? FloatingActionButton.extended(
+              onPressed: _openCreateGroup,
+              backgroundColor: ReonColors.primary,
+              icon: const Icon(Icons.group_add_rounded, color: Colors.white),
+              label: Text('New Group',
+                  style: GoogleFonts.inter(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : null,
       body: Column(children: [
         // Header
         Container(
@@ -265,7 +286,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                                 })),
                     // Groups
                     filteredGroups.isEmpty
-                        ? const _Empty('No groups yet')
+                        ? _EmptyGroups(onCreateTap: _openCreateGroup)
                         : RefreshIndicator(
                             onRefresh: _load,
                             child: ListView.builder(
@@ -390,3 +411,33 @@ class _Empty extends StatelessWidget {
           style: GoogleFonts.inter(
               color: ReonColors.textMuted, fontSize: 14, height: 1.6)));
 }
+
+class _EmptyGroups extends StatelessWidget {
+  final VoidCallback onCreateTap;
+  const _EmptyGroups({required this.onCreateTap});
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.group_outlined, color: ReonColors.textMuted, size: 48),
+          const SizedBox(height: 12),
+          Text('No groups yet',
+              style: GoogleFonts.inter(
+                  color: ReonColors.textMuted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text('Create a group to chat with\nmultiple friends at once',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                  color: ReonColors.textMuted, fontSize: 13, height: 1.5)),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: onCreateTap,
+            style: FilledButton.styleFrom(backgroundColor: ReonColors.primary),
+            icon: const Icon(Icons.group_add_rounded),
+            label: const Text('Create Group'),
+          ),
+        ]),
+      );
+}
+

@@ -9,6 +9,7 @@ import 'services/crypto_service.dart';
 import 'services/notification_service.dart';
 import 'services/message_cache_service.dart';
 import 'providers/auth_provider.dart';
+import 'screens/chat_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -55,9 +56,25 @@ class ReonApp extends StatelessWidget {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
+        navigatorKey: navigatorKey,
         home: const _Root(),
-        routes: {
-          '/link-device': (_) => const LinkDeviceScreen(),
+        onGenerateRoute: (settings) {
+          if (settings.name == '/chat') {
+            final args = settings.arguments as Map<String, String>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  userId: args['userId']!,
+                  userName: args['userName'] ?? 'Chat',
+                ),
+              );
+            }
+          }
+          if (settings.name == '/link-device') {
+            return MaterialPageRoute(
+                builder: (_) => const LinkDeviceScreen());
+          }
+          return null;
         },
       );
 }

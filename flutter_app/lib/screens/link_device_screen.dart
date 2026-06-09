@@ -19,12 +19,17 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
     with WidgetsBindingObserver {
   final _manual = TextEditingController();
   MobileScannerController _scannerController = MobileScannerController(autoStart: false);
+  // Incrementing this key forces MobileScanner to fully tear down and remount,
+  // which is the only reliable way to bind a new controller to the widget.
+  int _scannerKey = 0;
   String _step = 'scan';
   String _error = '';
   bool _permGranted = false;
   bool _permChecked = false;
   bool _permPermanentlyDenied = false;
   bool _cameraLoading = false;
+  int _cameraRetries = 0;
+  DateTime? _cameraStartTime;
   ECPrivateKey? _ecdhPrivate;
 
   @override
@@ -50,24 +55,38 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
   }
 
   Future<void> _startCameraWithDelay() async {
-    // Brief delay prevents genericError on devices where camera
-    // takes a moment to become available after permission/resume.
-    await Future.delayed(const Duration(milliseconds: 400));
+    // Longer delay ensures the MobileScanner widget is fully mounted and the
+    // native camera session is open before we call start().
+    await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) _scannerController.start();
   }
 
-  /// Disposes the current controller and creates a fresh one, then starts it.
-  /// Required because a controller in an error state cannot be recovered with start().
+  /// Disposes the current controller, creates a fresh one, and increments
+  /// _scannerKey so Flutter tears down and remounts the MobileScanner widget.
+  /// Simply replacing the controller field without a key change doesn't work
+  /// because MobileScanner.didUpdateWidget doesn't rebind a new controller.
   Future<void> _recreateAndStartCamera() async {
     if (!mounted) return;
-    setState(() => _cameraLoading = true);
+    setState(() {
+      _cameraLoading = true;
+      _cameraRetries++;
+    });
     await _scannerController.dispose();
     if (!mounted) return;
     setState(() {
       _scannerController = MobileScannerController(autoStart: false);
+      _scannerKey++;       // forces MobileScanner to remount with new controller
       _cameraLoading = false;
     });
     await _startCameraWithDelay();
+  }
+
+  Future<void> _manualRetry() async {
+    setState(() {
+      _cameraRetries = 0;
+      _cameraStartTime = DateTime.now();
+    });
+    await _recreateAndStartCamera();
   }
 
   Future<void> _requestCameraPermission() async {
@@ -84,6 +103,7 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
         _permGranted = true;
         _permChecked = true;
         _permPermanentlyDenied = false;
+        _cameraStartTime = DateTime.now();
       });
       await _startCameraWithDelay();
     } else {
@@ -263,26 +283,64 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
               height: 260,
               child: _permGranted
                   ? MobileScanner(
+                      key: ValueKey(_scannerKey),
                       controller: _scannerController,
                       onDetect: _onScan,
                       errorBuilder: (context, error, child) {
-                        // Auto-recreate controller on first error — broken
-                        // controllers cannot recover with start() alone.
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted && !_cameraLoading) {
-                            _recreateAndStartCamera();
-                          }
-                        });
-                        return const ColoredBox(
+                        final elapsed = _cameraStartTime == null
+                            ? 0
+                            : DateTime.now()
+                                .difference(_cameraStartTime!)
+                                .inSeconds;
+                        if (elapsed < 30 && !_cameraLoading) {
+                          // Keep auto-retrying for up to 30 s before giving up.
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted && !_cameraLoading) {
+                              _recreateAndStartCamera();
+                            }
+                          });
+                        }
+                        if (elapsed < 30) {
+                          return const ColoredBox(
+                            color: Colors.black,
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: Colors.white54),
+                                  SizedBox(height: 10),
+                                  Text('Starting camera…',
+                                      style: TextStyle(
+                                          color: Colors.white54, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        // 30 s elapsed — let the user decide.
+                        return ColoredBox(
                           color: Colors.black,
                           child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                CircularProgressIndicator(color: Colors.white54),
-                                SizedBox(height: 10),
-                                Text('Starting camera…',
-                                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                const Icon(Icons.camera_alt_outlined,
+                                    color: Colors.white54, size: 40),
+                                const SizedBox(height: 8),
+                                const Text('Camera unavailable',
+                                    style: TextStyle(
+                                        color: Colors.white70, fontSize: 13)),
+                                const SizedBox(height: 4),
+                                const Text(
+                                    'Another app may be using the camera.',
+                                    style: TextStyle(
+                                        color: Colors.white38, fontSize: 11)),
+                                const SizedBox(height: 12),
+                                TextButton(
+                                  onPressed: _manualRetry,
+                                  child: const Text('Tap to retry',
+                                      style: TextStyle(color: Colors.white)),
+                                ),
                               ],
                             ),
                           ),

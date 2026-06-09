@@ -326,4 +326,41 @@ class CryptoService {
     }
     return result;
   }
+
+  // ── Media encrypt/decrypt ─────────────────────────────────────────────────────
+
+  Future<
+      ({
+        Uint8List encryptedBytes,
+        String encryptedKey,
+        String senderEncryptedKey,
+        String iv
+      })> encryptMedia(
+      Uint8List bytes, Map<String, dynamic> receiverPubJwk) async {
+    final myPubJwk = await getStoredPublicKey();
+    if (myPubJwk == null) throw Exception('No public key stored');
+
+    final aesKey = _randomBytes(32);
+    final iv = _randomBytes(12);
+    final encrypted = _aesGcmEncrypt(aesKey, iv, bytes);
+
+    return (
+      encryptedBytes: encrypted,
+      encryptedKey: rsaEncryptAesKey(aesKey, receiverPubJwk),
+      senderEncryptedKey: rsaEncryptAesKey(aesKey, myPubJwk),
+      iv: base64.encode(iv),
+    );
+  }
+
+  Future<Uint8List?> decryptMedia(
+      Uint8List encryptedBytes, String encryptedKeyB64, String ivB64) async {
+    try {
+      final aesKeyBytes = await rsaDecryptAesKey(encryptedKeyB64);
+      final iv = base64.decode(ivB64);
+      return _aesGcmDecrypt(Uint8List.fromList(aesKeyBytes),
+          Uint8List.fromList(iv), encryptedBytes);
+    } catch (_) {
+      return null;
+    }
+  }
 }

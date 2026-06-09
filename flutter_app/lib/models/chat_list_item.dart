@@ -39,9 +39,22 @@ class ChatListItem {
   }
 
   String get previewText {
-    if (lastMessageType != null && lastMessageType != 'text') {
-      return '📎 ${lastMessageType!}';
+    if (lastMessageAt == null) return 'No messages yet';
+    switch (lastMessageType) {
+      case 'image':
+        return '📷 Photo';
+      case 'video':
+        return '🎥 Video';
+      case 'audio':
+        return '🎤 Voice message';
+      case 'document':
+        return '📄 Document';
+      case null:
+      case 'text':
+        // Messages are E2E encrypted; plaintext unavailable in the list view
+        return lastMessageContent ?? '🔒 Message';
+      default:
+        return '📎 ${lastMessageType!}';
     }
-    return lastMessageContent ?? 'No messages yet';
   }
 }

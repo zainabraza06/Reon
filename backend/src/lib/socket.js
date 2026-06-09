@@ -625,7 +625,7 @@ export const initSocket = (server) => {
                       sendPush(receiver.fcmToken, {
                         title: sender?.fullName ?? "New message",
                         body:  "You have a new message",
-                        data:  { senderId, type: "new_message" },
+                        data:  { senderId, senderName: sender?.fullName ?? "", type: "new_message" },
                       });
                     });
                   }

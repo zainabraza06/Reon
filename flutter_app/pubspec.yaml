@@ -44,6 +44,12 @@ dependencies:
   permission_handler: ^11.3.1
   # Native Google Sign-In (uses Google Play Services — no browser redirect)
   google_sign_in: ^6.2.1
+  # Voice recording
+  record: ^5.0.0
+  # Audio playback
+  audioplayers: ^6.0.0
+  # Document / file picking
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:
