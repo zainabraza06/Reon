@@ -46,11 +46,13 @@ class _FriendsScreenState extends State<FriendsScreen>
     s.off('friend-request-rejected', _onRefresh);
     s.off('friend-request-withdrawn', _onRefresh);
     s.off('friend-removed', _onFriendRemoved);
+    s.off('socket_reconnected', _onReconnect);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  // silent=true: refresh data in the background without showing the loading spinner
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         ApiService.instance.getFriends(),
@@ -62,11 +64,11 @@ class _FriendsScreenState extends State<FriendsScreen>
           _friends = results[0] as List<ReonUser>;
           _received = results[1] as List<FriendRequest>;
           _sent = results[2] as List<FriendRequest>;
-          _loading = false;
+          if (!silent) _loading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !silent) setState(() => _loading = false);
     }
   }
 
@@ -78,9 +80,14 @@ class _FriendsScreenState extends State<FriendsScreen>
     s.on('friend-request-rejected', _onRefresh);
     s.on('friend-request-withdrawn', _onRefresh);
     s.on('friend-removed', _onFriendRemoved);
+    s.on('socket_reconnected', _onReconnect);
   }
 
-  void _onRefresh(_) => _load();
+  // Socket event → silent background refresh (no spinner)
+  void _onRefresh(_) => _load(silent: true);
+
+  // Socket reconnected (e.g. after network drop) → catch up on missed events
+  void _onReconnect(_) => _load(silent: true);
 
   void _onFriendRemoved(dynamic d) {
     final m = d as Map?;

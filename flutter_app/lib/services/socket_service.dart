@@ -11,6 +11,7 @@ class SocketService {
   sio.Socket? _socket;
   String? _userId;
   Timer? _heartbeat;
+  bool _connectedOnce = false;
 
   final _listeners = <String, Set<EventCallback>>{};
 
@@ -18,6 +19,7 @@ class SocketService {
 
   void connect(String userId) {
     if (_socket?.connected == true && _userId == userId) return;
+    _connectedOnce = false; // Reset on new connection attempt
     _userId = userId;
 
     _socket = sio.io(
@@ -33,6 +35,12 @@ class SocketService {
       _socket!.emit('authenticate', userId);
       _socket!.emit('join-groups');
       _startHeartbeat();
+      if (_connectedOnce) {
+        // This is a reconnect after a drop — signal screens to refresh stale data
+        _listeners['socket_reconnected']?.forEach((fn) => fn(null));
+      } else {
+        _connectedOnce = true;
+      }
     });
 
     _socket!.onDisconnect((_) => _stopHeartbeat());
@@ -44,6 +52,7 @@ class SocketService {
   }
 
   void disconnect() {
+    _connectedOnce = false;
     _stopHeartbeat();
     _socket?.disconnect();
     _socket = null;

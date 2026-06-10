@@ -44,11 +44,12 @@ class _ChatListScreenState extends State<ChatListScreen>
     SocketService.instance.off('new-group-message', _onNewGroupMsg);
     SocketService.instance.off('user-status-changed', _onStatus);
     SocketService.instance.off('friend-removed', _onFriendRemoved);
+    SocketService.instance.off('socket_reconnected', _onReconnect);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final results = await Future.wait([
         ApiService.instance.getSidebarChats(),
@@ -58,19 +59,22 @@ class _ChatListScreenState extends State<ChatListScreen>
         setState(() {
           _chats = results[0] as List<ChatListItem>;
           _groups = results[1] as List<GroupChat>;
-          _loading = false;
+          if (!silent) _loading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !silent) setState(() => _loading = false);
     }
   }
+
+  void _onReconnect(_) => _load(silent: true);
 
   void _listenSocket() {
     SocketService.instance.on('new-message', _onNewMsg);
     SocketService.instance.on('new-group-message', _onNewGroupMsg);
     SocketService.instance.on('user-status-changed', _onStatus);
     SocketService.instance.on('friend-removed', _onFriendRemoved);
+    SocketService.instance.on('socket_reconnected', _onReconnect);
   }
 
   void _onNewMsg(dynamic d) {
