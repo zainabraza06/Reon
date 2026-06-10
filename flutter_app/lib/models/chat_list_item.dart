@@ -51,8 +51,7 @@ class ChatListItem {
         return '📄 Document';
       case null:
       case 'text':
-        // Messages are E2E encrypted; plaintext unavailable in the list view
-        return lastMessageContent ?? '🔒 Message';
+        return '💬 New message';
       default:
         return '📎 ${lastMessageType!}';
     }

@@ -3,6 +3,7 @@ import Message from "../models/Message.js";
 import User from "../models/User.js";
 import { getOnlineUsers, emitToUser } from "../lib/socket.js";
 import { GridFSBucket } from 'mongodb';
+import { sendPush } from "../lib/fcm.js";
 
 // Save encrypted file to GridFS
 const saveEncryptedFileToGridFS = async (fileBuffer, originalName, index, fileType = "document", encryptionIV = null) => {
@@ -692,6 +693,17 @@ export const sendMessage = async (req, res) => {
         console.log(`📤 Emitting to sender ${sender}: message-sent with msgId: ${msg._id}, status: sent (receiver offline)`);
         // ALWAYS emit to sender
         emitToUser(sender.toString(), "message-sent", senderPayload);
+
+        // FCM push for offline receiver
+        if (receiverExists?.fcmToken) {
+          const senderName = req.user.fullName ?? 'Someone';
+          const pushBody = hasMedia ? `[${mediaArray[0]?.type ?? 'file'}]` : 'You have a new message';
+          sendPush(receiverExists.fcmToken, {
+            title: senderName,
+            body: pushBody,
+            data: { type: 'dm_message', senderId: sender.toString(), senderName },
+          }).catch(() => {});
+        }
     }
 
   

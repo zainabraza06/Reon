@@ -1,7 +1,10 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/api_service.dart';
 
 // Global key so notification taps can push routes without a BuildContext
@@ -20,6 +23,9 @@ class NotificationService {
   // Set these to suppress foreground notifications while user is viewing a chat
   static String? activeGroupId;
   static String? activeChatId;
+
+  // Stored when notification arrives before navigator is ready (cold start)
+  static Map<String, dynamic>? _pendingNavigation;
 
   final _fcm = FirebaseMessaging.instance;
   final _local = FlutterLocalNotificationsPlugin();
@@ -59,7 +65,7 @@ class NotificationService {
     // App opened by tapping a notification while in background
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-    // App launched cold from a notification
+    // App launched cold from a notification tap — store and navigate once ready
     final initial = await _fcm.getInitialMessage();
     if (initial != null) _handleNotificationTap(initial);
 
@@ -92,7 +98,6 @@ class NotificationService {
         ),
         iOS: const DarwinNotificationDetails(),
       ),
-      // Embed FCM data so local-notification tap can also route
       payload: _payloadFrom(message.data),
     );
   }
@@ -100,35 +105,74 @@ class NotificationService {
   void _onLocalNotificationTap(NotificationResponse response) {
     final payload = response.payload;
     if (payload == null) return;
-    // payload format: "senderId|senderName"
+    // payload format: "type|id|name"
     final parts = payload.split('|');
-    if (parts.length >= 2) {
-      _navigateToChat(senderId: parts[0], senderName: parts[1]);
+    if (parts.length >= 3 && parts[0] == 'group') {
+      _scheduleNavigation({'type': 'group', 'groupId': parts[1], 'groupName': parts[2]});
+    } else if (parts.length >= 2) {
+      // Legacy DM: "senderId|senderName"
+      _scheduleNavigation({'type': 'dm', 'senderId': parts[0], 'senderName': parts[1]});
     }
   }
 
   void _handleNotificationTap(RemoteMessage message) {
     final data = message.data;
-    final senderId = data['senderId'] as String?;
-    final senderName = data['senderName'] as String? ??
-        message.notification?.title ?? 'Chat';
-    if (senderId != null && senderId.isNotEmpty) {
-      _navigateToChat(senderId: senderId, senderName: senderName);
+    final msgType = data['type'] as String?;
+
+    if (msgType == 'group_message') {
+      final groupId = data['groupId'] as String?;
+      final groupName = data['groupName'] as String? ?? 'Group';
+      if (groupId != null && groupId.isNotEmpty) {
+        _scheduleNavigation({'type': 'group', 'groupId': groupId, 'groupName': groupName});
+      }
+    } else {
+      final senderId = data['senderId'] as String?;
+      final senderName = data['senderName'] as String? ??
+          message.notification?.title ?? 'Chat';
+      if (senderId != null && senderId.isNotEmpty) {
+        _scheduleNavigation({'type': 'dm', 'senderId': senderId, 'senderName': senderName});
+      }
     }
   }
 
-  void _navigateToChat(
-      {required String senderId, required String senderName}) {
-    // Defer until the navigator is ready (e.g. on cold start)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      navigatorKey.currentState?.pushNamed(
-        '/chat',
-        arguments: {'userId': senderId, 'userName': senderName},
-      );
-    });
+  /// Stores the navigation intent and retries each frame until the navigator is ready.
+  static void _scheduleNavigation(Map<String, dynamic> nav) {
+    _pendingNavigation = nav;
+    _attemptNavigation();
+  }
+
+  static void _attemptNavigation() {
+    if (_pendingNavigation == null) return;
+    final state = navigatorKey.currentState;
+    if (state == null) {
+      // Navigator not ready yet (cold start) — retry after next frame
+      WidgetsBinding.instance.addPostFrameCallback((_) => _attemptNavigation());
+      return;
+    }
+    final nav = _pendingNavigation!;
+    _pendingNavigation = null;
+
+    if (nav['type'] == 'group') {
+      state.pushNamed('/group-chat', arguments: {
+        'groupId': nav['groupId'] as String,
+        'groupName': nav['groupName'] as String,
+      });
+    } else {
+      state.pushNamed('/chat', arguments: {
+        'userId': nav['senderId'] as String,
+        'userName': nav['senderName'] as String,
+      });
+    }
   }
 
   String _payloadFrom(Map<String, dynamic> data) {
+    final msgType = data['type'] as String?;
+    if (msgType == 'group_message') {
+      final groupId = data['groupId'] as String? ?? '';
+      final groupName = data['groupName'] as String? ?? 'Group';
+      return 'group|$groupId|$groupName';
+    }
+    // DM (legacy format kept for compatibility)
     final id = data['senderId'] as String? ?? '';
     final name = data['senderName'] as String? ?? 'Chat';
     return '$id|$name';
@@ -147,5 +191,58 @@ class NotificationService {
 
   Future<void> deleteToken() async {
     await _fcm.deleteToken();
+  }
+
+  // ── Static helper: save decrypted image bytes to device Pictures ─────────────
+
+  static Future<void> saveImageToDevice(
+      BuildContext context, Uint8List bytes, String? originalName) async {
+    try {
+      Directory dir;
+      if (Platform.isAndroid) {
+        // Use external storage Pictures folder
+        final ext = Directory('/storage/emulated/0/Pictures/Reon');
+        await ext.create(recursive: true);
+        dir = ext;
+      } else {
+        dir = await getApplicationDocumentsDirectory();
+      }
+      final name = originalName ??
+          'reon_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Image saved to ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      }
+    }
+  }
+
+  static Future<void> saveFileToDevice(
+      BuildContext context, Uint8List bytes, String? fileName) async {
+    try {
+      final dir = await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final name = fileName ??
+          'reon_file_${DateTime.now().millisecondsSinceEpoch}.bin';
+      final file = File('${dir.path}/$name');
+      await file.writeAsBytes(bytes);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to ${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      }
+    }
   }
 }

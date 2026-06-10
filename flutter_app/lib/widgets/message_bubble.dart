@@ -10,6 +10,7 @@ import '../models/message.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/crypto_service.dart';
+import '../services/notification_service.dart';
 import 'message_info_sheet.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -270,24 +271,39 @@ class _ImageContentState extends State<_ImageContent> {
 
   void _viewFullScreen(BuildContext context) {
     if (_bytes == null) return;
+    final bytes = _bytes!;
+    final fileName = widget.media.fileName;
     showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
+      builder: (ctx) => Dialog(
         backgroundColor: Colors.black,
         insetPadding: EdgeInsets.zero,
         child: Stack(children: [
           Center(
             child: InteractiveViewer(
-              child: Image.memory(_bytes!, fit: BoxFit.contain),
+              child: Image.memory(bytes, fit: BoxFit.contain),
             ),
           ),
+          // Close button
           Positioned(
             top: 36,
             right: 12,
             child: IconButton(
               icon: const Icon(Icons.close_rounded,
                   color: Colors.white, size: 28),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+          // Download button
+          Positioned(
+            top: 36,
+            left: 12,
+            child: IconButton(
+              icon: const Icon(Icons.download_rounded,
+                  color: Colors.white, size: 28),
+              tooltip: 'Save image',
+              onPressed: () => NotificationService.saveImageToDevice(
+                  ctx, bytes, fileName),
             ),
           ),
         ]),
@@ -513,10 +529,16 @@ class _VideoContent extends StatelessWidget {
 
 // ── Document ──────────────────────────────────────────────────────────────────
 
-class _DocumentContent extends StatelessWidget {
+class _DocumentContent extends StatefulWidget {
   final MediaFile media;
   final bool isMine;
   const _DocumentContent({required this.media, required this.isMine});
+  @override
+  State<_DocumentContent> createState() => _DocumentContentState();
+}
+
+class _DocumentContentState extends State<_DocumentContent> {
+  bool _downloading = false;
 
   IconData _iconFor(String? name) {
     final ext = name?.split('.').last.toLowerCase();
@@ -535,21 +557,60 @@ class _DocumentContent extends StatelessWidget {
     }
   }
 
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final enc = await ApiService.instance.downloadMedia(widget.media.url);
+      final key = widget.media.encryptedKey;
+      final iv = widget.media.encryptionIV;
+      if (key == null || iv == null) throw Exception('Missing keys');
+      final dec = await CryptoService.instance.decryptMedia(enc, key, iv);
+      if (dec == null) throw Exception('Decryption failed');
+      if (mounted) {
+        await NotificationService.saveFileToDevice(
+            context, dec, widget.media.fileName);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    }
+    if (mounted) setState(() => _downloading = false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final color = isMine ? Colors.white : ReonColors.primary;
+    final color = widget.isMine ? Colors.white : ReonColors.primary;
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(_iconFor(media.fileName), color: color, size: 32),
+      Icon(_iconFor(widget.media.fileName), color: color, size: 32),
       const SizedBox(width: 8),
       Flexible(
         child: Text(
-          media.fileName ?? 'Document',
+          widget.media.fileName ?? 'Document',
           style: GoogleFonts.inter(
             fontSize: 13,
-            color: isMine ? Colors.white : ReonColors.textLight,
+            color: widget.isMine ? Colors.white : ReonColors.textLight,
           ),
           overflow: TextOverflow.ellipsis,
         ),
+      ),
+      const SizedBox(width: 6),
+      GestureDetector(
+        onTap: _download,
+        child: _downloading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: widget.isMine ? Colors.white : ReonColors.primary))
+            : Icon(Icons.download_rounded,
+                size: 20,
+                color: widget.isMine
+                    ? Colors.white70
+                    : ReonColors.primary.withValues(alpha: 0.7)),
       ),
     ]);
   }

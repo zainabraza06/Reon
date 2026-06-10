@@ -10,6 +10,7 @@ import 'services/notification_service.dart';
 import 'services/message_cache_service.dart';
 import 'providers/auth_provider.dart';
 import 'screens/chat_screen.dart';
+import 'screens/group_chat_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -60,12 +61,23 @@ class ReonApp extends StatelessWidget {
         home: const _Root(),
         onGenerateRoute: (settings) {
           if (settings.name == '/chat') {
-            final args = settings.arguments as Map<String, String>?;
+            final args = settings.arguments as Map<String, dynamic>?;
             if (args != null) {
               return MaterialPageRoute(
                 builder: (_) => ChatScreen(
-                  userId: args['userId']!,
-                  userName: args['userName'] ?? 'Chat',
+                  userId: args['userId'] as String,
+                  userName: args['userName'] as String? ?? 'Chat',
+                ),
+              );
+            }
+          }
+          if (settings.name == '/group-chat') {
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (_) => GroupChatScreen(
+                  groupId: args['groupId'] as String,
+                  groupName: args['groupName'] as String? ?? 'Group',
                 ),
               );
             }

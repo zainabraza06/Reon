@@ -103,10 +103,40 @@ class _ChatListScreenState extends State<ChatListScreen>
     if (m == null) return;
     final gid = m['groupId'] as String?;
     if (gid == null) return;
+    final msg = m['message'] as Map?;
+    final contentType = msg?['contentType'] as String? ?? 'text';
+    final sentAt = msg?['sentAt'] as String?;
+    // Don't update preview for system messages
+    if (contentType == 'system') return;
+    final preview = _typeToPreview(contentType);
     setState(() {
       final idx = _groups.indexWhere((g) => g.id == gid);
-      if (idx >= 0) _groups[idx] = _groups[idx]; // triggers rebuild
+      if (idx >= 0) {
+        final g = _groups[idx];
+        _groups[idx] = GroupChat(
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          avatar: g.avatar,
+          creator: g.creator,
+          admins: g.admins,
+          members: g.members,
+          lastMessageContent: preview,
+          lastMessageAt:
+              sentAt != null ? DateTime.tryParse(sentAt) : g.lastMessageAt,
+        );
+      }
     });
+  }
+
+  static String _typeToPreview(String type) {
+    switch (type) {
+      case 'image':    return '📷 Photo';
+      case 'video':    return '🎥 Video';
+      case 'audio':    return '🎤 Voice message';
+      case 'document': return '📄 Document';
+      default:         return '💬 New message';
+    }
   }
 
   void _onStatus(dynamic d) {

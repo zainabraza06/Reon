@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
   int _friendsBadge = 0;
   int _notifBadge = 0;
+  int _chatsBadge = 0; // badge on the Chats tab for new DM/group messages
 
   @override
   void initState() {
@@ -35,12 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         ApiService.instance.getPendingCount(),
         ApiService.instance.getNotifications(),
+        ApiService.instance.getSidebarChats(),
       ]);
       final notifs = results[1] as List<AppNotification>;
+      final chats = results[2] as List;
+      final totalUnread = chats.fold<int>(0, (s, c) {
+        final uc = (c as dynamic).unreadCount as int? ?? 0;
+        return s + uc;
+      });
       if (mounted) {
         setState(() {
           _friendsBadge = results[0] as int;
           _notifBadge = notifs.where((n) => !n.read).length;
+          _chatsBadge = totalUnread;
         });
       }
     } catch (_) {}
@@ -53,8 +61,8 @@ class _HomeScreenState extends State<HomeScreen> {
     s.on('friend-request-rejected', _onFriendReqRejected);
     s.on('pending-requests-count-updated', _onPendingCount);
     s.on('user-status-changed', _onStatusChange);
-    s.on('new-message', _onNotifBump);
-    s.on('new-group-message', _onNotifBump);
+    s.on('new-message', _onNewChatMsg);
+    s.on('new-group-message', _onNewGroupChatMsg);
   }
 
   void _onFriendReqReceived(_) => setState(() {
@@ -70,7 +78,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _friendsBadge = count);
   }
 
-  void _onNotifBump(_) => setState(() => _notifBadge++);
+  // New DM: bump Chats badge (not Alerts), but only when not already on Chats tab
+  void _onNewChatMsg(dynamic d) {
+    if (_tab == 0) return; // already viewing chats, don't badge
+    setState(() => _chatsBadge++);
+  }
+
+  // New group message: bump Chats badge (skip system messages)
+  void _onNewGroupChatMsg(dynamic d) {
+    if (_tab == 0) return;
+    final msg = (d as Map?)?['message'] as Map?;
+    final ct = msg?['contentType'] as String? ?? 'text';
+    if (ct == 'system') return;
+    setState(() => _chatsBadge++);
+  }
+
   void _onStatusChange(dynamic d) {
     final m = d as Map?;
     if (m == null) return;
@@ -86,9 +108,16 @@ class _HomeScreenState extends State<HomeScreen> {
     s.off('friend-request-rejected', _onFriendReqRejected);
     s.off('pending-requests-count-updated', _onPendingCount);
     s.off('user-status-changed', _onStatusChange);
-    s.off('new-message', _onNotifBump);
-    s.off('new-group-message', _onNotifBump);
+    s.off('new-message', _onNewChatMsg);
+    s.off('new-group-message', _onNewGroupChatMsg);
     super.dispose();
+  }
+
+  void _onTabSelected(int i) {
+    setState(() {
+      _tab = i;
+      if (i == 0) _chatsBadge = 0; // clear badge when opening Chats tab
+    });
   }
 
   @override
@@ -107,13 +136,21 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(index: _tab, children: screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: _onTabSelected,
         backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
         indicatorColor: ReonColors.primary.withValues(alpha: 0.12),
         destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: _chatsBadge > 0,
+              label: Text('$_chatsBadge'),
+              child: const Icon(Icons.chat_bubble_outline_rounded),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: _chatsBadge > 0,
+              label: Text('$_chatsBadge'),
+              child: const Icon(Icons.chat_bubble_rounded),
+            ),
             label: 'Chats',
           ),
           NavigationDestination(
