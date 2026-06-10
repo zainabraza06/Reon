@@ -5,6 +5,7 @@ class ChatListItem {
   final String? profilePic;
   final String? lastMessageContent;
   final String? lastMessageType;
+  final String? lastSenderId;
   final DateTime? lastMessageAt;
   final int unreadCount;
   bool isOnline;
@@ -16,6 +17,7 @@ class ChatListItem {
     this.profilePic,
     this.lastMessageContent,
     this.lastMessageType,
+    this.lastSenderId,
     this.lastMessageAt,
     this.unreadCount = 0,
     this.isOnline = false,
@@ -30,6 +32,7 @@ class ChatListItem {
       profilePic: j['profilePic'] as String?,
       lastMessageContent: lm?['content'] as String?,
       lastMessageType: lm?['contentType'] as String?,
+      lastSenderId: lm?['sender'] as String?,
       lastMessageAt: lm?['sentAt'] != null
           ? DateTime.tryParse(lm!['sentAt'] as String)
           : null,
@@ -38,22 +41,20 @@ class ChatListItem {
     );
   }
 
-  String get previewText {
+  String previewTextFor(String myId) {
     if (lastMessageAt == null) return 'No messages yet';
+    final isMe = lastSenderId == myId;
+    final prefix = isMe ? 'You: ' : '';
     switch (lastMessageType) {
-      case 'image':
-        return '📷 Photo';
-      case 'video':
-        return '🎥 Video';
-      case 'audio':
-        return '🎤 Voice message';
-      case 'document':
-        return '📄 Document';
-      case null:
-      case 'text':
-        return '💬 New message';
-      default:
-        return '📎 ${lastMessageType!}';
+      case 'image':    return '${prefix}📷 Photo';
+      case 'video':    return '${prefix}🎥 Video';
+      case 'audio':    return '${prefix}🎤 Voice message';
+      case 'document': return '${prefix}📄 Document';
     }
+    // For text messages show actual decrypted content when available
+    if (lastMessageContent != null && lastMessageContent!.isNotEmpty) {
+      return '$prefix$lastMessageContent';
+    }
+    return '${prefix}New message';
   }
 }

@@ -159,15 +159,20 @@ class ApiService {
         .toList();
   }
 
-  Future<List<ChatMessage>> getMessages(String receiverId,
+  Future<({List<ChatMessage> messages, bool hasMore})> getMessages(
+      String receiverId,
       {int limit = 50, String? before}) async {
     var path = '/messages/$receiverId?limit=$limit';
     if (before != null) path += '&before=${Uri.encodeQueryComponent(before)}';
     final res = await _get(path);
     final list = (res['data'] ?? res['messages']) as List? ?? [];
-    return list
-        .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
-        .toList();
+    final hasMore = res['hasMore'] as bool? ?? (list.length >= limit);
+    return (
+      messages: list
+          .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
+          .toList(),
+      hasMore: hasMore,
+    );
   }
 
   Future<ChatMessage> sendMessage(FormData formData) async {
@@ -282,15 +287,20 @@ class ApiService {
     return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
   }
 
-  Future<List<GroupMessage>> getGroupMessages(String groupId,
+  Future<({List<GroupMessage> messages, bool hasMore})> getGroupMessages(
+      String groupId,
       {int limit = 50, String? before}) async {
     var path = '/groups/$groupId/messages?limit=$limit';
     if (before != null) path += '&before=${Uri.encodeQueryComponent(before)}';
     final res = await _get(path);
     final list = res['messages'] as List? ?? [];
-    return list
-        .map((m) => GroupMessage.fromJson(m as Map<String, dynamic>))
-        .toList();
+    final hasMore = res['hasMore'] as bool? ?? (list.length >= limit);
+    return (
+      messages: list
+          .map((m) => GroupMessage.fromJson(m as Map<String, dynamic>))
+          .toList(),
+      hasMore: hasMore,
+    );
   }
 
   Future<GroupMessage> sendGroupMessage(
@@ -310,6 +320,49 @@ class ApiService {
   }
 
   Future<void> markGroupRead(String groupId) => _put('/groups/$groupId/read');
+
+  Future<GroupChat> updateGroup(String groupId,
+          {required String name, required String description}) async {
+    final res = await _put('/groups/$groupId',
+        body: {'name': name, 'description': description});
+    return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
+  }
+
+  Future<GroupChat> addGroupMembers(
+      String groupId, List<String> memberIds) async {
+    final res =
+        await _post('/groups/$groupId/members', body: {'memberIds': memberIds});
+    return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
+  }
+
+  Future<void> removeGroupMember(String groupId, String memberId) =>
+      _del('/groups/$groupId/members/$memberId');
+
+  Future<GroupChat> toggleGroupAdmin(String groupId, String memberId) async {
+    final res = await _patch('/groups/$groupId/admins/$memberId');
+    return GroupChat.fromJson(res['group'] as Map<String, dynamic>);
+  }
+
+  Future<GroupChat> updateGroupAvatar(
+      String groupId, String imagePath) async {
+    final form = FormData.fromMap({
+      'avatar': await MultipartFile.fromFile(imagePath),
+    });
+    final res = await _dio.patch('/groups/$groupId/avatar', data: form);
+    if (res.statusCode != null &&
+        res.statusCode! >= 200 &&
+        res.statusCode! < 300) {
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : <String, dynamic>{};
+      return GroupChat.fromJson(data['group'] as Map<String, dynamic>);
+    }
+    final data = res.data is Map ? res.data as Map : null;
+    throw ApiException(
+        data?['message'] as String? ?? 'Avatar update failed', res.statusCode);
+  }
+
+  Future<void> deleteGroup(String groupId) => _del('/groups/$groupId');
 
   Future<Map<String, dynamic>> getGroupMessageInfo(String messageId) =>
       _get('/groups/messages/$messageId/info');

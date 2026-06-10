@@ -30,10 +30,12 @@ class ChatProvider extends ChangeNotifier {
   bool _isOnline = false;
   bool _sending = false;
   bool _uploading = false;
+  bool _isFriend = true; // assume friends until confirmed otherwise
 
   // Stored callback refs so off() can actually remove them
   late final EventCallback _onNewMsgCb;
   late final EventCallback _onReadCb;
+  late final EventCallback _onFriendRemovedCb;
 
   List<ChatMessage> get messages => _messages;
   ReonUser? get recipient => _recipient;
@@ -44,6 +46,7 @@ class ChatProvider extends ChangeNotifier {
   bool get sending => _sending;
   bool get uploading => _uploading;
   bool get canEncrypt => _recipientPubJwk != null;
+  bool get isFriend => _isFriend;
 
   // ── Initialise ───────────────────────────────────────────────────────────────
 
@@ -73,11 +76,12 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final raw =
+      final result =
           await ApiService.instance.getMessages(recipientId, before: before);
-      final decrypted = await Future.wait(raw.map((m) => _decrypt(m)));
+      final decrypted =
+          await Future.wait(result.messages.map((m) => _decrypt(m)));
       _messages = before != null ? [...decrypted, ..._messages] : decrypted;
-      _hasMore = raw.length == 50;
+      _hasMore = result.hasMore;
       if (before == null) {
         await MessageCacheService.instance.save(recipientId, _messages);
       }
@@ -92,11 +96,11 @@ class ChatProvider extends ChangeNotifier {
   Future<void> _loadRecipient() async {
     try {
       final friends = await ApiService.instance.getFriends();
-      _recipient = friends.firstWhere(
-        (f) => f.id == recipientId,
-        orElse: () =>
-            ReonUser(id: recipientId, fullName: recipientName, email: ''),
-      );
+      final found = friends.where((f) => f.id == recipientId).toList();
+      _isFriend = found.isNotEmpty;
+      _recipient = found.isNotEmpty
+          ? found.first
+          : ReonUser(id: recipientId, fullName: recipientName, email: '');
     } catch (_) {
       _recipient =
           ReonUser(id: recipientId, fullName: recipientName, email: '');
@@ -307,6 +311,7 @@ class ChatProvider extends ChangeNotifier {
     // Store closures so unsubscribeSocket can remove the exact same references
     _onNewMsgCb = (d) => _onNewMsg(d, myId);
     _onReadCb = (d) => _onRead(d, myId);
+    _onFriendRemovedCb = (d) => _onFriendRemoved(d, myId);
 
     final s = SocketService.instance;
     s.on('new-message', _onNewMsgCb);
@@ -316,6 +321,7 @@ class ChatProvider extends ChangeNotifier {
     s.on('message-read', _onReadCb);
     s.on('user-typing', _onTyping);
     s.on('user-status-changed', _onStatus);
+    s.on('friend-removed', _onFriendRemovedCb);
   }
 
   void unsubscribeSocket() {
@@ -327,6 +333,7 @@ class ChatProvider extends ChangeNotifier {
     s.off('message-read', _onReadCb);
     s.off('user-typing', _onTyping);
     s.off('user-status-changed', _onStatus);
+    s.off('friend-removed', _onFriendRemovedCb);
   }
 
   void _onNewMsg(dynamic d, String myId) async {
@@ -414,6 +421,20 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _onFriendRemoved(dynamic d, String myId) {
+    final m = d as Map?;
+    if (m == null) return;
+    final removerId = m['userId'] as String?;
+    final removedId = m['friendId'] as String?;
+    final involved =
+        (removerId == myId && removedId == recipientId) ||
+        (removerId == recipientId && removedId == myId);
+    if (involved) {
+      _isFriend = false;
+      notifyListeners();
+    }
+  }
+
   void _onTyping(dynamic d) {
     final m = d as Map?;
     if (m == null) return;
@@ -433,7 +454,8 @@ class ChatProvider extends ChangeNotifier {
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
   Future<ChatMessage> _decrypt(ChatMessage m) async {
-    if (m.ciphertext == null || m.encryptedKey == null) return m;
+    if (m.ciphertext == null || m.ciphertext!.isEmpty ||
+        m.encryptedKey == null || m.encryptedKey!.isEmpty) return m;
     final plain = await CryptoService.instance
         .decryptText(m.ciphertext!, m.encryptedKey!);
     return m.copyWith(plaintext: plain ?? '[decryption failed]');

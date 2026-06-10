@@ -2,7 +2,7 @@
 import { use, useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
 import {
   ArrowLeft, Info, Users, Check, CheckCheck, X,
-  Crown, Shield, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader, AlertTriangle,
+  Crown, Shield, ShieldOff, UserMinus, UserPlus, Pencil, Trash2, LogOut, Loader, AlertTriangle,
   Clock, AlertCircle, RotateCcw, Camera,
 } from "lucide-react";
 
@@ -507,8 +507,9 @@ function GroupInfoPanel({
               const busy          = busyMember === m.user._id;
 
               // What actions are available?
-              const canRemove = amAdmin && !isSelf && !isThisCreator;
+              const canRemove  = amAdmin   && !isSelf && !isThisCreator;
               const canPromote = amCreator && !isThisAdmin && !isSelf;
+              const canDemote  = amCreator && isThisAdmin  && !isThisCreator && !isSelf;
 
               return (
                 <li key={m.user._id} className="flex items-center gap-2 px-1 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-white/4 group/member">
@@ -524,13 +525,20 @@ function GroupInfoPanel({
                     </span>
                   )}
                   {busy && <Loader size={14} className="text-violet-400 animate-spin shrink-0" />}
-                  {!busy && (canRemove || canPromote) && (
+                  {!busy && (canRemove || canPromote || canDemote) && (
                     <div className="hidden group-hover/member:flex items-center gap-1 shrink-0">
                       {canPromote && (
                         <button type="button" onClick={() => promoteAdmin(m.user._id)}
                           title="Make admin"
                           className="p-1 rounded-lg text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 transition-colors">
                           <Shield size={13} />
+                        </button>
+                      )}
+                      {canDemote && (
+                        <button type="button" onClick={() => promoteAdmin(m.user._id)}
+                          title="Remove admin"
+                          className="p-1 rounded-lg text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors">
+                          <ShieldOff size={13} />
                         </button>
                       )}
                       {canRemove && (

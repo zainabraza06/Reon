@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_list_item.dart';
 import '../models/group_chat.dart';
+import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/crypto_service.dart';
 import '../services/socket_service.dart';
 import '../widgets/chat_avatar.dart';
 import 'chat_screen.dart';
@@ -41,6 +44,7 @@ class _ChatListScreenState extends State<ChatListScreen>
     _tab.dispose();
     _search.dispose();
     SocketService.instance.off('new-message', _onNewMsg);
+    SocketService.instance.off('message-sent', _onMsgSent);
     SocketService.instance.off('new-group-message', _onNewGroupMsg);
     SocketService.instance.off('user-status-changed', _onStatus);
     SocketService.instance.off('friend-removed', _onFriendRemoved);
@@ -71,19 +75,34 @@ class _ChatListScreenState extends State<ChatListScreen>
 
   void _listenSocket() {
     SocketService.instance.on('new-message', _onNewMsg);
+    SocketService.instance.on('message-sent', _onMsgSent);
     SocketService.instance.on('new-group-message', _onNewGroupMsg);
     SocketService.instance.on('user-status-changed', _onStatus);
     SocketService.instance.on('friend-removed', _onFriendRemoved);
     SocketService.instance.on('socket_reconnected', _onReconnect);
   }
 
-  void _onNewMsg(dynamic d) {
+  void _onNewMsg(dynamic d) async {
     final m = d as Map?;
     if (m == null) return;
     final sender = m['sender'] as String?;
     final sentAt = m['sentAt'] as String?;
     final contentType = m['contentType'] as String? ?? 'text';
     if (sender == null) return;
+
+    String? plaintext;
+    if (contentType == 'text') {
+      final ciphertext = m['ciphertext'] as String? ?? '';
+      final encKey = m['encryptedKey'] as String? ?? '';
+      if (ciphertext.isNotEmpty && encKey.isNotEmpty) {
+        try {
+          plaintext =
+              await CryptoService.instance.decryptText(ciphertext, encKey);
+        } catch (_) {}
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       final idx = _chats.indexWhere((c) => c.id == sender);
       if (idx >= 0) {
@@ -96,13 +115,61 @@ class _ChatListScreenState extends State<ChatListScreen>
           isOnline: prev.isOnline,
           lastMessageAt: sentAt != null ? DateTime.tryParse(sentAt) : null,
           lastMessageType: contentType,
+          lastSenderId: sender,
+          lastMessageContent: plaintext,
           unreadCount: prev.unreadCount + 1,
         );
       }
     });
   }
 
-  void _onNewGroupMsg(dynamic d) {
+  void _onMsgSent(dynamic d) async {
+    if (!mounted) return;
+    final m = d as Map?;
+    if (m == null) return;
+    final receiver = m['receiver'] as String?;
+    if (receiver == null) return;
+    final sentAt = m['sentAt'] as String?;
+    final contentType = m['contentType'] as String? ?? 'text';
+    final myId = context.read<AuthProvider>().user?.id ?? '';
+
+    String? plaintext;
+    if (contentType == 'text') {
+      final ciphertext = m['ciphertext'] as String? ?? '';
+      final encKey = m['encryptedKey'] as String? ?? '';
+      if (ciphertext.isNotEmpty && encKey.isNotEmpty) {
+        try {
+          plaintext =
+              await CryptoService.instance.decryptText(ciphertext, encKey);
+        } catch (_) {}
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      final idx = _chats.indexWhere((c) => c.id == receiver);
+      if (idx >= 0) {
+        final prev = _chats[idx];
+        _chats[idx] = ChatListItem(
+          id: prev.id,
+          fullName: prev.fullName,
+          username: prev.username,
+          profilePic: prev.profilePic,
+          isOnline: prev.isOnline,
+          lastMessageAt: sentAt != null
+              ? DateTime.tryParse(sentAt)
+              : prev.lastMessageAt,
+          lastMessageType: contentType,
+          lastSenderId: myId,
+          lastMessageContent: plaintext,
+          unreadCount: prev.unreadCount,
+        );
+      }
+    });
+  }
+
+  void _onNewGroupMsg(dynamic d) async {
+    if (!mounted) return;
     final m = d as Map?;
     if (m == null) return;
     final gid = m['groupId'] as String?;
@@ -110,9 +177,34 @@ class _ChatListScreenState extends State<ChatListScreen>
     final msg = m['message'] as Map?;
     final contentType = msg?['contentType'] as String? ?? 'text';
     final sentAt = msg?['sentAt'] as String?;
-    // Don't update preview for system messages
     if (contentType == 'system') return;
-    final preview = _typeToPreview(contentType);
+
+    final senderInfo = msg?['sender'] as Map?;
+    final senderName = senderInfo?['fullName'] as String?;
+
+    String preview = _typeToPreview(contentType);
+    if (contentType == 'text') {
+      final myId = context.read<AuthProvider>().user?.id ?? '';
+      final memberKeys = msg?['memberKeys'] as List? ?? [];
+      String? encKey;
+      for (final k in memberKeys) {
+        final entry = k as Map;
+        if (entry['userId']?.toString() == myId) {
+          encKey = entry['encryptedKey'] as String?;
+          break;
+        }
+      }
+      final ciphertext = msg?['ciphertext'] as String? ?? '';
+      if (ciphertext.isNotEmpty && encKey != null && encKey.isNotEmpty) {
+        try {
+          final plain = await CryptoService.instance
+              .decryptText(ciphertext, encKey);
+          if (plain != null) preview = plain;
+        } catch (_) {}
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       final idx = _groups.indexWhere((g) => g.id == gid);
       if (idx >= 0) {
@@ -126,6 +218,7 @@ class _ChatListScreenState extends State<ChatListScreen>
           admins: g.admins,
           members: g.members,
           lastMessageContent: preview,
+          lastSenderName: senderName,
           lastMessageAt:
               sentAt != null ? DateTime.tryParse(sentAt) : g.lastMessageAt,
         );
@@ -183,9 +276,17 @@ class _ChatListScreenState extends State<ChatListScreen>
     return DateFormat('dd/MM').format(dt);
   }
 
+  String _groupSubtitle(GroupChat g) {
+    if (g.lastMessageAt == null) return 'No messages yet';
+    final content = g.lastMessageContent ?? '💬 New message';
+    if (g.lastSenderName != null) return '${g.lastSenderName}: $content';
+    return content;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final myId = context.read<AuthProvider>().user?.id ?? '';
     final filteredChats = _q.isEmpty
         ? _chats
         : _chats
@@ -306,7 +407,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                                   final c = filteredChats[i];
                                   return _ChatTile(
                                       name: c.fullName,
-                                      subtitle: c.previewText,
+                                      subtitle: c.previewTextFor(myId),
                                       avatar: c.profilePic,
                                       isOnline: c.isOnline,
                                       time: _fmt(c.lastMessageAt),
@@ -329,8 +430,7 @@ class _ChatListScreenState extends State<ChatListScreen>
                                   final g = filteredGroups[i];
                                   return _ChatTile(
                                       name: g.name,
-                                      subtitle: g.lastMessageContent ??
-                                          'No messages yet',
+                                      subtitle: _groupSubtitle(g),
                                       avatar: g.avatar,
                                       isOnline: false,
                                       time: _fmt(g.lastMessageAt),

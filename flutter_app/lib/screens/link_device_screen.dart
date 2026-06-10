@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/ecc/api.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
@@ -30,6 +31,15 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   // ── Open live scanner ─────────────────────────────────────────────────────────
 
   Future<void> _openScanner() async {
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      setState(() => _error = status.isPermanentlyDenied
+          ? 'Camera access is blocked. Enable it in device Settings.'
+          : 'Camera permission is required to scan the QR code.');
+      if (status.isPermanentlyDenied) openAppSettings();
+      return;
+    }
     setState(() => _error = '');
     final raw = await Navigator.push<String>(
       context,

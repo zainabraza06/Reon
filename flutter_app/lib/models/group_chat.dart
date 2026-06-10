@@ -32,6 +32,7 @@ class GroupChat {
   final List<ReonUser> admins;
   final List<GroupMember> members;
   final String? lastMessageContent;
+  final String? lastSenderName;
   final DateTime? lastMessageAt;
 
   const GroupChat({
@@ -43,11 +44,14 @@ class GroupChat {
     required this.admins,
     required this.members,
     this.lastMessageContent,
+    this.lastSenderName,
     this.lastMessageAt,
   });
 
   factory GroupChat.fromJson(Map<String, dynamic> j) {
     final lm = j['lastMessage'] as Map<String, dynamic>?;
+    final sender = lm?['sender'];
+    final senderName = sender is Map ? sender['fullName'] as String? : null;
     return GroupChat(
       id: j['_id'] as String,
       name: j['name'] as String,
@@ -61,6 +65,7 @@ class GroupChat {
           .map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
           .toList(),
       lastMessageContent: lm?['content'] as String?,
+      lastSenderName: senderName,
       lastMessageAt: lm?['sentAt'] != null
           ? DateTime.tryParse(lm!['sentAt'] as String)
           : null,

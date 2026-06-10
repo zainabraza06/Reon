@@ -454,6 +454,15 @@ export const sendMessage = async (req, res) => {
       return res.status(400).json({ message: "Invalid user ID format" });
     }
 
+    // Only friends can message each other
+    const areFriends = await User.exists({
+      _id: new mongoose.Types.ObjectId(sender),
+      friends: new mongoose.Types.ObjectId(receiver),
+    });
+    if (!areFriends) {
+      return res.status(403).json({ message: "You can only message friends" });
+    }
+
     // ---- HANDLE SINGLE MEDIA FILE ----
     const mediaArray = [];
     if (hasMedia) {

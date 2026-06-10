@@ -43,6 +43,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   const [isOnline, setIsOnline] = useState(false);
   const [lastSeen, setLastSeen] = useState<string | undefined>(undefined);
   const [isTyping, setIsTyping] = useState(false);
+  const [isFriend, setIsFriend] = useState(true); // optimistic: assume friend until proven otherwise
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -55,6 +56,7 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
   useEffect(() => {
     api.friends.list().then(({ friends }) => {
       const found = friends.find((f) => f._id === userId);
+      setIsFriend(!!found);
       if (found) {
         setRecipient(found);
         if (found.lastSeen) setLastSeen(found.lastSeen);
@@ -62,6 +64,19 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
     }).catch(() => {});
     api.messages.markRead(userId).catch(() => {});
   }, [userId]);
+
+  // Detect real-time friendship removal while inside the chat
+  useEffect(() => {
+    const onFriendRemoved = (d: unknown) => {
+      const { userId: removerId, friendId: removedId } = d as { userId: string; friendId: string };
+      const involved =
+        (removerId === me?._id && removedId === userId) ||
+        (removerId === userId && removedId === me?._id);
+      if (involved) setIsFriend(false);
+    };
+    socketService.on("friend-removed", onFriendRemoved);
+    return () => socketService.off("friend-removed", onFriendRemoved);
+  }, [userId, me?._id]);
 
   // Seed initial online status — don't wait for a status-change event
   useEffect(() => {
@@ -344,7 +359,18 @@ export default function DMPage({ params }: { params: Promise<{ userId: string }>
         <div ref={bottomRef} />
       </div>
 
-      <MessageInput onSend={handleSend} onVoiceNote={handleVoiceNote} onTyping={handleTyping} placeholder={`Message ${recipient?.fullName || "…"}`} />
+      {isFriend ? (
+        <MessageInput onSend={handleSend} onVoiceNote={handleVoiceNote} onTyping={handleTyping} placeholder={`Message ${recipient?.fullName || "…"}`} />
+      ) : (
+        <div className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+          <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+          </svg>
+          <p className="text-sm text-gray-400 dark:text-gray-500 text-center">
+            You&apos;re no longer friends. Messaging is unavailable.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

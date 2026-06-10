@@ -357,8 +357,11 @@ class _ChatViewState extends State<_ChatView> {
             setState(() {});
           },
         ),
-        // Input bar
-        _buildInputBar(chat, me.id, isDark),
+        // Input bar (or "can't chat" notice when no longer friends)
+        if (!chat.isFriend)
+          _NotFriendBar(isDark: isDark)
+        else
+          _buildInputBar(chat, me.id, isDark),
       ]),
     );
   }
@@ -639,6 +642,45 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
               shape: BoxShape.circle, color: ReonColors.textMuted),
         ),
       );
+}
+
+// ── "No longer friends" input replacement ────────────────────────────────────
+
+class _NotFriendBar extends StatelessWidget {
+  final bool isDark;
+  const _NotFriendBar({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: isDark ? ReonColors.surfaceDark : Colors.white,
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.of(context).padding.bottom + 12,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_remove_outlined,
+              size: 18,
+              color: isDark ? Colors.grey.shade500 : Colors.grey.shade500),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'You\'re no longer friends. Messaging is unavailable.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Background dot grid ───────────────────────────────────────────────────────

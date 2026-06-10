@@ -1,11 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/notification.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../services/socket_service.dart';
 import '../widgets/chat_avatar.dart';
+import 'chat_screen.dart';
+import 'group_chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final ValueChanged<int>? onUnreadChanged;
@@ -116,12 +120,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     ));
   }
 
-  void _onNewMessage(dynamic _) {
+  void _onNewMessage(dynamic d) {
+    final m = d as Map?;
+    final senderId = m?['sender'] as String?;
+    final senderInfo = m?['senderInfo'] as Map?;
+    final senderName = senderInfo?['fullName'] as String? ?? 'Someone';
+    final senderAvatar = senderInfo?['profilePic'] as String?;
     _prepend(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'new_message',
-      title: 'New Message',
-      body: 'You have a new message',
+      title: senderName,
+      body: 'Sent you a message',
+      avatar: senderAvatar,
+      link: senderId != null
+          ? jsonEncode({'type': 'chat', 'userId': senderId, 'userName': senderName})
+          : null,
       read: false,
       timestamp: DateTime.now(),
     ));
@@ -129,15 +142,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _onNewGroupMessage(dynamic d) {
     final m = d as Map?;
+    final gid = m?['groupId'] as String?;
     final groupName = m?['groupName'] as String? ?? 'a group';
     _prepend(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'new_group_message',
-      title: 'New Group Message',
+      title: groupName,
       body: 'New message in $groupName',
+      link: gid != null
+          ? jsonEncode({'type': 'group', 'groupId': gid, 'groupName': groupName})
+          : null,
       read: false,
       timestamp: DateTime.now(),
     ));
+  }
+
+  void _navigate(AppNotification n) {
+    final link = n.link;
+    if (link == null) return;
+    try {
+      final data = jsonDecode(link) as Map<String, dynamic>;
+      final type = data['type'] as String?;
+      if (type == 'chat') {
+        final userId = data['userId'] as String? ?? '';
+        final userName = data['userName'] as String? ?? 'User';
+        navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (_) => ChatScreen(
+              userId: userId, userName: userName),
+        ));
+      } else if (type == 'group') {
+        final groupId = data['groupId'] as String? ?? '';
+        final groupName = data['groupName'] as String? ?? 'Group';
+        navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (_) => GroupChatScreen(
+              groupId: groupId, groupName: groupName),
+        ));
+      }
+    } catch (_) {}
   }
 
   Future<void> _markRead(String id) async {
@@ -296,6 +337,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: InkWell(
                           onTap: () {
                             if (!n.read) _markRead(n.id);
+                            _navigate(n);
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(

@@ -347,11 +347,16 @@ export const promoteAdmin = async (req, res) => {
     const group = await GroupChat.findById(groupId);
     if (!group || !group.isActive) return res.status(404).json({ message: "Group not found" });
     if (group.creator.toString() !== userId.toString())
-      return res.status(403).json({ message: "Only creator can promote admins" });
+      return res.status(403).json({ message: "Only creator can manage admins" });
     if (!isMember(group, memberId)) return res.status(400).json({ message: "Not a member" });
-    if (isAdmin(group, memberId)) return res.status(400).json({ message: "Already an admin" });
+    if (group.creator.toString() === memberId.toString())
+      return res.status(400).json({ message: "Cannot change creator role" });
 
-    group.admins.push(memberId);
+    if (isAdmin(group, memberId)) {
+      group.admins = group.admins.filter((a) => a.toString() !== memberId.toString());
+    } else {
+      group.admins.push(memberId);
+    }
     await group.save();
 
     const populated = await GroupChat.findById(groupId)

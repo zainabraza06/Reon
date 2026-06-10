@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import '../theme/app_theme.dart';
 import '../models/group_chat.dart';
+import '../models/user.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
@@ -80,20 +81,44 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     super.dispose();
   }
 
+  // ── Group info ────────────────────────────────────────────────────────────────
+
+  void _showGroupInfo() async {
+    if (_group == null) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final me = context.read<AuthProvider>().user!;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _GroupInfoSheet(
+        group: _group!,
+        isDark: isDark,
+        myId: me.id,
+        onGroupUpdated: _loadGroup,
+      ),
+    );
+    // Reload after sheet closes in case of changes
+    if (mounted) _loadGroup();
+  }
+
   // ── Load ──────────────────────────────────────────────────────────────────────
 
   Future<void> _loadMessages({String? before}) async {
     setState(() => _loading = true);
     try {
-      final raw = await ApiService.instance
+      final result = await ApiService.instance
           .getGroupMessages(widget.groupId, before: before);
       if (!mounted) return;
       final myId = context.read<AuthProvider>().user!.id;
-      final dec = await Future.wait(raw.map((m) => _decrypt(m, myId)));
+      final dec =
+          await Future.wait(result.messages.map((m) => _decrypt(m, myId)));
       if (mounted) {
         setState(() {
           _messages = before != null ? [...dec, ..._messages] : dec;
-          _hasMore = raw.length == 50;
+          _hasMore = result.hasMore;
           _loading = false;
         });
       }
@@ -114,8 +139,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   // ── Decrypt ───────────────────────────────────────────────────────────────────
 
   Future<GroupMessage> _decrypt(GroupMessage m, String myId) async {
-    if (m.isSystem) return m; // system messages are plain text, no encryption
-    if (m.ciphertext == null || m.encryptedKey == null) return m;
+    if (m.isSystem) return m;
+    if (m.ciphertext == null || m.ciphertext!.isEmpty ||
+        m.encryptedKey == null || m.encryptedKey!.isEmpty) return m;
     final plain = await CryptoService.instance
         .decryptText(m.ciphertext!, m.encryptedKey!);
     return m.copyWith(plaintext: plain ?? '[decryption failed]');
@@ -555,7 +581,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       style: GoogleFonts.inter(
                           fontSize: 12, color: ReonColors.textMuted)),
                 ])),
-          ])),
+          ]),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.info_outline_rounded,
+                  color: isDark ? Colors.white70 : ReonColors.textMuted,
+                  size: 22),
+              onPressed: _showGroupInfo,
+              tooltip: 'Group info',
+            ),
+          ]),
       body: Column(children: [
         if (_hasMore && !_loading)
           GestureDetector(
@@ -784,7 +819,8 @@ class _GroupBubble extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final time = DateFormat('HH:mm').format(message.sentAt);
     final hasMedia = message.media.isNotEmpty;
-    final isLocalPreview = !hasMedia && message.localBytes != null;
+    final isLocalPreview = !hasMedia &&
+        (message.localBytes != null || message.localFileName != null);
     final text = message.plaintext ??
         (hasMedia ? null : message.ciphertext);
     final senderName = message.sender.fullName;
@@ -1059,6 +1095,601 @@ class _MicButton extends StatelessWidget {
             ]),
         child: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
       );
+}
+
+// ── Group info bottom sheet ───────────────────────────────────────────────────
+
+class _GroupInfoSheet extends StatefulWidget {
+  final GroupChat group;
+  final bool isDark;
+  final String myId;
+  final VoidCallback? onGroupUpdated;
+
+  const _GroupInfoSheet({
+    required this.group,
+    required this.isDark,
+    required this.myId,
+    this.onGroupUpdated,
+  });
+
+  @override
+  State<_GroupInfoSheet> createState() => _GroupInfoSheetState();
+}
+
+class _GroupInfoSheetState extends State<_GroupInfoSheet> {
+  late GroupChat _group;
+  late bool _isAdmin;
+  late bool _isCreator;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _group = widget.group;
+    _isCreator = _group.creator.id == widget.myId;
+    _isAdmin = _isCreator ||
+        _group.admins.any((a) => a.id == widget.myId);
+  }
+
+  // ── API helpers ────────────────────────────────────────────────────────────
+
+  Future<void> _changeAvatar() async {
+    final picker = ImagePicker();
+    final picked =
+        await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
+    if (picked == null) return;
+    setState(() => _loading = true);
+    try {
+      final updated =
+          await ApiService.instance.updateGroupAvatar(_group.id, picked.path);
+      setState(() {
+        _group = updated;
+        _loading = false;
+      });
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      _snack('Avatar update failed: $e');
+    }
+  }
+
+  Future<void> _editGroup() async {
+    final nameCtrl = TextEditingController(text: _group.name);
+    final descCtrl =
+        TextEditingController(text: _group.description ?? '');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Group',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(
+                labelText: 'Group name',
+                labelStyle: GoogleFonts.inter()),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: descCtrl,
+            decoration: InputDecoration(
+                labelText: 'Description (optional)',
+                labelStyle: GoogleFonts.inter()),
+            maxLines: 2,
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (confirmed != true || nameCtrl.text.trim().isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final updated = await ApiService.instance.updateGroup(_group.id,
+          name: nameCtrl.text.trim(),
+          description: descCtrl.text.trim());
+      setState(() {
+        _group = updated;
+        _loading = false;
+      });
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      _snack('Update failed: $e');
+    }
+  }
+
+  Future<void> _addMembers() async {
+    List<ReonUser> candidates;
+    try {
+      final friends = await ApiService.instance.getFriends();
+      final memberIds = _group.members.map((m) => m.user.id).toSet();
+      candidates =
+          friends.where((f) => !memberIds.contains(f.id)).toList();
+    } catch (_) {
+      _snack('Could not load friends');
+      return;
+    }
+    if (candidates.isEmpty) {
+      _snack('All friends are already in this group');
+      return;
+    }
+    final selected = <String>{};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: Text('Add Members',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: candidates.length,
+              itemBuilder: (_, i) {
+                final f = candidates[i];
+                return CheckboxListTile(
+                  value: selected.contains(f.id),
+                  onChanged: (v) => setDlg(() {
+                    v == true
+                        ? selected.add(f.id)
+                        : selected.remove(f.id);
+                  }),
+                  title: Text(f.fullName,
+                      style: GoogleFonts.inter(fontSize: 14)),
+                  secondary: ChatAvatar(
+                      name: f.fullName,
+                      imageUrl: f.profilePic,
+                      size: 36),
+                  activeColor: ReonColors.primary,
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || selected.isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      final updated = await ApiService.instance
+          .addGroupMembers(_group.id, selected.toList());
+      setState(() {
+        _group = updated;
+        _loading = false;
+      });
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      _snack('Failed to add members: $e');
+    }
+  }
+
+  Future<void> _removeMember(String memberId, String memberName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove Member',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Text('Remove $memberName from the group?',
+            style: GoogleFonts.inter()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              style:
+                  TextButton.styleFrom(foregroundColor: ReonColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _loading = true);
+    try {
+      await ApiService.instance
+          .removeGroupMember(_group.id, memberId);
+      setState(() {
+        _group = GroupChat(
+          id: _group.id,
+          name: _group.name,
+          description: _group.description,
+          avatar: _group.avatar,
+          creator: _group.creator,
+          admins: _group.admins,
+          members:
+              _group.members.where((m) => m.user.id != memberId).toList(),
+          lastMessageContent: _group.lastMessageContent,
+          lastSenderName: _group.lastSenderName,
+          lastMessageAt: _group.lastMessageAt,
+        );
+        _loading = false;
+      });
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      _snack('Failed to remove member: $e');
+    }
+  }
+
+  Future<void> _toggleAdmin(String memberId, bool isCurrentlyAdmin) async {
+    setState(() => _loading = true);
+    try {
+      final updated =
+          await ApiService.instance.toggleGroupAdmin(_group.id, memberId);
+      setState(() {
+        _group = updated;
+        _loading = false;
+      });
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      _snack('Failed: $e');
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Leave Group',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Text('Leave "${_group.name}"?',
+            style: GoogleFonts.inter()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              style:
+                  TextButton.styleFrom(foregroundColor: ReonColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.instance
+          .removeGroupMember(_group.id, widget.myId);
+      if (mounted) {
+        Navigator.of(context).pop(); // close sheet
+        Navigator.of(context).pop(); // close chat screen
+      }
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      _snack('Failed to leave: $e');
+    }
+  }
+
+  Future<void> _deleteGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete Group',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Text(
+            'Permanently delete "${_group.name}"? This cannot be undone.',
+            style: GoogleFonts.inter()),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              style:
+                  TextButton.styleFrom(foregroundColor: ReonColors.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.instance.deleteGroup(_group.id);
+      if (mounted) {
+        Navigator.of(context).pop(); // close sheet
+        Navigator.of(context).pop(); // close chat screen
+      }
+      widget.onGroupUpdated?.call();
+    } catch (e) {
+      _snack('Failed to delete: $e');
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (_, controller) {
+        return Stack(children: [
+          Column(children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: ReonColors.textMuted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            // Header
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Stack(children: [
+                  ChatAvatar(
+                      name: _group.name,
+                      imageUrl: _group.avatar,
+                      size: 60),
+                  if (_isAdmin)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: GestureDetector(
+                        onTap: _changeAvatar,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: ReonColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: isDark
+                                    ? ReonColors.surfaceDark
+                                    : Colors.white,
+                                width: 2),
+                          ),
+                          child: const Icon(Icons.camera_alt_rounded,
+                              size: 12, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ]),
+                const SizedBox(width: 14),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Row(children: [
+                        Expanded(
+                            child: Text(_group.name,
+                                style: GoogleFonts.inter(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark
+                                        ? ReonColors.textDark
+                                        : ReonColors.textLight))),
+                        if (_isAdmin)
+                          IconButton(
+                            icon: const Icon(Icons.edit_rounded,
+                                size: 18, color: ReonColors.primary),
+                            onPressed: _editGroup,
+                            tooltip: 'Edit group',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                      ]),
+                      Text('${_group.memberCount} members',
+                          style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: ReonColors.textMuted)),
+                      if (_group.description != null &&
+                          _group.description!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(_group.description!,
+                              style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: ReonColors.textMuted),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                    ])),
+              ]),
+            ),
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Wrap(spacing: 8, children: [
+                if (_isAdmin)
+                  _ActionChip(
+                    icon: Icons.person_add_rounded,
+                    label: 'Add Members',
+                    color: ReonColors.primary,
+                    onTap: _addMembers,
+                  ),
+                if (!_isCreator)
+                  _ActionChip(
+                    icon: Icons.exit_to_app_rounded,
+                    label: 'Leave Group',
+                    color: ReonColors.danger,
+                    onTap: _leaveGroup,
+                  ),
+                if (_isCreator)
+                  _ActionChip(
+                    icon: Icons.delete_forever_rounded,
+                    label: 'Delete Group',
+                    color: ReonColors.danger,
+                    onTap: _deleteGroup,
+                  ),
+              ]),
+            ),
+            Divider(
+                color: isDark
+                    ? ReonColors.borderDark
+                    : const Color(0xFFEEEEEE),
+                height: 1),
+            // Members header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+              child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Members',
+                      style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: ReonColors.textMuted))),
+            ),
+            // Members list
+            Expanded(
+              child: ListView.builder(
+                controller: controller,
+                itemCount: _group.members.length,
+                itemBuilder: (_, i) {
+                  final mem = _group.members[i];
+                  final isCreator =
+                      _group.creator.id == mem.user.id;
+                  final isAdminMem = isCreator ||
+                      _group.admins.any((a) => a.id == mem.user.id);
+                  final isMe = mem.user.id == widget.myId;
+
+                  return ListTile(
+                    leading: ChatAvatar(
+                        name: mem.user.fullName,
+                        imageUrl: mem.user.profilePic,
+                        size: 42),
+                    title: Text(
+                        isMe
+                            ? '${mem.user.fullName} (You)'
+                            : mem.user.fullName,
+                        style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? ReonColors.textDark
+                                : ReonColors.textLight)),
+                    subtitle: isCreator
+                        ? Text('Creator',
+                            style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: ReonColors.primary,
+                                fontWeight: FontWeight.w600))
+                        : isAdminMem
+                            ? Text('Admin',
+                                style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: ReonColors.accent,
+                                    fontWeight: FontWeight.w600))
+                            : null,
+                    trailing: (!isMe && !isCreator && _isAdmin)
+                        ? PopupMenuButton<String>(
+                            icon: Icon(Icons.more_vert_rounded,
+                                size: 20,
+                                color: ReonColors.textMuted),
+                            onSelected: (v) {
+                              if (v == 'remove') {
+                                _removeMember(
+                                    mem.user.id, mem.user.fullName);
+                              } else if (v == 'toggle_admin') {
+                                _toggleAdmin(
+                                    mem.user.id, isAdminMem);
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              if (_isCreator)
+                                PopupMenuItem(
+                                  value: 'toggle_admin',
+                                  child: Text(
+                                      isAdminMem
+                                          ? 'Remove Admin'
+                                          : 'Make Admin',
+                                      style: GoogleFonts.inter(
+                                          fontSize: 14)),
+                                ),
+                              PopupMenuItem(
+                                value: 'remove',
+                                child: Text('Remove',
+                                    style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        color: ReonColors.danger)),
+                              ),
+                            ],
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 2),
+                  );
+                },
+              ),
+            ),
+          ]),
+          // Loading overlay
+          if (_loading)
+            const Positioned.fill(
+                child: ColoredBox(
+                    color: Color(0x55000000),
+                    child:
+                        Center(child: CircularProgressIndicator()))),
+        ]);
+      },
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _ActionChip(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(label,
+              style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: color)),
+        ]),
+      ),
+    );
+  }
 }
 
 // ── Background dot grid ───────────────────────────────────────────────────────
