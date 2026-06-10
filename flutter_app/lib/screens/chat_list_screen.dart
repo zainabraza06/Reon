@@ -218,6 +218,7 @@ class _ChatListScreenState extends State<ChatListScreen>
           admins: g.admins,
           members: g.members,
           lastMessageContent: preview,
+          lastMessageType: contentType,
           lastSenderName: senderName,
           lastMessageAt:
               sentAt != null ? DateTime.tryParse(sentAt) : g.lastMessageAt,
@@ -278,7 +279,8 @@ class _ChatListScreenState extends State<ChatListScreen>
 
   String _groupSubtitle(GroupChat g) {
     if (g.lastMessageAt == null) return 'No messages yet';
-    final content = g.lastMessageContent ?? '💬 New message';
+    final content = g.lastMessageContent ??
+        _typeToPreview(g.lastMessageType ?? 'text');
     if (g.lastSenderName != null) return '${g.lastSenderName}: $content';
     return content;
   }

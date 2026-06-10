@@ -32,6 +32,7 @@ class GroupChat {
   final List<ReonUser> admins;
   final List<GroupMember> members;
   final String? lastMessageContent;
+  final String? lastMessageType;
   final String? lastSenderName;
   final DateTime? lastMessageAt;
 
@@ -44,6 +45,7 @@ class GroupChat {
     required this.admins,
     required this.members,
     this.lastMessageContent,
+    this.lastMessageType,
     this.lastSenderName,
     this.lastMessageAt,
   });
@@ -52,12 +54,16 @@ class GroupChat {
     final lm = j['lastMessage'] as Map<String, dynamic>?;
     final sender = lm?['sender'];
     final senderName = sender is Map ? sender['fullName'] as String? : null;
+    final creatorRaw = j['creator'];
+    final creator = creatorRaw is Map
+        ? ReonUser.fromJson(Map<String, dynamic>.from(creatorRaw))
+        : ReonUser(id: creatorRaw?.toString() ?? '', fullName: '', email: '');
     return GroupChat(
       id: j['_id'] as String,
       name: j['name'] as String,
       description: j['description'] as String?,
       avatar: j['avatar'] as String?,
-      creator: ReonUser.fromJson(j['creator'] as Map<String, dynamic>),
+      creator: creator,
       admins: (j['admins'] as List? ?? [])
           .map((a) => ReonUser.fromJson(a as Map<String, dynamic>))
           .toList(),
@@ -65,6 +71,7 @@ class GroupChat {
           .map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
           .toList(),
       lastMessageContent: lm?['content'] as String?,
+      lastMessageType: lm?['contentType'] as String?,
       lastSenderName: senderName,
       lastMessageAt: lm?['sentAt'] != null
           ? DateTime.tryParse(lm!['sentAt'] as String)

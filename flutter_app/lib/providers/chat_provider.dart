@@ -162,6 +162,7 @@ class ChatProvider extends ChangeNotifier {
       final dec = await _decrypt(sent.copyWith(plaintext: text));
 
       _messages = [for (final m in _messages) m.id == tempId ? dec : m];
+      notifyListeners();
       await MessageCacheService.instance.upsert(recipientId, dec);
     } catch (_) {
       _messages = [

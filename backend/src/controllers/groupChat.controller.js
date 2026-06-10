@@ -360,6 +360,7 @@ export const promoteAdmin = async (req, res) => {
     await group.save();
 
     const populated = await GroupChat.findById(groupId)
+      .populate("creator", "fullName username profilePic")
       .populate("members.user", "fullName username profilePic")
       .populate("admins", "fullName username profilePic");
 

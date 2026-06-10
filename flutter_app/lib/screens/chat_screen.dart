@@ -84,6 +84,7 @@ class _ChatViewState extends State<_ChatView> {
 
   bool _showEmojiPanel = false;
   bool _recording = false;
+  bool _initialScrollDone = false;
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
 
@@ -278,7 +279,14 @@ class _ChatViewState extends State<_ChatView> {
     final chat = context.watch<ChatProvider>();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients &&
+      if (!_scroll.hasClients) return;
+      // Jump to the bottom once when messages first load so newest is visible.
+      if (!_initialScrollDone && !chat.loading && chat.messages.isNotEmpty) {
+        _initialScrollDone = true;
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        return;
+      }
+      if (_scroll.position.hasContentDimensions &&
           _scroll.position.maxScrollExtent - _scroll.position.pixels < 200) {
         _scrollToBottom();
       }
