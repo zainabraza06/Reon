@@ -17,6 +17,10 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
+  // Set these to suppress foreground notifications while user is viewing a chat
+  static String? activeGroupId;
+  static String? activeChatId;
+
   final _fcm = FirebaseMessaging.instance;
   final _local = FlutterLocalNotificationsPlugin();
 
@@ -67,6 +71,14 @@ class NotificationService {
   Future<void> _onForegroundMessage(RemoteMessage message) async {
     final n = message.notification;
     if (n == null) return;
+
+    // Suppress if user is actively viewing this conversation
+    final data = message.data;
+    final msgGroupId = data['groupId'] as String?;
+    final msgSenderId = data['senderId'] as String?;
+    if (msgGroupId != null && msgGroupId == activeGroupId) return;
+    if (msgGroupId == null && msgSenderId != null && msgSenderId == activeChatId) return;
+
     await _local.show(
       message.hashCode,
       n.title,

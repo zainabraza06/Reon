@@ -1,9 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:pointycastle/ecc/api.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
@@ -15,117 +14,32 @@ class LinkDeviceScreen extends StatefulWidget {
   State<LinkDeviceScreen> createState() => _LinkDeviceScreenState();
 }
 
-class _LinkDeviceScreenState extends State<LinkDeviceScreen>
-    with WidgetsBindingObserver {
+class _LinkDeviceScreenState extends State<LinkDeviceScreen> {
   final _manual = TextEditingController();
-  MobileScannerController _scannerController = MobileScannerController(autoStart: false);
-  // Incrementing this key forces MobileScanner to fully tear down and remount,
-  // which is the only reliable way to bind a new controller to the widget.
-  int _scannerKey = 0;
-  String _step = 'scan';
+
+  String _step = 'scan'; // scan | connecting | done | error
   String _error = '';
-  bool _permGranted = false;
-  bool _permChecked = false;
-  bool _permPermanentlyDenied = false;
-  bool _cameraLoading = false;
-  int _cameraRetries = 0;
-  DateTime? _cameraStartTime;
   ECPrivateKey? _ecdhPrivate;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _requestCameraPermission());
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!_permGranted) return;
-    switch (state) {
-      case AppLifecycleState.resumed:
-        _startCameraWithDelay();
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.paused:
-        _scannerController.stop();
-      default:
-        break;
-    }
-  }
-
-  Future<void> _startCameraWithDelay() async {
-    // Longer delay ensures the MobileScanner widget is fully mounted and the
-    // native camera session is open before we call start().
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) _scannerController.start();
-  }
-
-  /// Disposes the current controller, creates a fresh one, and increments
-  /// _scannerKey so Flutter tears down and remounts the MobileScanner widget.
-  /// Simply replacing the controller field without a key change doesn't work
-  /// because MobileScanner.didUpdateWidget doesn't rebind a new controller.
-  Future<void> _recreateAndStartCamera() async {
-    if (!mounted) return;
-    setState(() {
-      _cameraLoading = true;
-      _cameraRetries++;
-    });
-    await _scannerController.dispose();
-    if (!mounted) return;
-    setState(() {
-      _scannerController = MobileScannerController(autoStart: false);
-      _scannerKey++;       // forces MobileScanner to remount with new controller
-      _cameraLoading = false;
-    });
-    await _startCameraWithDelay();
-  }
-
-  Future<void> _manualRetry() async {
-    setState(() {
-      _cameraRetries = 0;
-      _cameraStartTime = DateTime.now();
-    });
-    await _recreateAndStartCamera();
-  }
-
-  Future<void> _requestCameraPermission() async {
-    var status = await Permission.camera.status;
-    if (!mounted) return;
-
-    if (!status.isGranted) {
-      status = await Permission.camera.request();
-      if (!mounted) return;
-    }
-
-    if (status.isGranted) {
-      setState(() {
-        _permGranted = true;
-        _permChecked = true;
-        _permPermanentlyDenied = false;
-        _cameraStartTime = DateTime.now();
-      });
-      await _startCameraWithDelay();
-    } else {
-      setState(() {
-        _permChecked = true;
-        _permGranted = false;
-        _permPermanentlyDenied = status.isPermanentlyDenied;
-        _step = 'error';
-        _error = status.isPermanentlyDenied
-            ? 'Camera access is permanently blocked.\nTap "Open Settings" and enable Camera for Reon.'
-            : 'Camera permission is required to scan the QR code.\nTap Retry to grant access.';
-      });
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _scannerController.dispose();
     _manual.dispose();
     super.dispose();
   }
+
+  // ── Open live scanner ─────────────────────────────────────────────────────────
+
+  Future<void> _openScanner() async {
+    setState(() => _error = '');
+    final raw = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _QRScannerPage()),
+    );
+    if (raw == null || !mounted) return;
+    _handleRaw(raw);
+  }
+
+  // ── Payload extraction ────────────────────────────────────────────────────────
 
   String? _extractPayload(String raw) {
     try {
@@ -142,6 +56,20 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
     } catch (_) {}
     return null;
   }
+
+  void _handleRaw(String raw) {
+    final payload = _extractPayload(raw);
+    if (payload != null) {
+      _processPayload(payload);
+    } else {
+      if (mounted) {
+        setState(() => _error =
+            'Invalid QR code. Make sure you scan the one shown on your other device.');
+      }
+    }
+  }
+
+  // ── Key-exchange flow ─────────────────────────────────────────────────────────
 
   Future<void> _processPayload(String encoded) async {
     setState(() {
@@ -160,7 +88,6 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
 
       await ApiService.instance.claimLinkSession(sessionId, pair.publicKey);
 
-      // Poll until keys are ready
       for (var i = 0; i < 60; i++) {
         final session = await ApiService.instance.getLinkSession(sessionId);
         if (session.status == 'ready' &&
@@ -178,20 +105,11 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
       }
       throw Exception('Timed out waiting for key transfer');
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _step = 'error';
-        });
-      }
+      if (mounted) setState(() {
+        _error = e.toString();
+        _step = 'error';
+      });
     }
-  }
-
-  void _onScan(BarcodeCapture capture) {
-    final raw = capture.barcodes.firstOrNull?.rawValue;
-    if (raw == null || _step != 'scan') return;
-    final payload = _extractPayload(raw);
-    if (payload != null) _processPayload(payload);
   }
 
   void _submitManual() {
@@ -203,188 +121,448 @@ class _LinkDeviceScreenState extends State<LinkDeviceScreen>
     _processPayload(payload);
   }
 
+  // ── UI ────────────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(title: const Text('Link This Device')),
+      backgroundColor:
+          isDark ? const Color(0xFF080816) : const Color(0xFFF5F7FF),
+      appBar: AppBar(
+        title: const Text('Link This Device'),
+        backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
+        elevation: 0,
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: _buildBody(),
+        padding: const EdgeInsets.all(24),
+        child: _buildBody(isDark),
       ),
     );
   }
 
-  Widget _buildBody() {
-    return switch (_step) {
-      'connecting' => const Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(color: ReonColors.primary),
-          SizedBox(height: 16),
-          Text('Receiving encryption keys…'),
-        ])),
-      'done' => Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.shield_rounded, color: Colors.teal, size: 56),
-          const SizedBox(height: 12),
-          Text('Device linked!',
-              style:
-                  GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
-          const SizedBox(height: 8),
-          Text(
+  Widget _buildBody(bool isDark) {
+    switch (_step) {
+      case 'connecting':
+        return const Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            CircularProgressIndicator(color: ReonColors.primary),
+            SizedBox(height: 16),
+            Text('Receiving encryption keys…'),
+          ]),
+        );
+
+      case 'done':
+        return Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.shield_rounded, color: Colors.teal, size: 56),
+            const SizedBox(height: 12),
+            Text('Device linked!',
+                style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700, fontSize: 18)),
+            const SizedBox(height: 8),
+            Text(
               'Your encryption keys are ready. You can now read your encrypted messages on this device.',
               style: GoogleFonts.inter(color: ReonColors.textMuted),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 20),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done')),
-        ])),
-      'error' => Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline, color: ReonColors.danger, size: 48),
-          const SizedBox(height: 12),
-          Text(_error,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 14)),
-          const SizedBox(height: 16),
-          if (_permPermanentlyDenied)
-            ElevatedButton(
-              onPressed: () async {
-                await openAppSettings();
-                // Re-check permission after user returns from Settings
-                if (!mounted) return;
-                setState(() { _step = 'scan'; _error = ''; });
-                await _requestCameraPermission();
-              },
-              child: const Text('Open Settings'),
-            )
-          else
-            ElevatedButton(
-              onPressed: () async {
-                setState(() { _step = 'scan'; _error = ''; });
-                await _requestCameraPermission();
-              },
-              child: const Text('Retry'),
             ),
-        ])),
-      _ => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Scan QR Code',
-              style:
-                  GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 17)),
-          const SizedBox(height: 8),
-          Text(
-              'Scan the QR code shown on your other device, or paste the link below.',
-              style:
-                  GoogleFonts.inter(fontSize: 13, color: ReonColors.textMuted)),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 260,
-              child: _permGranted
-                  ? MobileScanner(
-                      key: ValueKey(_scannerKey),
-                      controller: _scannerController,
-                      onDetect: _onScan,
-                      errorBuilder: (context, error, child) {
-                        final elapsed = _cameraStartTime == null
-                            ? 0
-                            : DateTime.now()
-                                .difference(_cameraStartTime!)
-                                .inSeconds;
-                        if (elapsed < 30 && !_cameraLoading) {
-                          // Keep auto-retrying for up to 30 s before giving up.
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted && !_cameraLoading) {
-                              _recreateAndStartCamera();
-                            }
-                          });
-                        }
-                        if (elapsed < 30) {
-                          return const ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(color: Colors.white54),
-                                  SizedBox(height: 10),
-                                  Text('Starting camera…',
-                                      style: TextStyle(
-                                          color: Colors.white54, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                        // 30 s elapsed — let the user decide.
-                        return ColoredBox(
-                          color: Colors.black,
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.camera_alt_outlined,
-                                    color: Colors.white54, size: 40),
-                                const SizedBox(height: 8),
-                                const Text('Camera unavailable',
-                                    style: TextStyle(
-                                        color: Colors.white70, fontSize: 13)),
-                                const SizedBox(height: 4),
-                                const Text(
-                                    'Another app may be using the camera.',
-                                    style: TextStyle(
-                                        color: Colors.white38, fontSize: 11)),
-                                const SizedBox(height: 12),
-                                TextButton(
-                                  onPressed: _manualRetry,
-                                  child: const Text('Tap to retry',
-                                      style: TextStyle(color: Colors.white)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  : ColoredBox(
-                      color: Colors.black,
-                      child: Center(
-                        child: _permChecked
-                            ? Column(mainAxisSize: MainAxisSize.min, children: [
-                                const Icon(Icons.no_photography_outlined,
-                                    color: Colors.white54, size: 40),
-                                const SizedBox(height: 8),
-                                Text(_error,
-                                    style: const TextStyle(
-                                        color: Colors.white70, fontSize: 12),
-                                    textAlign: TextAlign.center),
-                              ])
-                            : const CircularProgressIndicator(
-                                color: Colors.white),
-                      ),
-                    ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
             ),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _manual,
-            decoration: const InputDecoration(
-              hintText: 'Paste link or payload here…',
-              prefixIcon: Icon(Icons.link_rounded),
-            ),
-            maxLines: 2,
-          ),
-          if (_error.isNotEmpty) ...[
-            const SizedBox(height: 8),
+          ]),
+        );
+
+      case 'error':
+        return Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.error_outline,
+                color: ReonColors.danger, size: 48),
+            const SizedBox(height: 12),
             Text(_error,
-                style:
-                    GoogleFonts.inter(color: ReonColors.danger, fontSize: 13)),
-          ],
-          const SizedBox(height: 12),
-          ElevatedButton(
-              onPressed: _submitManual, child: const Text('Connect')),
-        ]),
-    };
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 14)),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => setState(() {
+                _step = 'scan';
+                _error = '';
+              }),
+              child: const Text('Try Again'),
+            ),
+          ]),
+        );
+
+      default: // 'scan'
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Scan QR Code',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w700, fontSize: 17)),
+              const SizedBox(height: 6),
+              Text(
+                'Open the scanner and point it at the QR code shown on your other device, or pick a screenshot from your gallery.',
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: ReonColors.textMuted),
+              ),
+              const SizedBox(height: 28),
+
+              _ScanOption(
+                icon: Icons.qr_code_scanner_rounded,
+                label: 'Scan QR Code',
+                description: 'Live camera · torch · gallery picker',
+                color: ReonColors.primary,
+                onTap: _openScanner,
+              ),
+
+              const SizedBox(height: 28),
+
+              Row(children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('or paste manually',
+                      style: GoogleFonts.inter(
+                          fontSize: 12, color: ReonColors.textMuted)),
+                ),
+                const Expanded(child: Divider()),
+              ]),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: _manual,
+                decoration: const InputDecoration(
+                  hintText: 'Paste link or payload here…',
+                  prefixIcon: Icon(Icons.link_rounded),
+                ),
+                maxLines: 2,
+              ),
+
+              if (_error.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(_error,
+                    style: GoogleFonts.inter(
+                        color: ReonColors.danger, fontSize: 13)),
+              ],
+
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _submitManual,
+                child: const Text('Connect'),
+              ),
+            ]);
+    }
   }
+}
+
+// ── Scan option card ──────────────────────────────────────────────────────────
+
+class _ScanOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String description;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ScanOption({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: isDark ? ReonColors.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: color.withValues(alpha: 0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black
+                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? ReonColors.textDark
+                            : ReonColors.textLight)),
+                const SizedBox(height: 2),
+                Text(description,
+                    style: GoogleFonts.inter(
+                        fontSize: 12, color: ReonColors.textMuted)),
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_forward_ios_rounded,
+              size: 14, color: ReonColors.textMuted),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── Full-screen live QR scanner page ─────────────────────────────────────────
+
+class _QRScannerPage extends StatefulWidget {
+  const _QRScannerPage();
+  @override
+  State<_QRScannerPage> createState() => _QRScannerPageState();
+}
+
+class _QRScannerPageState extends State<_QRScannerPage> {
+  late final MobileScannerController _controller;
+  final _picker = ImagePicker();
+  bool _scanned = false;
+  bool _analyzing = false;
+  String? _galleryError;
+  bool _torchOn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = MobileScannerController(
+      autoStart: true,
+      torchEnabled: false,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFromGallery() async {
+    if (_analyzing) return;
+    setState(() {
+      _analyzing = true;
+      _galleryError = null;
+    });
+    try {
+      final f = await _picker.pickImage(source: ImageSource.gallery);
+      if (f == null) {
+        if (mounted) setState(() => _analyzing = false);
+        return;
+      }
+      final capture = await _controller.analyzeImage(f.path);
+      final raw = capture?.barcodes.firstOrNull?.rawValue;
+      if (!mounted) return;
+      if (raw != null) {
+        _scanned = true;
+        Navigator.pop(context, raw);
+      } else {
+        setState(() {
+          _analyzing = false;
+          _galleryError = 'No QR code found in this image. Try another photo.';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _analyzing = false;
+          _galleryError = 'Could not read image: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('Scan QR Code',
+            style: GoogleFonts.inter(
+                color: Colors.white, fontWeight: FontWeight.w600)),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+              color: _torchOn ? Colors.amber : Colors.white60,
+            ),
+            tooltip: 'Toggle torch',
+            onPressed: () {
+              _controller.toggleTorch();
+              setState(() => _torchOn = !_torchOn);
+            },
+          ),
+        ],
+      ),
+      body: Stack(children: [
+        // Live camera view
+        MobileScanner(
+          controller: _controller,
+          onDetect: (capture) {
+            if (_scanned) return;
+            final raw = capture.barcodes.firstOrNull?.rawValue;
+            if (raw != null) {
+              _scanned = true;
+              Navigator.pop(context, raw);
+            }
+          },
+        ),
+
+        // Scan frame
+        Center(
+          child: Container(
+            width: 248,
+            height: 248,
+            decoration: BoxDecoration(
+              border: Border.all(
+                  color: ReonColors.primary,
+                  width: 2.5,
+                  strokeAlign: BorderSide.strokeAlignOutside),
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+
+        // Corner accents
+        Center(
+          child: SizedBox(
+            width: 248,
+            height: 248,
+            child: CustomPaint(painter: _CornerPainter()),
+          ),
+        ),
+
+        // Bottom overlay: hint + gallery button
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: EdgeInsets.fromLTRB(
+                24, 20, 24, MediaQuery.of(context).padding.bottom + 28),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.85),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Point at the QR code on your other device',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                      color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.photo_library_rounded,
+                      color: Colors.white, size: 18),
+                  label: Text('Choose from Gallery',
+                      style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white38),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _analyzing ? null : _pickFromGallery,
+                ),
+                if (_galleryError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_galleryError!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                          color: Colors.redAccent, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        // Overlay while analyzing gallery image
+        if (_analyzing)
+          Container(
+            color: Colors.black54,
+            child: const Center(
+                child: CircularProgressIndicator(color: Colors.white)),
+          ),
+      ]),
+    );
+  }
+}
+
+// ── Corner accent painter ─────────────────────────────────────────────────────
+
+class _CornerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = ReonColors.primary
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    const len = 28.0;
+    const r = 16.0;
+
+    // top-left
+    canvas.drawLine(const Offset(0, r), const Offset(0, len), paint);
+    canvas.drawLine(const Offset(r, 0), const Offset(len, 0), paint);
+    // top-right
+    canvas.drawLine(
+        Offset(size.width - r, 0), Offset(size.width - len, 0), paint);
+    canvas.drawLine(Offset(size.width, r), Offset(size.width, len), paint);
+    // bottom-left
+    canvas.drawLine(
+        Offset(0, size.height - r), Offset(0, size.height - len), paint);
+    canvas.drawLine(
+        Offset(r, size.height), Offset(len, size.height), paint);
+    // bottom-right
+    canvas.drawLine(Offset(size.width - r, size.height),
+        Offset(size.width - len, size.height), paint);
+    canvas.drawLine(Offset(size.width, size.height - r),
+        Offset(size.width, size.height - len), paint);
+  }
+
+  @override
+  bool shouldRepaint(_CornerPainter o) => false;
 }

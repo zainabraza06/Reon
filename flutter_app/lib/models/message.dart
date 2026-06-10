@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class MediaFile {
   final String url;
   final String? downloadUrl;
@@ -48,8 +50,11 @@ class ChatMessage {
   final String status; // sent | delivered | read | sending | failed
   final bool isVoiceMessage;
   final String? tempId; // client-side only for optimistic UI
+  // Client-side only: local bytes for preview while uploading and for retry
+  final Uint8List? localBytes;
+  final String? localFileName;
 
-  const ChatMessage({
+  ChatMessage({
     required this.id,
     required this.sender,
     required this.receiver,
@@ -66,6 +71,8 @@ class ChatMessage {
     this.status = 'sent',
     this.isVoiceMessage = false,
     this.tempId,
+    this.localBytes,
+    this.localFileName,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -95,13 +102,15 @@ class ChatMessage {
         isVoiceMessage: j['isVoiceMessage'] as bool? ?? false,
       );
 
-  ChatMessage copyWith(
-          {String? plaintext,
-          String? status,
-          bool? delivered,
-          DateTime? deliveredAt,
-          bool? read,
-          DateTime? readAt}) =>
+  ChatMessage copyWith({
+    String? plaintext,
+    String? status,
+    bool? delivered,
+    DateTime? deliveredAt,
+    bool? read,
+    DateTime? readAt,
+    List<MediaFile>? media,
+  }) =>
       ChatMessage(
         id: id,
         sender: sender,
@@ -109,10 +118,12 @@ class ChatMessage {
         ciphertext: ciphertext,
         encryptedKey: encryptedKey,
         contentType: contentType,
-        media: media,
+        media: media ?? this.media,
         sentAt: sentAt,
         isVoiceMessage: isVoiceMessage,
         tempId: tempId,
+        localBytes: localBytes,
+        localFileName: localFileName,
         plaintext: plaintext ?? this.plaintext,
         status: status ?? this.status,
         delivered: delivered ?? this.delivered,

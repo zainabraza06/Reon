@@ -3,6 +3,7 @@ import { GridFSBucket } from "mongodb";
 import { GroupChat, GroupMessage } from "../models/GroupChat.js";
 import User from "../models/User.js";
 import { emitToUser, isUserOnline } from "../lib/socket.js";
+import { sendPush } from "../lib/fcm.js";
 import cloudinary from "../lib/cloudinary.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -504,6 +505,32 @@ export const sendGroupMessage = async (req, res) => {
     // Emit to all members (including sender for sidebar update)
     for (const m of group.members) {
       emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId, groupName: group.name });
+    }
+
+    // Push notification for offline members (never the sender)
+    const senderUser = await User.findById(senderId).select("fullName").lean();
+    const senderName = senderUser?.fullName ?? "Someone";
+    const pushBody = hasFiles ? `[${mediaArr[0]?.type ?? "file"}]` : "New message";
+    for (const m of otherMembers) {
+      if (!isUserOnline(m.user.toString())) {
+        User.findById(m.user).select("fcmToken").lean()
+          .then((member) => {
+            if (member?.fcmToken) {
+              sendPush(member.fcmToken, {
+                title: `${senderName} · ${group.name}`,
+                body: pushBody,
+                data: {
+                  type: "group_message",
+                  groupId: groupId.toString(),
+                  groupName: group.name,
+                  senderId: senderId.toString(),
+                  senderName,
+                },
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
 
     res.status(201).json({ message: populated });

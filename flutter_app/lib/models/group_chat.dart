@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'message.dart';
 import 'user.dart';
 
 class GroupMember {
@@ -76,11 +78,14 @@ class GroupMessage {
   final String? plaintext;
   final String? encryptedKey;
   final String contentType;
+  final List<MediaFile> media;
   final DateTime sentAt;
-  final List<Map<String, dynamic>> readBy; // [{userId, at}]
-  final List<Map<String, dynamic>> deliveredTo; // [{userId, at}]
+  final List<Map<String, dynamic>> readBy;
+  final List<Map<String, dynamic>> deliveredTo;
+  final Uint8List? localBytes; // client-only: preview while uploading
+  final String? localFileName; // client-only
 
-  const GroupMessage({
+  GroupMessage({
     required this.id,
     required this.groupId,
     required this.sender,
@@ -88,9 +93,12 @@ class GroupMessage {
     this.plaintext,
     this.encryptedKey,
     this.contentType = 'text',
+    this.media = const [],
     required this.sentAt,
     this.readBy = const [],
     this.deliveredTo = const [],
+    this.localBytes,
+    this.localFileName,
   });
 
   factory GroupMessage.fromJson(Map<String, dynamic> j) => GroupMessage(
@@ -100,6 +108,9 @@ class GroupMessage {
         ciphertext: j['ciphertext'] as String?,
         encryptedKey: j['encryptedKey'] as String?,
         contentType: j['contentType'] as String? ?? 'text',
+        media: (j['media'] as List? ?? [])
+            .map((m) => MediaFile.fromJson(m as Map<String, dynamic>))
+            .toList(),
         sentAt: DateTime.parse(j['sentAt'] as String),
         readBy: List<Map<String, dynamic>>.from(
             (j['readBy'] as List? ?? []).map((e) => e as Map<String, dynamic>)),
@@ -108,10 +119,14 @@ class GroupMessage {
                 .map((e) => e as Map<String, dynamic>)),
       );
 
-  GroupMessage copyWith(
-          {String? plaintext,
-          List<Map<String, dynamic>>? readBy,
-          List<Map<String, dynamic>>? deliveredTo}) =>
+  GroupMessage copyWith({
+    String? plaintext,
+    List<MediaFile>? media,
+    List<Map<String, dynamic>>? readBy,
+    List<Map<String, dynamic>>? deliveredTo,
+    Uint8List? localBytes,
+    String? localFileName,
+  }) =>
       GroupMessage(
         id: id,
         groupId: groupId,
@@ -119,9 +134,14 @@ class GroupMessage {
         ciphertext: ciphertext,
         encryptedKey: encryptedKey,
         contentType: contentType,
+        media: media ?? this.media,
         sentAt: sentAt,
         plaintext: plaintext ?? this.plaintext,
         readBy: readBy ?? this.readBy,
         deliveredTo: deliveredTo ?? this.deliveredTo,
+        localBytes: localBytes ?? this.localBytes,
+        localFileName: localFileName ?? this.localFileName,
       );
+
+  bool get isSystem => contentType == 'system';
 }

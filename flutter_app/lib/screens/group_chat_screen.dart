@@ -1,16 +1,34 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import '../theme/app_theme.dart';
 import '../models/group_chat.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 import '../services/socket_service.dart';
 import '../services/crypto_service.dart';
 import '../widgets/chat_avatar.dart';
+import '../widgets/message_bubble.dart';
+
+// 50 common emoji stickers (shared with ChatScreen)
+const _stickers = [
+  '😀', '😂', '😍', '🥰', '😊', '😎', '🤔', '😭', '😡', '🥺',
+  '👍', '👎', '❤️', '💯', '🔥', '✨', '🎉', '👀', '💪', '🙏',
+  '😅', '😆', '🤩', '🥳', '😴', '🤒', '🤗', '😏', '🫠', '🫡',
+  '🐶', '🐱', '🦁', '🐼', '🦊', '🐸', '🌸', '🌟', '⭐', '💎',
+  '🍕', '🍔', '🍣', '🍦', '🎂', '🍩', '☕', '🎮', '🎵', '🏆',
+];
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -25,15 +43,23 @@ class GroupChatScreen extends StatefulWidget {
 class _GroupChatScreenState extends State<GroupChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  final _imagePicker = ImagePicker();
+  final _audioRecorder = AudioRecorder();
 
   List<GroupMessage> _messages = [];
   GroupChat? _group;
   bool _loading = true;
   bool _hasMore = true;
+  bool _uploading = false;
+  bool _showEmojiPanel = false;
+  bool _recording = false;
+  Duration _recordDuration = Duration.zero;
+  Timer? _recordTimer;
 
   @override
   void initState() {
     super.initState();
+    NotificationService.activeGroupId = widget.groupId;
     _loadMessages();
     _loadGroup();
     _listenSocket();
@@ -41,8 +67,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   void dispose() {
+    if (NotificationService.activeGroupId == widget.groupId) {
+      NotificationService.activeGroupId = null;
+    }
     _input.dispose();
     _scroll.dispose();
+    _recordTimer?.cancel();
+    _audioRecorder.dispose();
     SocketService.instance.off('new-group-message', _onNewMsg);
     SocketService.instance.off('group-message-delivered', _onDelivered);
     SocketService.instance.off('group-messages-read', _onRead);
@@ -83,49 +114,42 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   // ── Decrypt ───────────────────────────────────────────────────────────────────
 
   Future<GroupMessage> _decrypt(GroupMessage m, String myId) async {
+    if (m.isSystem) return m; // system messages are plain text, no encryption
     if (m.ciphertext == null || m.encryptedKey == null) return m;
     final plain = await CryptoService.instance
         .decryptText(m.ciphertext!, m.encryptedKey!);
     return m.copyWith(plaintext: plain ?? '[decryption failed]');
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────────────
+  // ── Send text ─────────────────────────────────────────────────────────────────
 
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _group == null) return;
     _input.clear();
+    setState(() {});
 
-    // Gather member public keys
+    final prepared = await CryptoService.instance.encryptGroupText(text);
+
     final memberKeys = <Map<String, dynamic>>[];
     for (final mem in _group!.members) {
       try {
         final jwkStr = await ApiService.instance.tryGetPublicKey(mem.user.id);
         if (jwkStr != null) {
+          final jwk = jsonDecode(jwkStr) as Map<String, dynamic>;
           memberKeys.add({
             'userId': mem.user.id,
-            'encryptedKey': await _encryptForMember(text, jwkStr)
+            'encryptedKey': prepared.encryptKeyFor(jwk),
           });
         }
       } catch (_) {}
     }
     if (memberKeys.isEmpty) return;
 
-    // Encrypt using sender's own key for self-reading
-    final myPubJwk = await CryptoService.instance.getStoredPublicKey();
-    String ciphertext = text;
-    if (myPubJwk != null && memberKeys.isNotEmpty) {
-      // Use first member key's AES as base — actually re-encrypt with groupText logic
-      // For simplicity: encrypt text with our own key first, then distribute per member
-      final enc = await CryptoService.instance.encryptText(text,
-          memberKeys.first['_pubJwk'] as Map<String, dynamic>? ?? myPubJwk);
-      ciphertext = enc.ciphertext;
-    }
-
     final payload = jsonEncode({
-      'ciphertext': ciphertext,
+      'ciphertext': prepared.ciphertext,
       'contentType': 'text',
-      'memberKeys': memberKeys
+      'memberKeys': memberKeys,
     });
     final fd = FormData.fromMap({'data': payload});
 
@@ -135,7 +159,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final dec = sent.copyWith(plaintext: text);
       if (mounted) {
         setState(() {
-          if (!_messages.any((m) => m.id == dec.id)) {
+          // Replace if socket already added this message (may be encrypted),
+          // otherwise append (socket hasn't fired yet).
+          final idx = _messages.indexWhere((m) => m.id == dec.id);
+          if (idx >= 0) {
+            _messages[idx] = dec;
+          } else {
             _messages.add(dec);
           }
         });
@@ -150,10 +179,237 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     await ApiService.instance.markGroupRead(widget.groupId).catchError((_) {});
   }
 
-  Future<String> _encryptForMember(String text, String pubJwkStr) async {
-    final jwk = jsonDecode(pubJwkStr) as Map<String, dynamic>;
-    final enc = await CryptoService.instance.encryptText(text, jwk);
-    return enc.encryptedKey;
+  // ── Send media ────────────────────────────────────────────────────────────────
+
+  Future<void> _sendMedia(
+    Uint8List fileBytes,
+    String contentType,
+    String myId, {
+    String? fileName,
+    bool isVoiceMessage = false,
+  }) async {
+    if (_uploading || _group == null) return;
+    setState(() => _uploading = true);
+
+    // Show optimistic preview while uploading
+    final me = context.read<AuthProvider>().user!;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimistic = GroupMessage(
+      id: tempId,
+      groupId: widget.groupId,
+      sender: me,
+      contentType: contentType,
+      sentAt: DateTime.now(),
+      localBytes: contentType == 'image' ? fileBytes : null,
+      localFileName: fileName,
+    );
+    if (mounted) setState(() => _messages.add(optimistic));
+    _scrollToBottom();
+
+    try {
+      final enc = await CryptoService.instance.encryptGroupMedia(fileBytes);
+
+      final memberKeys = <Map<String, dynamic>>[];
+      for (final mem in _group!.members) {
+        try {
+          final jwkStr = await ApiService.instance.tryGetPublicKey(mem.user.id);
+          if (jwkStr != null) {
+            final jwk = jsonDecode(jwkStr) as Map<String, dynamic>;
+            memberKeys.add({
+              'userId': mem.user.id,
+              'encryptedKey': enc.encryptKeyFor(jwk),
+            });
+          }
+        } catch (_) {}
+      }
+
+      final mediaKeys = [
+        {'memberKeys': memberKeys, 'encryptionIV': enc.iv}
+      ];
+
+      final payload = jsonEncode({
+        'contentType': contentType,
+        'mediaKeys': mediaKeys,
+      });
+
+      final mimeType = _mimeFor(contentType, fileName);
+      final form = FormData.fromMap({
+        'data': payload,
+        'files': MultipartFile.fromBytes(
+          enc.encryptedBytes,
+          filename: fileName ?? '$contentType.bin',
+          contentType: DioMediaType.parse(mimeType),
+        ),
+      });
+
+      final sent = await ApiService.instance.sendGroupMessage(widget.groupId, form);
+      if (mounted) {
+        setState(() {
+          // Replace optimistic bubble with real server message
+          final tempIdx = _messages.indexWhere((m) => m.id == tempId);
+          if (tempIdx >= 0) {
+            _messages[tempIdx] = sent;
+          } else {
+            // Socket may have already added it
+            final serverIdx = _messages.indexWhere((m) => m.id == sent.id);
+            if (serverIdx >= 0) _messages[serverIdx] = sent;
+            else _messages.add(sent);
+          }
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _messages.removeWhere((m) => m.id == tempId));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+      }
+    }
+
+    if (mounted) setState(() => _uploading = false);
+  }
+
+  String _mimeFor(String contentType, String? fileName) {
+    if (contentType == 'image') {
+      final ext = fileName?.split('.').last.toLowerCase();
+      if (ext == 'png') return 'image/png';
+      if (ext == 'gif') return 'image/gif';
+      if (ext == 'webp') return 'image/webp';
+      return 'image/jpeg';
+    }
+    if (contentType == 'video') return 'video/mp4';
+    if (contentType == 'audio') return 'audio/aac';
+    return 'application/octet-stream';
+  }
+
+  // ── Voice recording ───────────────────────────────────────────────────────────
+
+  Future<void> _startRecording() async {
+    if (!await _audioRecorder.hasPermission()) return;
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+    await _audioRecorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc, numChannels: 1),
+      path: path,
+    );
+    setState(() {
+      _recording = true;
+      _recordDuration = Duration.zero;
+    });
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordDuration += const Duration(seconds: 1));
+    });
+  }
+
+  Future<void> _stopAndSendVoice(String myId) async {
+    _recordTimer?.cancel();
+    final path = await _audioRecorder.stop();
+    setState(() => _recording = false);
+    if (path == null) return;
+    final bytes = await File(path).readAsBytes();
+    await _sendMedia(bytes, 'audio', myId,
+        fileName: 'voice.aac', isVoiceMessage: true);
+  }
+
+  Future<void> _cancelRecording() async {
+    _recordTimer?.cancel();
+    await _audioRecorder.stop();
+    if (mounted) setState(() {
+      _recording = false;
+      _recordDuration = Duration.zero;
+    });
+  }
+
+  String _formatDuration(Duration d) =>
+      '${d.inMinutes.toString().padLeft(2, '0')}:'
+      '${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  // ── Attachment sheet ──────────────────────────────────────────────────────────
+
+  Future<void> _showAttachmentSheet(String myId) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _AttachOption(
+                icon: Icons.camera_alt_rounded,
+                label: 'Camera',
+                color: Colors.blue,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final f = await _imagePicker.pickImage(
+                      source: ImageSource.camera, imageQuality: 80);
+                  if (f != null && mounted) {
+                    await _sendMedia(await f.readAsBytes(), 'image', myId,
+                        fileName: f.name);
+                    _scrollToBottom();
+                  }
+                },
+              ),
+              _AttachOption(
+                icon: Icons.photo_library_rounded,
+                label: 'Gallery',
+                color: Colors.purple,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final f = await _imagePicker.pickImage(
+                      source: ImageSource.gallery, imageQuality: 80);
+                  if (f != null && mounted) {
+                    await _sendMedia(await f.readAsBytes(), 'image', myId,
+                        fileName: f.name);
+                    _scrollToBottom();
+                  }
+                },
+              ),
+              _AttachOption(
+                icon: Icons.videocam_rounded,
+                label: 'Video',
+                color: Colors.red,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final f = await _imagePicker.pickVideo(
+                      source: ImageSource.gallery);
+                  if (f != null && mounted) {
+                    await _sendMedia(await f.readAsBytes(), 'video', myId,
+                        fileName: f.name);
+                    _scrollToBottom();
+                  }
+                },
+              ),
+              _AttachOption(
+                icon: Icons.insert_drive_file_rounded,
+                label: 'Document',
+                color: Colors.orange,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final result =
+                      await FilePicker.platform.pickFiles(withData: true);
+                  if (result != null &&
+                      result.files.isNotEmpty &&
+                      mounted) {
+                    final file = result.files.first;
+                    if (file.bytes != null) {
+                      await _sendMedia(file.bytes!, 'document', myId,
+                          fileName: file.name);
+                      _scrollToBottom();
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ── Socket ────────────────────────────────────────────────────────────────────
@@ -168,14 +424,36 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final m = d as Map?;
     if (m == null) return;
     if ((m['groupId'] as String?) != widget.groupId) return;
-    final msg =
-        GroupMessage.fromJson(Map<String, dynamic>.from(m['message'] as Map));
-    if (_messages.any((e) => e.id == msg.id)) return;
+
+    final rawMsg = Map<String, dynamic>.from(m['message'] as Map);
     final myId = context.read<AuthProvider>().user?.id ?? '';
+
+    // The socket payload contains the full memberKeys array; extract our key.
+    if (rawMsg['encryptedKey'] == null) {
+      final memberKeys = rawMsg['memberKeys'] as List? ?? [];
+      for (final k in memberKeys) {
+        final entry = Map<String, dynamic>.from(k as Map);
+        if (entry['userId']?.toString() == myId) {
+          rawMsg['encryptedKey'] = entry['encryptedKey'];
+          break;
+        }
+      }
+    }
+
+    final msg = GroupMessage.fromJson(rawMsg);
+
+    // Skip if already added (e.g. HTTP response arrived first)
+    if (_messages.any((e) => e.id == msg.id)) return;
+
     final dec = await _decrypt(msg, myId);
-    if (mounted) setState(() => _messages.add(dec));
-    _scrollToBottom();
-    // Tell sender we received it
+    if (mounted) {
+      setState(() {
+        if (!_messages.any((e) => e.id == msg.id)) {
+          _messages.add(dec);
+        }
+      });
+      _scrollToBottom();
+    }
     SocketService.instance.emit('group-message-delivered',
         {'messageId': msg.id, 'groupId': widget.groupId});
     await ApiService.instance.markGroupRead(widget.groupId).catchError((_) {});
@@ -197,8 +475,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         count + 1,
                         (i) => {
                               'userId': i == 0
-                                  ? (context.read<AuthProvider>().user?.id ??
-                                      '')
+                                  ? (context.read<AuthProvider>().user?.id ?? '')
                                   : 'member_$i',
                               'at': DateTime.now().toIso8601String()
                             }))
@@ -283,7 +560,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         if (_hasMore && !_loading)
           GestureDetector(
               onTap: () => _loadMessages(
-                  before: _messages.first.sentAt.toIso8601String()),
+                  before: _messages.isNotEmpty
+                      ? _messages.first.sentAt.toIso8601String()
+                      : null),
               child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text('Load earlier',
@@ -302,6 +581,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         itemCount: _messages.length,
                         itemBuilder: (_, i) {
                           final msg = _messages[i];
+                          // System messages render as centered chips
+                          if (msg.isSystem) {
+                            return _SystemChip(
+                                text: msg.ciphertext ?? '', isDark: isDark);
+                          }
                           final isMine = msg.sender.id == me.id;
                           return _GroupBubble(
                               message: msg,
@@ -309,59 +593,177 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               memberCount: memberCount,
                               myId: me.id);
                         }))),
-        // Input
-        Container(
-            color: isDark ? ReonColors.surfaceDark : Colors.white,
-            padding: EdgeInsets.only(
-                left: 8,
-                right: 8,
-                top: 8,
-                bottom: MediaQuery.of(context).padding.bottom + 8),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                  child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
-                decoration: BoxDecoration(
-                    color: isDark ? ReonColors.bgDark : const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(22)),
-                child: TextField(
-                    controller: _input,
-                    maxLines: null,
-                    style: GoogleFonts.inter(
-                        fontSize: 14.5,
-                        color: isDark
-                            ? ReonColors.textDark
-                            : ReonColors.textLight),
-                    decoration: InputDecoration(
-                        hintText: 'Message ${widget.groupName}…',
-                        hintStyle: GoogleFonts.inter(
-                            fontSize: 14.5, color: ReonColors.textMuted),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        border: InputBorder.none)),
-              )),
-              const SizedBox(width: 6),
-              GestureDetector(
-                  onTap: _send,
-                  child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                          gradient: kBrandGradient,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                                color:
-                                    ReonColors.primary.withValues(alpha: 0.35),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3))
-                          ]),
-                      child: const Icon(Icons.send_rounded,
-                          color: Colors.white, size: 20))),
-            ])),
+        if (_uploading)
+          LinearProgressIndicator(
+              backgroundColor: ReonColors.primary.withValues(alpha: 0.1),
+              color: ReonColors.primary),
+        // Emoji sticker panel
+        if (_showEmojiPanel)
+          _EmojiPanel(
+            isDark: isDark,
+            onEmoji: (emoji) {
+              final pos = _input.selection;
+              final text = _input.text;
+              if (pos.isValid && pos.start >= 0) {
+                final start = pos.start.clamp(0, text.length);
+                final end = pos.end.clamp(0, text.length);
+                _input.text = text.replaceRange(start, end, emoji);
+                _input.selection =
+                    TextSelection.collapsed(offset: start + emoji.length);
+              } else {
+                _input.text = text + emoji;
+              }
+              setState(() {});
+            },
+          ),
+        // Input bar
+        _buildInputBar(isDark, me.id),
       ]),
     );
   }
+
+  Widget _buildInputBar(bool isDark, String myId) {
+    if (_recording) {
+      return Container(
+        color: isDark ? ReonColors.surfaceDark : Colors.white,
+        padding: EdgeInsets.only(
+          left: 12,
+          right: 12,
+          top: 8,
+          bottom: MediaQuery.of(context).padding.bottom + 8,
+        ),
+        child: Row(children: [
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.red),
+            onPressed: _cancelRecording,
+            tooltip: 'Cancel',
+          ),
+          Container(
+            width: 8,
+            height: 8,
+            decoration:
+                const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Recording  ${_formatDuration(_recordDuration)}',
+              style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: isDark ? ReonColors.textDark : ReonColors.textLight),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _stopAndSendVoice(myId),
+            child: _SendButton(),
+          ),
+        ]),
+      );
+    }
+
+    return Container(
+      color: isDark ? ReonColors.surfaceDark : Colors.white,
+      padding: EdgeInsets.only(
+        left: 4,
+        right: 8,
+        top: 8,
+        bottom: MediaQuery.of(context).padding.bottom + 8,
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        // Emoji toggle
+        IconButton(
+          icon: Icon(
+            _showEmojiPanel
+                ? Icons.keyboard_rounded
+                : Icons.emoji_emotions_outlined,
+            color: isDark ? ReonColors.textMuted : Colors.grey.shade500,
+            size: 22,
+          ),
+          onPressed: () {
+            setState(() => _showEmojiPanel = !_showEmojiPanel);
+            if (_showEmojiPanel) FocusScope.of(context).unfocus();
+          },
+        ),
+        // Attachment (only when empty)
+        if (_input.text.trim().isEmpty)
+          IconButton(
+            icon: Icon(Icons.attach_file_rounded,
+                color: isDark ? ReonColors.textMuted : Colors.grey.shade500,
+                size: 22),
+            onPressed: () => _showAttachmentSheet(myId),
+          ),
+        // Text field
+        Expanded(
+          child: Container(
+            constraints: const BoxConstraints(maxHeight: 120),
+            decoration: BoxDecoration(
+              color: isDark ? ReonColors.bgDark : const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: TextField(
+              controller: _input,
+              maxLines: null,
+              onChanged: (v) => setState(() {}),
+              onTap: () {
+                if (_showEmojiPanel) setState(() => _showEmojiPanel = false);
+              },
+              style: GoogleFonts.inter(
+                  fontSize: 14.5,
+                  color: isDark ? ReonColors.textDark : ReonColors.textLight),
+              decoration: InputDecoration(
+                hintText: 'Message ${widget.groupName}…',
+                hintStyle: GoogleFonts.inter(
+                    fontSize: 14.5, color: ReonColors.textMuted),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        // Send or Mic
+        if (_input.text.trim().isNotEmpty)
+          GestureDetector(onTap: _send, child: _SendButton())
+        else
+          GestureDetector(onTap: _startRecording, child: _MicButton()),
+      ]),
+    );
+  }
+}
+
+// ── System message chip ───────────────────────────────────────────────────────
+
+class _SystemChip extends StatelessWidget {
+  final String text;
+  final bool isDark;
+  const _SystemChip({required this.text, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Center(
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: isDark
+                      ? Colors.white60
+                      : Colors.black54),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
 }
 
 // ── Group message bubble ───────────────────────────────────────────────────────
@@ -381,7 +783,10 @@ class _GroupBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final time = DateFormat('HH:mm').format(message.sentAt);
-    final text = message.plaintext ?? message.ciphertext;
+    final hasMedia = message.media.isNotEmpty;
+    final isLocalPreview = !hasMedia && message.localBytes != null;
+    final text = message.plaintext ??
+        (hasMedia ? null : message.ciphertext);
     final senderName = message.sender.fullName;
 
     return Padding(
@@ -423,21 +828,80 @@ class _GroupBubble extends StatelessWidget {
                               blurRadius: 6,
                               offset: const Offset(0, 2))
                         ]),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              // No padding for image-only bubbles
+              padding: ((hasMedia && message.media.first.type == 'image' &&
+                          (text == null || text.isEmpty)) ||
+                      (isLocalPreview && message.contentType == 'image'))
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (text != null)
-                      Text(text,
+                    // Server media content
+                    if (hasMedia)
+                      buildMediaContentWidget(message.media.first, isMine),
+                    // Local preview while uploading
+                    if (isLocalPreview) ...[
+                      if (message.contentType == 'image')
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(children: [
+                            Image.memory(message.localBytes!,
+                                width: 200, height: 150, fit: BoxFit.cover),
+                            const Positioned.fill(
+                                child: ColoredBox(color: Color(0x55000000))),
+                            const Center(
+                                child: SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 2))),
+                          ]),
+                        )
+                      else
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white)),
+                          const SizedBox(width: 8),
+                          Text(
+                              'Uploading ${message.localFileName ?? message.contentType}…',
+                              style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: isMine
+                                      ? Colors.white70
+                                      : ReonColors.textMuted)),
+                        ]),
+                    ],
+                    // Text content
+                    if (text != null && text.isNotEmpty)
+                      Padding(
+                        padding: hasMedia
+                            ? const EdgeInsets.only(top: 6)
+                            : EdgeInsets.zero,
+                        child: Text(text,
+                            style: GoogleFonts.inter(
+                                fontSize: 14.5,
+                                height: 1.45,
+                                color: isMine
+                                    ? Colors.white
+                                    : (isDark
+                                        ? ReonColors.textDark
+                                        : ReonColors.textLight))),
+                      ),
+                    // Encrypted fallback
+                    if (!hasMedia && !isLocalPreview &&
+                        text == null && message.ciphertext != null)
+                      Text('🔒 Encrypted',
                           style: GoogleFonts.inter(
-                              fontSize: 14.5,
-                              height: 1.45,
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
                               color: isMine
-                                  ? Colors.white
-                                  : (isDark
-                                      ? ReonColors.textDark
-                                      : ReonColors.textLight))),
+                                  ? Colors.white70
+                                  : ReonColors.textMuted)),
                     const SizedBox(height: 4),
                     Row(mainAxisSize: MainAxisSize.min, children: [
                       Text(time,
@@ -491,6 +955,113 @@ class _GroupTick extends StatelessWidget {
         size: 14, color: Colors.white.withValues(alpha: 0.5));
   }
 }
+
+// ── Emoji panel ───────────────────────────────────────────────────────────────
+
+class _EmojiPanel extends StatelessWidget {
+  final bool isDark;
+  final void Function(String) onEmoji;
+  const _EmojiPanel({required this.isDark, required this.onEmoji});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 200,
+        color: isDark ? ReonColors.surfaceDark : Colors.white,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(8),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 10,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+          ),
+          itemCount: _stickers.length,
+          itemBuilder: (_, i) => GestureDetector(
+            onTap: () => onEmoji(_stickers[i]),
+            child: Center(
+                child: Text(_stickers[i],
+                    style: const TextStyle(fontSize: 22))),
+          ),
+        ),
+      );
+}
+
+// ── Attachment option ─────────────────────────────────────────────────────────
+
+class _AttachOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _AttachOption(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 26),
+        ),
+        const SizedBox(height: 6),
+        Text(label,
+            style: GoogleFonts.inter(
+                fontSize: 12,
+                color: isDark ? ReonColors.textMuted : Colors.grey.shade700)),
+      ]),
+    );
+  }
+}
+
+// ── Send / Mic buttons ────────────────────────────────────────────────────────
+
+class _SendButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+            gradient: kBrandGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                  color: ReonColors.primary.withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3))
+            ]),
+        child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+      );
+}
+
+class _MicButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+            gradient: kBrandGradient,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                  color: ReonColors.primary.withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3))
+            ]),
+        child: const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
+      );
+}
+
+// ── Background dot grid ───────────────────────────────────────────────────────
 
 class _DotGrid extends CustomPainter {
   final bool isDark;

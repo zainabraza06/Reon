@@ -326,6 +326,9 @@ class _ChatViewState extends State<_ChatView> {
                         message: msg,
                         isMine: msg.sender == me.id,
                         recipient: chat.recipient,
+                        onRetry: msg.isFailed
+                            ? () => chat.retryFailed(msg, me.id)
+                            : null,
                       );
                     },
                   ),

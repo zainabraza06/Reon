@@ -196,6 +196,8 @@ class ChatProvider extends ChangeNotifier {
       sentAt: DateTime.now(),
       status: 'sending',
       isVoiceMessage: isVoiceMessage,
+      localBytes: fileBytes,
+      localFileName: fileName,
     );
     _messages.add(optimistic);
     notifyListeners();
@@ -216,7 +218,8 @@ class ChatProvider extends ChangeNotifier {
 
       final form = FormData.fromMap({
         'data': metadata,
-        'file': MultipartFile.fromBytes(
+        // field name must match backend: upload.array('files', 10)
+        'files': MultipartFile.fromBytes(
           enc.encryptedBytes,
           filename: fileName ?? '$contentType.bin',
           contentType: DioMediaType.parse(_mimeFor(contentType, fileName)),
@@ -243,6 +246,9 @@ class ChatProvider extends ChangeNotifier {
               sentAt: optimistic.sentAt,
               status: 'failed',
               isVoiceMessage: isVoiceMessage,
+              // Preserve bytes so the user can retry
+              localBytes: fileBytes,
+              localFileName: fileName,
             )
           else
             m
@@ -251,6 +257,26 @@ class ChatProvider extends ChangeNotifier {
 
     _uploading = false;
     notifyListeners();
+  }
+
+  // ── Retry failed messages ─────────────────────────────────────────────────────
+
+  Future<void> retryFailed(ChatMessage msg, String myId) async {
+    _messages = [for (final m in _messages) if (m.id != msg.id) m];
+    notifyListeners();
+    if (msg.contentType == 'text') {
+      if (msg.plaintext != null) await sendMessage(msg.plaintext!, myId);
+    } else {
+      if (msg.localBytes != null) {
+        await sendMediaMessage(
+          msg.localBytes!,
+          msg.contentType,
+          myId,
+          fileName: msg.localFileName,
+          isVoiceMessage: msg.isVoiceMessage,
+        );
+      }
+    }
   }
 
   String _mimeFor(String contentType, String? fileName) {

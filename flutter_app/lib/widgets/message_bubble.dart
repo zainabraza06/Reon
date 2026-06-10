@@ -16,12 +16,14 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
   final ReonUser? recipient;
+  final VoidCallback? onRetry;
 
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMine,
     this.recipient,
+    this.onRetry,
   });
 
   @override
@@ -32,16 +34,23 @@ class MessageBubble extends StatelessWidget {
     final text = message.plaintext ??
         (hasMedia ? null : message.ciphertext);
 
+    final isUploadingMedia = !hasMedia &&
+        message.contentType != 'text' &&
+        message.status == 'sending';
+
     Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Media content
+        // Media content (uploaded)
         if (hasMedia) _buildMediaContent(message.media.first, isDark),
+        // Upload preview (optimistic, not yet confirmed by server)
+        if (isUploadingMedia)
+          _buildUploadingPreview(message, isDark),
         // Text below media (or standalone)
         if (text != null && text.isNotEmpty)
           Padding(
-            padding: hasMedia
+            padding: (hasMedia || isUploadingMedia)
                 ? const EdgeInsets.only(top: 6)
                 : EdgeInsets.zero,
             child: Text(
@@ -56,13 +65,31 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
         // Encrypted-but-no-plaintext fallback (text messages only)
-        if (!hasMedia && text == null && message.ciphertext != null)
+        if (!hasMedia && !isUploadingMedia && text == null && message.ciphertext != null)
           Text(
             '🔒 Encrypted',
             style: GoogleFonts.inter(
               fontSize: 13,
               fontStyle: FontStyle.italic,
               color: isMine ? Colors.white70 : ReonColors.textMuted,
+            ),
+          ),
+        // Retry banner for failed messages
+        if (message.isFailed && onRetry != null)
+          GestureDetector(
+            onTap: onRetry,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.refresh_rounded,
+                    size: 13, color: Colors.redAccent),
+                const SizedBox(width: 3),
+                Text(
+                  'Tap to retry',
+                  style: GoogleFonts.inter(
+                      fontSize: 11, color: Colors.redAccent),
+                ),
+              ]),
             ),
           ),
         const SizedBox(height: 4),
@@ -105,10 +132,11 @@ class MessageBubble extends StatelessWidget {
                 )
               ],
             ),
-      // Remove padding when the bubble is purely an image
-      padding: (hasMedia &&
-              message.media.first.type == 'image' &&
-              (text == null || text.isEmpty))
+      // Remove padding when the bubble is purely an image (uploaded or uploading)
+      padding: ((hasMedia && message.media.first.type == 'image' ||
+                  (isUploadingMedia && message.contentType == 'image')) &&
+              (text == null || text.isEmpty) &&
+              !message.isFailed)
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: content,
@@ -147,6 +175,61 @@ class MessageBubble extends StatelessWidget {
       default:
         return _DocumentContent(media: media, isMine: isMine);
     }
+  }
+
+  Widget _buildUploadingPreview(ChatMessage msg, bool isDark) {
+    final color = isMine ? Colors.white : ReonColors.primary;
+    if (msg.contentType == 'image' && msg.localBytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            SizedBox(
+              width: 220,
+              height: 165,
+              child: Image.memory(
+                msg.localBytes!,
+                fit: BoxFit.cover,
+                color: Colors.black38,
+                colorBlendMode: BlendMode.darken,
+              ),
+            ),
+            const Positioned.fill(
+              child: Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // Generic uploading placeholder for audio / video / document
+    final label = msg.contentType == 'audio'
+        ? 'Sending voice…'
+        : msg.contentType == 'video'
+            ? 'Sending video…'
+            : 'Sending file…';
+    return SizedBox(
+      width: 180,
+      child: Row(children: [
+        SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2, color: color),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: isMine ? Colors.white70 : ReonColors.textMuted,
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 }
 
@@ -469,6 +552,17 @@ class _DocumentContent extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+// ── Public helper — reused by GroupChatScreen ─────────────────────────────────
+
+Widget buildMediaContentWidget(MediaFile media, bool isMine) {
+  switch (media.type) {
+    case 'image':   return _ImageContent(media: media, isMine: isMine);
+    case 'audio':   return _AudioContent(media: media, isMine: isMine);
+    case 'video':   return _VideoContent(media: media, isMine: isMine);
+    default:        return _DocumentContent(media: media, isMine: isMine);
   }
 }
 

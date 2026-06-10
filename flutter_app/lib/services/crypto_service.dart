@@ -216,6 +216,43 @@ class CryptoService {
     }
   }
 
+  // ── Group text encrypt ────────────────────────────────────────────────────────
+  // Generates ONE AES key for the whole group so every member can decrypt with
+  // their own RSA-wrapped copy of the same key.
+
+  Future<({String ciphertext, String Function(Map<String, dynamic>) encryptKeyFor})>
+      encryptGroupText(String plaintext) async {
+    final aesKey = _randomBytes(32);
+    final iv = _randomBytes(12);
+    final encoded = Uint8List.fromList(utf8.encode(plaintext));
+    final cipher = _aesGcmEncrypt(aesKey, iv, encoded);
+    // Prepend IV so decryptText() can strip it (same layout as encryptText)
+    final combined = Uint8List(12 + cipher.length)
+      ..setRange(0, 12, iv)
+      ..setRange(12, 12 + cipher.length, cipher);
+    return (
+      ciphertext: base64.encode(combined),
+      encryptKeyFor: (Map<String, dynamic> pubJwk) =>
+          rsaEncryptAesKey(aesKey, pubJwk),
+    );
+  }
+
+  // ── Group media encrypt ───────────────────────────────────────────────────────
+  // Like encryptMedia but returns per-member key encryptor instead of one key.
+
+  Future<({Uint8List encryptedBytes, String iv, String Function(Map<String, dynamic>) encryptKeyFor})>
+      encryptGroupMedia(Uint8List bytes) async {
+    final aesKey = _randomBytes(32);
+    final iv = _randomBytes(12);
+    final encrypted = _aesGcmEncrypt(aesKey, iv, bytes);
+    return (
+      encryptedBytes: encrypted,
+      iv: base64.encode(iv),
+      encryptKeyFor: (Map<String, dynamic> pubJwk) =>
+          rsaEncryptAesKey(aesKey, pubJwk),
+    );
+  }
+
   // ── Device-linking (ECDH P-256 + AES-GCM) ───────────────────────────────────
 
   ECDomainParameters get _p256 => ECDomainParameters('prime256v1');
