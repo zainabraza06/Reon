@@ -48,6 +48,28 @@ class ChatScreen extends StatelessWidget {
   }
 }
 
+String _formatLastSeen(DateTime dt) {
+  final now = DateTime.now();
+  final diff = now.difference(dt);
+  if (diff.inMinutes < 1) return 'last seen just now';
+  if (diff.inMinutes < 60) return 'last seen ${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return 'last seen ${diff.inHours}h ago';
+  final yesterday = DateTime(now.year, now.month, now.day - 1);
+  if (dt.year == yesterday.year &&
+      dt.month == yesterday.month &&
+      dt.day == yesterday.day) {
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return 'last seen yesterday at $hh:$mm';
+  }
+  return 'last seen ${dt.day} ${_monthAbbr(dt.month)}';
+}
+
+String _monthAbbr(int m) => const [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ][m];
+
 class _ChatView extends StatefulWidget {
   const _ChatView();
   @override
@@ -72,6 +94,27 @@ class _ChatViewState extends State<_ChatView> {
     _recordTimer?.cancel();
     _audioRecorder.dispose();
     super.dispose();
+  }
+
+  Widget _buildStatusSubtitle(ChatProvider chat, bool isDark) {
+    final privacy = chat.recipient?.privacySettings;
+    final showActive = privacy?.showActiveStatus ?? true;
+    final showLastSeen = privacy?.showLastSeen ?? true;
+
+    if (chat.isTyping) {
+      return Text('typing…',
+          style: GoogleFonts.inter(fontSize: 12, color: ReonColors.primary));
+    }
+    if (chat.isOnline && showActive) {
+      return Text('Online',
+          style: GoogleFonts.inter(fontSize: 12, color: ReonColors.online));
+    }
+    if (!chat.isOnline && chat.lastSeen != null && showLastSeen) {
+      return Text(_formatLastSeen(chat.lastSeen!),
+          style: GoogleFonts.inter(
+              fontSize: 12, color: ReonColors.textMuted));
+    }
+    return const SizedBox.shrink();
   }
 
   void _scrollToBottom() {
@@ -259,7 +302,8 @@ class _ChatViewState extends State<_ChatView> {
             name: chat.recipientName,
             imageUrl: chat.recipientAvatar,
             size: 38,
-            isOnline: chat.isOnline,
+            isOnline: chat.isOnline &&
+                (chat.recipient?.privacySettings.showActiveStatus ?? true),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -274,16 +318,7 @@ class _ChatViewState extends State<_ChatView> {
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : ReonColors.textLight),
                 ),
-                Text(
-                  chat.isTyping
-                      ? 'typing…'
-                      : (chat.isOnline ? 'Online' : ''),
-                  style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: chat.isTyping
-                          ? ReonColors.primary
-                          : ReonColors.online),
-                ),
+                _buildStatusSubtitle(chat, isDark),
               ],
             ),
           ),

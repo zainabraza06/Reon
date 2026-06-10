@@ -1,6 +1,14 @@
 "use client";
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
-import { Mic, Paperclip, Send, X } from "lucide-react";
+import { Mic, Paperclip, Send, X, Smile } from "lucide-react";
+
+const EMOJIS = [
+  '😀','😂','😍','🥰','😊','😎','🤔','😭','😡','🥺',
+  '👍','👎','❤️','💯','🔥','✨','🎉','👀','💪','🙏',
+  '😅','😆','🤩','🥳','😴','🤒','🤗','😏','🫠','🫡',
+  '🐶','🐱','🦁','🐼','🦊','🐸','🌸','🌟','⭐','💎',
+  '🍕','🍔','🍣','🍦','🎂','🍩','☕','🎮','🎵','🏆',
+];
 
 function bestAudioMime(): string {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
@@ -28,6 +36,8 @@ export default function MessageInput({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [recording, setRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
@@ -49,9 +59,26 @@ export default function MessageInput({
     }
   };
 
+  const insertEmoji = (emoji: string) => {
+    const el = textareaRef.current;
+    if (el) {
+      const start = el.selectionStart ?? text.length;
+      const end   = el.selectionEnd   ?? text.length;
+      const next  = text.slice(0, start) + emoji + text.slice(end);
+      setText(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(start + emoji.length, start + emoji.length);
+      });
+    } else {
+      setText((t) => t + emoji);
+    }
+  };
+
   const send = async () => {
     if ((!text.trim() && files.length === 0) || sending || disabled) return;
     setSending(true);
+    setShowEmoji(false);
     try {
       await onSend(text.trim(), files);
       setText("");
@@ -151,6 +178,24 @@ export default function MessageInput({
   /* ── Normal UI ────────────────────────────────────── */
   return (
     <div className="msg-input-bar px-4 py-3 shrink-0">
+      {/* Emoji panel */}
+      {showEmoji && (
+        <div className="mb-2 p-2 bg-gray-50 dark:bg-white/[0.04] rounded-2xl border border-gray-200 dark:border-white/[0.06]">
+          <div className="grid grid-cols-10 gap-0.5">
+            {EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => insertEmoji(e)}
+                className="text-xl p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-white/10 transition-colors leading-none"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2.5">
           {files.map((f, i) => (
@@ -175,11 +220,17 @@ export default function MessageInput({
           className="p-2 rounded-xl text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all disabled:opacity-40">
           <Paperclip size={20} />
         </button>
+        <button type="button" onClick={() => setShowEmoji((v) => !v)} disabled={disabled}
+          title="Emoji"
+          className={`p-2 rounded-xl transition-all disabled:opacity-40 ${showEmoji ? "text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10" : "text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"}`}>
+          <Smile size={20} />
+        </button>
         <input ref={fileRef} type="file" multiple
           accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.xlsx,.pptx,.csv"
           className="hidden" onChange={onFileChange} />
 
         <textarea
+          ref={textareaRef}
           rows={1}
           value={text}
           onChange={(e) => handleType(e.target.value)}

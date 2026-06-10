@@ -28,6 +28,7 @@ class ChatProvider extends ChangeNotifier {
   bool _hasMore = true;
   bool _isTyping = false;
   bool _isOnline = false;
+  DateTime? _lastSeen;
   bool _sending = false;
   bool _uploading = false;
   bool _isFriend = true; // assume friends until confirmed otherwise
@@ -43,6 +44,7 @@ class ChatProvider extends ChangeNotifier {
   bool get hasMore => _hasMore;
   bool get isTyping => _isTyping;
   bool get isOnline => _isOnline;
+  DateTime? get lastSeen => _lastSeen;
   bool get sending => _sending;
   bool get uploading => _uploading;
   bool get canEncrypt => _recipientPubJwk != null;
@@ -101,6 +103,10 @@ class ChatProvider extends ChangeNotifier {
       _recipient = found.isNotEmpty
           ? found.first
           : ReonUser(id: recipientId, fullName: recipientName, email: '');
+      if (found.isNotEmpty) {
+        _isOnline = found.first.isOnline;
+        _lastSeen = found.first.lastSeen;
+      }
     } catch (_) {
       _recipient =
           ReonUser(id: recipientId, fullName: recipientName, email: '');
@@ -448,6 +454,10 @@ class ChatProvider extends ChangeNotifier {
     if (m == null) return;
     if ((m['userId'] as String?) != recipientId) return;
     _isOnline = m['isOnline'] as bool? ?? false;
+    if (!_isOnline) {
+      final ls = m['lastSeen'] as String?;
+      if (ls != null) _lastSeen = DateTime.tryParse(ls);
+    }
     notifyListeners();
   }
 

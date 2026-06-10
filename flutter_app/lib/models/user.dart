@@ -24,6 +24,7 @@ class ReonUser {
   final bool isOnline;
   final bool hasPassword;
   final PrivacySettings privacySettings;
+  final DateTime? lastSeen;
 
   const ReonUser({
     required this.id,
@@ -38,6 +39,7 @@ class ReonUser {
     this.isOnline = false,
     this.hasPassword = true,
     this.privacySettings = const PrivacySettings(),
+    this.lastSeen,
   });
 
   factory ReonUser.fromJson(Map<String, dynamic> j) => ReonUser(
@@ -54,6 +56,9 @@ class ReonUser {
         hasPassword: j['hasPassword'] as bool? ?? true,
         privacySettings: PrivacySettings.fromJson(
             j['privacySettings'] as Map<String, dynamic>?),
+        lastSeen: j['lastSeen'] != null
+            ? DateTime.tryParse(j['lastSeen'] as String)
+            : null,
       );
 
   ReonUser copyWith({
@@ -63,6 +68,7 @@ class ReonUser {
     String? location,
     String? profilePic,
     PrivacySettings? privacySettings,
+    DateTime? lastSeen,
   }) =>
       ReonUser(
         id: id,
@@ -77,6 +83,7 @@ class ReonUser {
         isOnline: isOnline ?? this.isOnline,
         hasPassword: hasPassword,
         privacySettings: privacySettings ?? this.privacySettings,
+        lastSeen: lastSeen ?? this.lastSeen,
       );
 
   String get displayName => username != null ? '@$username' : email;
