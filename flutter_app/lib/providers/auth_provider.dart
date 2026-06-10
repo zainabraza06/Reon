@@ -30,6 +30,20 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called when the user confirms this IS their original device but the local
+  /// key was lost (e.g. app reinstalled). Generates a brand-new key pair,
+  /// uploads the public key, and clears the gate. Old encrypted messages will
+  /// no longer be decryptable with the new key.
+  Future<void> resetKeys() async {
+    final crypto = CryptoService.instance;
+    final api = ApiService.instance;
+    final userId = _user!.id;
+    final pubJwk = await crypto.generateKeyPair();
+    await api.uploadPublicKey(pubJwk, userId);
+    _needsDeviceLink = false;
+    notifyListeners();
+  }
+
   Future<void> checkAuth() async {
     try {
       _user = await ApiService.instance.me();

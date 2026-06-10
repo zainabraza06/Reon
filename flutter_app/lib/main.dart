@@ -123,11 +123,57 @@ class _RootState extends State<_Root> {
   }
 }
 
-/// Shown when the user logs in on a device that hasn't been linked yet.
-/// Their encryption keys live on another device and must be transferred
-/// via the QR-code flow before they can read encrypted messages.
-class _DeviceLinkGateScreen extends StatelessWidget {
+/// Shown when the user logs in on a device that has no local private key but
+/// the server already has a public key registered. Two recovery paths:
+///   1. Scan QR from another linked device (normal linking flow).
+///   2. "This is my original device" — regenerate keys (loses old messages).
+class _DeviceLinkGateScreen extends StatefulWidget {
   const _DeviceLinkGateScreen();
+  @override
+  State<_DeviceLinkGateScreen> createState() => _DeviceLinkGateScreenState();
+}
+
+class _DeviceLinkGateScreenState extends State<_DeviceLinkGateScreen> {
+  bool _resetting = false;
+
+  Future<void> _resetKeys() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Encryption Keys?'),
+        content: const Text(
+          'This will generate new encryption keys for your account.\n\n'
+          'Your previous encrypted messages will no longer be readable, '
+          'but you will be able to send and receive new messages normally.\n\n'
+          'Only do this if this is truly your original device and you '
+          'cannot scan a QR code from another device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reset Keys'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _resetting = true);
+    try {
+      await context.read<AuthProvider>().resetKeys();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reset keys: $e')),
+        );
+        setState(() => _resetting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,15 +195,15 @@ class _DeviceLinkGateScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Your encryption keys are stored on your original device. '
-                'To read your encrypted messages here, scan the QR code from your other device.',
+                'No encryption keys were found on this device. '
+                'If you have another linked device, scan its QR code to transfer your keys.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withAlpha(160)),
               ),
               const SizedBox(height: 8),
               Text(
-                'On your original device: go to Settings → Link New Device.',
+                'On your other device: go to Settings → Link New Device.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withAlpha(120)),
@@ -169,22 +215,46 @@ class _DeviceLinkGateScreen extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LinkDeviceScreen()),
-                  );
-                  if (!context.mounted) return;
-                  // If keys are now present, linking succeeded — clear the gate
-                  final hasKeys = await CryptoService.instance.hasKeyPair();
-                  if (hasKeys && context.mounted) {
-                    context.read<AuthProvider>().clearNeedsDeviceLink();
-                  }
-                },
+                onPressed: _resetting
+                    ? null
+                    : () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const LinkDeviceScreen()),
+                        );
+                        if (!context.mounted) return;
+                        final hasKeys =
+                            await CryptoService.instance.hasKeyPair();
+                        if (hasKeys && context.mounted) {
+                          context.read<AuthProvider>().clearNeedsDeviceLink();
+                        }
+                      },
+              ),
+              const SizedBox(height: 12),
+              // Recovery path for users on their original device after reinstall
+              OutlinedButton.icon(
+                icon: _resetting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.devices_rounded, size: 18),
+                label: Text(_resetting
+                    ? 'Resetting…'
+                    : 'This is my original device'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  foregroundColor: Colors.orange,
+                  side: const BorderSide(color: Colors.orange),
+                ),
+                onPressed: _resetting ? null : _resetKeys,
               ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () => context.read<AuthProvider>().logout(),
+                onPressed:
+                    _resetting ? null : () => context.read<AuthProvider>().logout(),
                 child: const Text('Log Out'),
               ),
             ],
