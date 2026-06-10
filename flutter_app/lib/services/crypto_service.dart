@@ -14,8 +14,15 @@ class CryptoService {
   CryptoService._();
   static final CryptoService instance = CryptoService._();
 
+  // resetOnError: true — if the Android Keystore entry is gone (e.g. after a
+  // Google Backup restore or fresh install), reads return null instead of
+  // throwing, so hasKeyPair() correctly returns false and the recovery screen
+  // is shown rather than silently failing to decrypt.
   static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
   );
   static const _kPrivKey = 'reon_priv_key_jwk';
   static const _kPubKey = 'reon_pub_key_jwk';
@@ -23,9 +30,13 @@ class CryptoService {
   // ── Secure storage ────────────────────────────────────────────────────────────
 
   Future<bool> hasKeyPair() async {
-    final priv = await _storage.read(key: _kPrivKey);
-    final pub = await _storage.read(key: _kPubKey);
-    return priv != null && pub != null;
+    try {
+      final priv = await _storage.read(key: _kPrivKey);
+      final pub = await _storage.read(key: _kPubKey);
+      return priv != null && pub != null;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>?> getStoredPublicKey() async {
