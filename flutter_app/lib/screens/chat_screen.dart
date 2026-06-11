@@ -136,7 +136,10 @@ class _ChatViewState extends State<_ChatView> {
     _input.clear();
     setState(() {});
     chat.handleTyping(false, myId);
-    await chat.sendMessage(text, myId);
+    // onOptimisticAdded fires after the temp bubble is added but before the
+    // HTTP request, so the user sees the message immediately without waiting
+    // for the network round trip.
+    await chat.sendMessage(text, myId, onOptimisticAdded: _scrollToBottom);
     _scrollToBottom();
   }
 

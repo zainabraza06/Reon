@@ -124,7 +124,8 @@ class ChatProvider extends ChangeNotifier {
 
   // ── Send text ─────────────────────────────────────────────────────────────────
 
-  Future<void> sendMessage(String text, String myId) async {
+  Future<void> sendMessage(String text, String myId,
+      {VoidCallback? onOptimisticAdded}) async {
     if (text.isEmpty || _sending) return;
     _sending = true;
 
@@ -142,6 +143,7 @@ class ChatProvider extends ChangeNotifier {
     _messages.add(optimistic);
     _sending = false;
     notifyListeners();
+    onOptimisticAdded?.call(); // caller can scroll before the HTTP round trip
 
     try {
       if (_recipientPubJwk == null) throw Exception('Recipient key not available');

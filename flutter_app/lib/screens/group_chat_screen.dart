@@ -480,9 +480,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       });
       _scrollToBottom();
     }
-    SocketService.instance.emit('group-message-delivered',
-        {'messageId': msg.id, 'groupId': widget.groupId});
-    await ApiService.instance.markGroupRead(widget.groupId).catchError((_) {});
+    // Only acknowledge delivery and mark as read for other members' messages,
+    // not echoes of our own sent messages.
+    if (msg.sender.id != myId) {
+      SocketService.instance.emit('group-message-delivered',
+          {'messageId': msg.id, 'groupId': widget.groupId});
+      await ApiService.instance.markGroupRead(widget.groupId).catchError((_) {});
+    }
   }
 
   void _onDelivered(dynamic d) {
@@ -498,11 +502,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             msg.id == mid
                 ? msg.copyWith(
                     deliveredTo: List.generate(
-                        count + 1,
+                        count,
                         (i) => {
-                              'userId': i == 0
-                                  ? (context.read<AuthProvider>().user?.id ?? '')
-                                  : 'member_$i',
+                              'userId': 'member_$i',
                               'at': DateTime.now().toIso8601String()
                             }))
                 : msg

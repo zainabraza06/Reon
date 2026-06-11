@@ -59,15 +59,111 @@ class _ChatListScreenState extends State<ChatListScreen>
         ApiService.instance.getSidebarChats(),
         ApiService.instance.getGroups(),
       ]);
+      if (!mounted) return;
+      final myId = context.read<AuthProvider>().user?.id ?? '';
+      final chats = results[0] as List<ChatListItem>;
+      final groups = results[1] as List<GroupChat>;
+
+      // Show items immediately, then decrypt previews in background
       if (mounted) {
         setState(() {
-          _chats = results[0] as List<ChatListItem>;
-          _groups = results[1] as List<GroupChat>;
+          _chats = chats;
+          _groups = groups;
           if (!silent) _loading = false;
         });
       }
+      await _decryptPreviews(myId, chats, groups);
     } catch (_) {
       if (mounted && !silent) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _decryptPreviews(
+    String myId,
+    List<ChatListItem> chats,
+    List<GroupChat> groups,
+  ) async {
+    // Decrypt DM last messages
+    final decryptedChats = <ChatListItem>[];
+    var anyChanged = false;
+    for (final c in chats) {
+      if (c.lastMessageType == 'text' &&
+          c.lastMessageCiphertext != null &&
+          c.lastMessageCiphertext!.isNotEmpty &&
+          c.lastMessageEncryptedKey != null &&
+          c.lastMessageEncryptedKey!.isNotEmpty &&
+          c.lastMessageContent == null) {
+        try {
+          final plain = await CryptoService.instance
+              .decryptText(c.lastMessageCiphertext!, c.lastMessageEncryptedKey!);
+          if (plain != null && plain.isNotEmpty) {
+            decryptedChats.add(ChatListItem(
+              id: c.id,
+              fullName: c.fullName,
+              username: c.username,
+              profilePic: c.profilePic,
+              lastMessageContent: plain,
+              lastMessageType: c.lastMessageType,
+              lastSenderId: c.lastSenderId,
+              lastMessageAt: c.lastMessageAt,
+              unreadCount: c.unreadCount,
+              isOnline: c.isOnline,
+            ));
+            anyChanged = true;
+            continue;
+          }
+        } catch (_) {}
+      }
+      decryptedChats.add(c);
+    }
+
+    // Decrypt group last messages
+    final decryptedGroups = <GroupChat>[];
+    for (final g in groups) {
+      if (g.lastMessageType == 'text' &&
+          g.lastMessageCiphertext != null &&
+          g.lastMessageCiphertext!.isNotEmpty &&
+          g.lastMessageMemberKeys != null &&
+          g.lastMessageContent == null) {
+        String? encKey;
+        for (final k in g.lastMessageMemberKeys!) {
+          if (k['userId']?.toString() == myId) {
+            encKey = k['encryptedKey'] as String?;
+            break;
+          }
+        }
+        if (encKey != null && encKey.isNotEmpty) {
+          try {
+            final plain = await CryptoService.instance
+                .decryptText(g.lastMessageCiphertext!, encKey);
+            if (plain != null && plain.isNotEmpty) {
+              decryptedGroups.add(GroupChat(
+                id: g.id,
+                name: g.name,
+                description: g.description,
+                avatar: g.avatar,
+                creator: g.creator,
+                admins: g.admins,
+                members: g.members,
+                lastMessageContent: plain,
+                lastMessageType: g.lastMessageType,
+                lastSenderName: g.lastSenderName,
+                lastMessageAt: g.lastMessageAt,
+              ));
+              anyChanged = true;
+              continue;
+            }
+          } catch (_) {}
+        }
+      }
+      decryptedGroups.add(g);
+    }
+
+    if (anyChanged && mounted) {
+      setState(() {
+        _chats = decryptedChats;
+        _groups = decryptedGroups;
+      });
     }
   }
 

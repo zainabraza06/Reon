@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../config.dart';
 import '../models/user.dart';
 import '../models/message.dart';
@@ -35,8 +36,9 @@ class ApiService {
       receiveTimeout: const Duration(seconds: 120),
       headers: {'Content-Type': 'application/json'},
       validateStatus: (_) => true,
+      extra: kIsWeb ? {'withCredentials': true} : {},
     ));
-    _dio.interceptors.add(CookieManager(_cookieJar));
+    if (!kIsWeb) _dio.interceptors.add(CookieManager(_cookieJar));
   }
 
   Future<Map<String, dynamic>> _req(String method, String path,
@@ -396,6 +398,23 @@ class ApiService {
     return list
         .map((n) => AppNotification.fromJson(n as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<AppNotification> createNotification({
+    required String type,
+    required String title,
+    required String body,
+    String? avatar,
+    String? link,
+  }) async {
+    final res = await _post('/notifications', body: {
+      'type': type,
+      'title': title,
+      'body': body,
+      if (avatar != null) 'avatar': avatar,
+      if (link != null) 'link': link,
+    });
+    return AppNotification.fromJson(res['notification'] as Map<String, dynamic>);
   }
 
   Future<void> markNotificationRead(String id) =>

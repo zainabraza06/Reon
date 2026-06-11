@@ -35,6 +35,9 @@ class GroupChat {
   final String? lastMessageType;
   final String? lastSenderName;
   final DateTime? lastMessageAt;
+  // Used for deferred decryption of the last message preview
+  final String? lastMessageCiphertext;
+  final List<Map<String, dynamic>>? lastMessageMemberKeys;
 
   const GroupChat({
     required this.id,
@@ -48,6 +51,8 @@ class GroupChat {
     this.lastMessageType,
     this.lastSenderName,
     this.lastMessageAt,
+    this.lastMessageCiphertext,
+    this.lastMessageMemberKeys,
   });
 
   factory GroupChat.fromJson(Map<String, dynamic> j) {
@@ -58,6 +63,11 @@ class GroupChat {
     final creator = creatorRaw is Map
         ? ReonUser.fromJson(Map<String, dynamic>.from(creatorRaw))
         : ReonUser(id: creatorRaw?.toString() ?? '', fullName: '', email: '');
+    // Backend stores '[encrypted]' / '[image]' etc. as placeholders — ignore
+    final rawContent = lm?['content'] as String?;
+    final usableContent = (rawContent != null && !rawContent.startsWith('['))
+        ? rawContent
+        : null;
     return GroupChat(
       id: j['_id'] as String,
       name: j['name'] as String,
@@ -70,9 +80,13 @@ class GroupChat {
       members: (j['members'] as List? ?? [])
           .map((m) => GroupMember.fromJson(m as Map<String, dynamic>))
           .toList(),
-      lastMessageContent: lm?['content'] as String?,
+      lastMessageContent: usableContent,
       lastMessageType: lm?['contentType'] as String?,
       lastSenderName: senderName,
+      lastMessageCiphertext: lm?['ciphertext'] as String?,
+      lastMessageMemberKeys: (lm?['memberKeys'] as List?)
+          ?.map((k) => Map<String, dynamic>.from(k as Map))
+          .toList(),
       lastMessageAt: lm?['sentAt'] != null
           ? DateTime.tryParse(lm!['sentAt'] as String)
           : null,

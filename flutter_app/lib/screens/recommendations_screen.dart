@@ -22,6 +22,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   List<RecommendedUser> _users = [];
   List<FriendRequest> _sent = [];
   int _total = 0;
+  int _loadedCount = 0;
   int _page = 1;
   bool _loading = true;
   bool _loadingMore = false;
@@ -119,6 +120,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
         setState(() {
           _users = replace ? rec.users : [..._users, ...rec.users];
           _total = rec.total;
+          _loadedCount = replace ? rec.users.length : _loadedCount + rec.users.length;
           _page = page;
           if (page == 1) {
             _sent = results[1] as List<FriendRequest>;
@@ -191,7 +193,7 @@ class _RecommendationsScreenState extends State<RecommendationsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasMore = _users.length < _total;
+    final hasMore = _loadedCount < _total;
 
     return Column(
       children: [

@@ -13,7 +13,8 @@ import 'group_chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final ValueChanged<int>? onUnreadChanged;
-  const NotificationsScreen({super.key, this.onUnreadChanged});
+  final VoidCallback? onGoToFriends;
+  const NotificationsScreen({super.key, this.onUnreadChanged, this.onGoToFriends});
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
@@ -75,16 +76,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _notifyUnread();
   }
 
+  Future<void> _prependAndSave(AppNotification n) async {
+    _prepend(n);
+    try {
+      final saved = await ApiService.instance.createNotification(
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        avatar: n.avatar,
+        link: n.link,
+      );
+      if (mounted) {
+        setState(() {
+          _items = _items.map((item) => item.id == n.id ? saved : item).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
   void _onFriendReq(dynamic d) {
     final m = d as Map?;
     final sender = m?['sender'] as Map?;
     if (sender == null) return;
-    _prepend(AppNotification(
+    _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'friend_request',
       title: 'Friend Request',
       body: '${sender['fullName']} sent you a friend request',
       avatar: sender['profilePic'] as String?,
+      link: jsonEncode({'type': 'friends'}),
       read: false,
       timestamp: DateTime.now(),
     ));
@@ -93,13 +113,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void _onFriendAccepted(dynamic d) {
     final m = d as Map?;
     final receiver = m?['receiver'] as Map?;
-    _prepend(AppNotification(
+    _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'friend_accepted',
       title: 'Friend Request Accepted',
-      body:
-          '${receiver?['fullName'] ?? 'Someone'} accepted your friend request',
+      body: '${receiver?['fullName'] ?? 'Someone'} accepted your friend request',
       avatar: receiver?['profilePic'] as String?,
+      link: jsonEncode({'type': 'friends'}),
       read: false,
       timestamp: DateTime.now(),
     ));
@@ -109,7 +129,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final m = d as Map?;
     final group = m?['group'] as Map?;
     if (group == null) return;
-    _prepend(AppNotification(
+    _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'group_added',
       title: 'Added to Group',
@@ -126,7 +146,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final senderInfo = m?['senderInfo'] as Map?;
     final senderName = senderInfo?['fullName'] as String? ?? 'Someone';
     final senderAvatar = senderInfo?['profilePic'] as String?;
-    _prepend(AppNotification(
+    _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'new_message',
       title: senderName,
@@ -144,7 +164,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final m = d as Map?;
     final gid = m?['groupId'] as String?;
     final groupName = m?['groupName'] as String? ?? 'a group';
-    _prepend(AppNotification(
+    _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'new_group_message',
       title: groupName,
@@ -163,19 +183,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final data = jsonDecode(link) as Map<String, dynamic>;
       final type = data['type'] as String?;
-      if (type == 'chat') {
+      if (type == 'friends') {
+        widget.onGoToFriends?.call();
+      } else if (type == 'chat') {
         final userId = data['userId'] as String? ?? '';
         final userName = data['userName'] as String? ?? 'User';
         navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => ChatScreen(
-              userId: userId, userName: userName),
+          builder: (_) => ChatScreen(userId: userId, userName: userName),
         ));
       } else if (type == 'group') {
         final groupId = data['groupId'] as String? ?? '';
         final groupName = data['groupName'] as String? ?? 'Group';
         navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => GroupChatScreen(
-              groupId: groupId, groupName: groupName),
+          builder: (_) => GroupChatScreen(groupId: groupId, groupName: groupName),
         ));
       }
     } catch (_) {}

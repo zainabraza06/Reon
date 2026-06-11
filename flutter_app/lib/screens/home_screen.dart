@@ -128,7 +128,8 @@ class _HomeScreenState extends State<HomeScreen> {
       const FriendsScreen(),
       const RecommendationsScreen(),
       NotificationsScreen(
-          onUnreadChanged: (n) => setState(() => _notifBadge = n)),
+          onUnreadChanged: (n) => setState(() => _notifBadge = n),
+          onGoToFriends: () => setState(() => _tab = 1)),
       const SettingsScreen(),
     ];
 

@@ -9,6 +9,9 @@ class ChatListItem {
   final DateTime? lastMessageAt;
   final int unreadCount;
   bool isOnline;
+  // Used for deferred decryption of the last message preview
+  final String? lastMessageCiphertext;
+  final String? lastMessageEncryptedKey;
 
   ChatListItem({
     required this.id,
@@ -21,6 +24,8 @@ class ChatListItem {
     this.lastMessageAt,
     this.unreadCount = 0,
     this.isOnline = false,
+    this.lastMessageCiphertext,
+    this.lastMessageEncryptedKey,
   });
 
   factory ChatListItem.fromJson(Map<String, dynamic> j) {
@@ -38,6 +43,8 @@ class ChatListItem {
           : null,
       unreadCount: j['unreadCount'] as int? ?? 0,
       isOnline: j['isOnline'] as bool? ?? false,
+      lastMessageCiphertext: lm?['ciphertext'] as String?,
+      lastMessageEncryptedKey: lm?['encryptedKey'] as String?,
     );
   }
 
