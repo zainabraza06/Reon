@@ -36,7 +36,7 @@ export const getRecommendedFriends = async (req, res) => {
     const receivedRequestUserIds = new Set(receivedRequests.map(req => req.sender.toString()));
 
     const totalCount = await User.countDocuments({
-      _id: { $ne: userId },
+      _id: { $ne: userId, $nin: currentUser.friends || [] },
       isOnboarded: true,
       ...(searchQuery && {
         $or: [
