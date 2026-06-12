@@ -23,6 +23,8 @@ class NotificationService {
   // Set these to suppress foreground notifications while user is viewing a chat
   static String? activeGroupId;
   static String? activeChatId;
+  // Set to the logged-in user's ID to suppress echoes of their own messages
+  static String? currentUserId;
 
   // Stored when notification arrives before navigator is ready (cold start)
   static Map<String, dynamic>? _pendingNavigation;
@@ -84,6 +86,8 @@ class NotificationService {
     final msgSenderId = data['senderId'] as String?;
     if (msgGroupId != null && msgGroupId == activeGroupId) return;
     if (msgGroupId == null && msgSenderId != null && msgSenderId == activeChatId) return;
+    // Suppress echoes of the current user's own messages/actions
+    if (msgSenderId != null && msgSenderId == currentUserId) return;
 
     await _local.show(
       message.hashCode,

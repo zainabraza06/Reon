@@ -146,6 +146,7 @@ class ChatProvider extends ChangeNotifier {
     onOptimisticAdded?.call(); // caller can scroll before the HTTP round trip
 
     try {
+      if (_recipientPubJwk == null) await _loadRecipient();
       if (_recipientPubJwk == null) throw Exception('Recipient key not available');
 
       final enc =
@@ -275,6 +276,8 @@ class ChatProvider extends ChangeNotifier {
   // ── Retry failed messages ─────────────────────────────────────────────────────
 
   Future<void> retryFailed(ChatMessage msg, String myId) async {
+    // Re-fetch recipient key if it was null when the chat was opened (e.g. auth was broken)
+    if (_recipientPubJwk == null) await _loadRecipient();
     _messages = [for (final m in _messages) if (m.id != msg.id) m];
     notifyListeners();
     if (msg.contentType == 'text') {

@@ -33,6 +33,7 @@ Future<void> main() async {
   }
 
   ApiService.instance.init();
+  await ApiService.instance.loadSavedToken();
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,

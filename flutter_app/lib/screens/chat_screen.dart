@@ -84,7 +84,6 @@ class _ChatViewState extends State<_ChatView> {
 
   bool _showEmojiPanel = false;
   bool _recording = false;
-  bool _initialScrollDone = false;
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
 
@@ -122,7 +121,7 @@ class _ChatViewState extends State<_ChatView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
+          0, // reversed list: 0 = bottom (newest)
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -281,20 +280,6 @@ class _ChatViewState extends State<_ChatView> {
     final me = context.watch<AuthProvider>().user!;
     final chat = context.watch<ChatProvider>();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      // Jump to the bottom once when messages first load so newest is visible.
-      if (!_initialScrollDone && !chat.loading && chat.messages.isNotEmpty) {
-        _initialScrollDone = true;
-        _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        return;
-      }
-      if (_scroll.position.hasContentDimensions &&
-          _scroll.position.maxScrollExtent - _scroll.position.pixels < 200) {
-        _scrollToBottom();
-      }
-    });
-
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF080816) : const Color(0xFFEEF2FF),
@@ -336,23 +321,6 @@ class _ChatViewState extends State<_ChatView> {
         ]),
       ),
       body: Column(children: [
-        if (chat.hasMore && !chat.loading)
-          GestureDetector(
-            onTap: () {
-              if (chat.messages.isNotEmpty) {
-                chat.loadMessages(me.id,
-                    before: chat.messages.first.sentAt.toIso8601String());
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('Load earlier',
-                  style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: ReonColors.primary,
-                      fontWeight: FontWeight.w600)),
-            ),
-          ),
         Expanded(
           child: chat.loading && chat.messages.isEmpty
               ? const Center(child: CircularProgressIndicator())
@@ -360,14 +328,46 @@ class _ChatViewState extends State<_ChatView> {
                   painter: _DotGrid(isDark: isDark),
                   child: ListView.builder(
                     controller: _scroll,
+                    reverse: true, // newest messages at bottom, no scroll-to-bottom needed
                     padding: const EdgeInsets.symmetric(vertical: 10),
-                    itemCount:
-                        chat.messages.length + (chat.isTyping ? 1 : 0),
+                    itemCount: chat.messages.length +
+                        (chat.isTyping ? 1 : 0) +
+                        (chat.hasMore && !chat.loading ? 1 : 0),
                     itemBuilder: (_, i) {
-                      if (chat.isTyping && i == chat.messages.length) {
+                      // Index 0 = bottom: typing indicator
+                      if (chat.isTyping && i == 0) {
                         return _TypingBubble(isDark: isDark);
                       }
-                      final msg = chat.messages[i];
+                      final offset = chat.isTyping ? 1 : 0;
+                      // Last index = top: load-earlier button
+                      final total = chat.messages.length + offset +
+                          (chat.hasMore && !chat.loading ? 1 : 0);
+                      if (chat.hasMore && !chat.loading && i == total - 1) {
+                        return GestureDetector(
+                          onTap: () {
+                            if (chat.messages.isNotEmpty) {
+                              chat.loadMessages(me.id,
+                                  before: chat.messages.first.sentAt
+                                      .toIso8601String());
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text('Load earlier',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: ReonColors.primary,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        );
+                      }
+                      // Messages: reversed so newest = index 0 (bottom)
+                      final msgIndex = chat.messages.length - 1 - (i - offset);
+                      if (msgIndex < 0 || msgIndex >= chat.messages.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final msg = chat.messages[msgIndex];
                       return MessageBubble(
                         message: msg,
                         isMine: msg.sender == me.id,

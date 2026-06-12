@@ -8,6 +8,7 @@ import '../models/group_chat.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/crypto_service.dart';
+import '../services/message_cache_service.dart';
 import '../services/socket_service.dart';
 import '../widgets/chat_avatar.dart';
 import 'chat_screen.dart';
@@ -83,36 +84,57 @@ class _ChatListScreenState extends State<ChatListScreen>
     List<ChatListItem> chats,
     List<GroupChat> groups,
   ) async {
-    // Decrypt DM last messages
+    // Decrypt DM last messages — try message cache first, then RSA decryption
     final decryptedChats = <ChatListItem>[];
     var anyChanged = false;
     for (final c in chats) {
-      if (c.lastMessageType == 'text' &&
-          c.lastMessageCiphertext != null &&
-          c.lastMessageCiphertext!.isNotEmpty &&
-          c.lastMessageEncryptedKey != null &&
-          c.lastMessageEncryptedKey!.isNotEmpty &&
-          c.lastMessageContent == null) {
-        try {
-          final plain = await CryptoService.instance
-              .decryptText(c.lastMessageCiphertext!, c.lastMessageEncryptedKey!);
-          if (plain != null && plain.isNotEmpty) {
-            decryptedChats.add(ChatListItem(
-              id: c.id,
-              fullName: c.fullName,
-              username: c.username,
-              profilePic: c.profilePic,
-              lastMessageContent: plain,
-              lastMessageType: c.lastMessageType,
-              lastSenderId: c.lastSenderId,
-              lastMessageAt: c.lastMessageAt,
-              unreadCount: c.unreadCount,
-              isOnline: c.isOnline,
-            ));
-            anyChanged = true;
-            continue;
-          }
-        } catch (_) {}
+      if (c.lastMessageContent == null && c.lastMessageAt != null) {
+        String? plain;
+
+        // 1. Try RSA decryption (most up-to-date — last message from API)
+        if (c.lastMessageType == 'text' &&
+            c.lastMessageCiphertext != null &&
+            c.lastMessageCiphertext!.isNotEmpty &&
+            c.lastMessageEncryptedKey != null &&
+            c.lastMessageEncryptedKey!.isNotEmpty) {
+          try {
+            plain = await CryptoService.instance
+                .decryptText(c.lastMessageCiphertext!, c.lastMessageEncryptedKey!);
+          } catch (_) {}
+        }
+
+        // 2. Fall back to message cache when RSA decryption can't produce a result
+        //    (e.g. old messages stored without senderEncryptedKey)
+        if ((plain == null || plain.isEmpty) && c.lastMessageType == 'text') {
+          try {
+            final cached = await MessageCacheService.instance.load(c.id);
+            if (cached.isNotEmpty) {
+              final last = cached.last;
+              if (last.contentType == 'text' &&
+                  last.plaintext != null &&
+                  last.plaintext!.isNotEmpty) {
+                plain = last.plaintext;
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (plain != null && plain.isNotEmpty) {
+          decryptedChats.add(ChatListItem(
+            id: c.id,
+            fullName: c.fullName,
+            username: c.username,
+            profilePic: c.profilePic,
+            lastMessageContent: plain,
+            lastMessageType: c.lastMessageType,
+            lastSenderId: c.lastSenderId,
+            lastMessageAt: c.lastMessageAt,
+            unreadCount: c.unreadCount,
+            isOnline: c.isOnline,
+          ));
+          anyChanged = true;
+          continue;
+        }
       }
       decryptedChats.add(c);
     }
@@ -279,6 +301,7 @@ class _ChatListScreenState extends State<ChatListScreen>
     final senderName = senderInfo?['fullName'] as String?;
 
     String preview = _typeToPreview(contentType);
+    bool decryptionAttempted = false;
     if (contentType == 'text') {
       final myId = context.read<AuthProvider>().user?.id ?? '';
       final memberKeys = msg?['memberKeys'] as List? ?? [];
@@ -292,6 +315,7 @@ class _ChatListScreenState extends State<ChatListScreen>
       }
       final ciphertext = msg?['ciphertext'] as String? ?? '';
       if (ciphertext.isNotEmpty && encKey != null && encKey.isNotEmpty) {
+        decryptionAttempted = true;
         try {
           final plain = await CryptoService.instance
               .decryptText(ciphertext, encKey);
@@ -321,6 +345,14 @@ class _ChatListScreenState extends State<ChatListScreen>
         );
       }
     });
+
+    // If decryption was attempted but fell back to placeholder, reload after a
+    // short delay so the correct preview appears once the key is available.
+    if (decryptionAttempted && preview == _typeToPreview(contentType)) {
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) _load(silent: true);
+      });
+    }
   }
 
   static String _typeToPreview(String type) {
@@ -510,12 +542,33 @@ class _ChatListScreenState extends State<ChatListScreen>
                                       isOnline: c.isOnline,
                                       time: _fmt(c.lastMessageAt),
                                       unread: c.unreadCount,
-                                      onTap: () => Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                              builder: (_) => ChatScreen(
-                                                  userId: c.id,
-                                                  userName: c.fullName,
-                                                  userAvatar: c.profilePic))));
+                                      onTap: () async {
+                                        await Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                                builder: (_) => ChatScreen(
+                                                    userId: c.id,
+                                                    userName: c.fullName,
+                                                    userAvatar: c.profilePic)));
+                                        if (!mounted) return;
+                                        // Clear unread badge immediately
+                                        final idx = _chats.indexWhere((x) => x.id == c.id);
+                                        if (idx >= 0) {
+                                          setState(() {
+                                            final p = _chats[idx];
+                                            _chats[idx] = ChatListItem(
+                                              id: p.id, fullName: p.fullName,
+                                              username: p.username, profilePic: p.profilePic,
+                                              isOnline: p.isOnline, lastMessageAt: p.lastMessageAt,
+                                              lastMessageType: p.lastMessageType,
+                                              lastSenderId: p.lastSenderId,
+                                              lastMessageContent: p.lastMessageContent,
+                                              unreadCount: 0,
+                                            );
+                                          });
+                                        }
+                                        // Silent reload to re-decrypt preview if it was missing
+                                        _load(silent: true);
+                                      });
                                 })),
                     // Groups
                     filteredGroups.isEmpty

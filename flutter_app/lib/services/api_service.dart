@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
 import '../models/user.dart';
 import '../models/message.dart';
@@ -27,6 +28,9 @@ class ApiService {
 
   late final Dio _dio;
   final _cookieJar = CookieJar();
+  String? _bearerToken;
+  static const _storage = FlutterSecureStorage();
+  static const _kToken = 'reon_bearer_token';
 
   void init() {
     _dio = Dio(BaseOptions(
@@ -38,7 +42,40 @@ class ApiService {
       validateStatus: (_) => true,
       extra: kIsWeb ? {'withCredentials': true} : {},
     ));
-    if (!kIsWeb) _dio.interceptors.add(CookieManager(_cookieJar));
+    if (!kIsWeb) {
+      _dio.interceptors.add(CookieManager(_cookieJar));
+    }
+    // On web, cookies with Secure flag can't be sent to http://localhost.
+    // Inject the JWT as a Bearer header instead.
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (opts, handler) {
+        if (kIsWeb && _bearerToken != null) {
+          opts.headers['Authorization'] = 'Bearer $_bearerToken';
+        }
+        handler.next(opts);
+      },
+    ));
+  }
+
+  /// Load a previously persisted token (call before checkAuth on app start).
+  Future<void> loadSavedToken() async {
+    if (!kIsWeb) return;
+    _bearerToken = await _storage.read(key: _kToken);
+  }
+
+  void _storeToken(Map<String, dynamic> res) {
+    if (kIsWeb) {
+      final t = res['token'] as String?;
+      if (t != null) {
+        _bearerToken = t;
+        _storage.write(key: _kToken, value: t);
+      }
+    }
+  }
+
+  void clearToken() {
+    _bearerToken = null;
+    if (kIsWeb) _storage.delete(key: _kToken);
   }
 
   Future<Map<String, dynamic>> _req(String method, String path,
@@ -72,6 +109,7 @@ class ApiService {
   Future<ReonUser> login(String email, String password) async {
     final res = await _post('/auth/login',
         body: {'email': email, 'password': password});
+    _storeToken(res);
     return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
   }
 
@@ -82,6 +120,7 @@ class ApiService {
 
   Future<ReonUser> loginWithGoogle(String idToken) async {
     final res = await _post('/auth/google-mobile', body: {'idToken': idToken});
+    _storeToken(res);
     return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
   }
 
@@ -90,7 +129,10 @@ class ApiService {
     return ReonUser.fromJson(res['user'] as Map<String, dynamic>);
   }
 
-  Future<void> logout() => _post('/auth/logout');
+  Future<void> logout() async {
+    await _post('/auth/logout');
+    clearToken();
+  }
 
   Future<ReonUser> onboard(
       {required String username,

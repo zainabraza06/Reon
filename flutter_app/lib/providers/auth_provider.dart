@@ -60,11 +60,10 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await ApiService.instance.login(email, password);
       _status = AuthStatus.authenticated;
-      // Redirect immediately — don't make the user wait for key setup.
+      // Await key setup so encryption keys are ready before the chat list loads.
+      // For returning users this is near-instant (key already in storage).
+      await _postLogin();
       notifyListeners();
-      // Run post-login work in background; call notifyListeners again so the
-      // device-link gate appears if _ensureKeys sets _needsDeviceLink = true.
-      _postLogin().then((_) => notifyListeners()).catchError((_) {});
       return true;
     } on ApiException catch (e) {
       _error = e.message;
@@ -86,8 +85,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await ApiService.instance.loginWithGoogle(idToken);
       _status = AuthStatus.authenticated;
+      await _postLogin();
       notifyListeners();
-      _postLogin().then((_) => notifyListeners()).catchError((_) {});
       return true;
     } on ApiException catch (e) {
       _error = e.message;
@@ -122,6 +121,7 @@ class AuthProvider extends ChangeNotifier {
     await ApiService.instance.logout();
     SocketService.instance.disconnect();
     await CryptoService.instance.clearKeys();
+    NotificationService.currentUserId = null;
     _user = null;
     _status = AuthStatus.unauthenticated;
     _needsDeviceLink = false;
@@ -149,6 +149,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Called after successful auth: connect socket, upload FCM token, set up keys.
   Future<void> _postLogin() async {
+    NotificationService.currentUserId = _user?.id;
     SocketService.instance.connect(_user!.id);
     // Upload FCM token NOW that we have an auth session — the token upload at app
     // start fails because there's no cookie yet.

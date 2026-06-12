@@ -6,10 +6,16 @@ class GroupMember {
   final ReonUser user;
   final DateTime joinedAt;
   const GroupMember({required this.user, required this.joinedAt});
-  factory GroupMember.fromJson(Map<String, dynamic> j) => GroupMember(
-        user: ReonUser.fromJson(j['user'] as Map<String, dynamic>),
-        joinedAt: DateTime.parse(j['joinedAt'] as String),
-      );
+  factory GroupMember.fromJson(Map<String, dynamic> j) {
+    final userRaw = j['user'];
+    final user = userRaw is Map
+        ? ReonUser.fromJson(Map<String, dynamic>.from(userRaw))
+        : ReonUser(id: userRaw?.toString() ?? '', fullName: '', email: '');
+    return GroupMember(
+      user: user,
+      joinedAt: DateTime.parse(j['joinedAt'] as String),
+    );
+  }
 }
 
 class GroupReceiptEntry {
@@ -75,7 +81,9 @@ class GroupChat {
       avatar: j['avatar'] as String?,
       creator: creator,
       admins: (j['admins'] as List? ?? [])
-          .map((a) => ReonUser.fromJson(a as Map<String, dynamic>))
+          .map((a) => a is Map
+              ? ReonUser.fromJson(Map<String, dynamic>.from(a))
+              : ReonUser(id: a?.toString() ?? '', fullName: '', email: ''))
           .toList(),
       members: (j['members'] as List? ?? [])
           .map((m) => GroupMember.fromJson(m as Map<String, dynamic>))

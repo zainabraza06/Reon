@@ -540,7 +540,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   void _scrollToBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
-          _scroll.animateTo(_scroll.position.maxScrollExtent,
+          _scroll.animateTo(0, // reversed list: 0 = bottom (newest)
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut);
         }
@@ -594,19 +594,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ]),
       body: Column(children: [
-        if (_hasMore && !_loading)
-          GestureDetector(
-              onTap: () => _loadMessages(
-                  before: _messages.isNotEmpty
-                      ? _messages.first.sentAt.toIso8601String()
-                      : null),
-              child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Load earlier',
-                      style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: ReonColors.primary,
-                          fontWeight: FontWeight.w600)))),
         Expanded(
             child: _loading && _messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
@@ -614,11 +601,34 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     painter: _DotGrid(isDark: isDark),
                     child: ListView.builder(
                         controller: _scroll,
+                        reverse: true, // newest at bottom, no manual scroll needed
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        itemCount: _messages.length,
+                        itemCount: _messages.length +
+                            (_hasMore && !_loading ? 1 : 0),
                         itemBuilder: (_, i) {
-                          final msg = _messages[i];
-                          // System messages render as centered chips
+                          // Last index = top: load-earlier button
+                          if (_hasMore && !_loading &&
+                              i == _messages.length) {
+                            return GestureDetector(
+                                onTap: () => _loadMessages(
+                                    before: _messages.isNotEmpty
+                                        ? _messages.first.sentAt
+                                            .toIso8601String()
+                                        : null),
+                                child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 8),
+                                    child: Text('Load earlier',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            color: ReonColors.primary,
+                                            fontWeight:
+                                                FontWeight.w600))));
+                          }
+                          // Reverse order: newest = index 0 (bottom)
+                          final msg =
+                              _messages[_messages.length - 1 - i];
                           if (msg.isSystem) {
                             return _SystemChip(
                                 text: msg.ciphertext ?? '', isDark: isDark);
