@@ -129,6 +129,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final m = d as Map?;
     final group = m?['group'] as Map?;
     if (group == null) return;
+
+    final me = NotificationService.currentUserId;
+
+    // Skip if the current user is the admin who performed the add
+    final addedBy = m?['addedBy'] as String?;
+    if (addedBy != null && addedBy == me) return;
+
+    // If the backend sends userId (who was added), only notify that specific user
+    final addedUserId = m?['userId'] as String?;
+    if (addedUserId != null && addedUserId != me) return;
+
     _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'group_added',
@@ -143,6 +154,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void _onNewMessage(dynamic d) {
     final m = d as Map?;
     final senderId = m?['sender'] as String?;
+
+    // Don't notify the sender about their own message
+    if (senderId != null && senderId == NotificationService.currentUserId) return;
+
     final senderInfo = m?['senderInfo'] as Map?;
     final senderName = senderInfo?['fullName'] as String? ?? 'Someone';
     final senderAvatar = senderInfo?['profilePic'] as String?;
@@ -164,6 +179,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final m = d as Map?;
     final gid = m?['groupId'] as String?;
     final groupName = m?['groupName'] as String? ?? 'a group';
+
+    final message = m?['message'] as Map?;
+
+    // Skip system messages (member add/remove events are shown inline in the chat)
+    final contentType = message?['contentType'] as String?;
+    if (contentType == 'system') return;
+
+    // Don't notify the sender about their own message
+    final sender = message?['sender'] as Map?;
+    final senderId = (sender?['_id'] ?? sender?['id']) as String?;
+    if (senderId != null && senderId == NotificationService.currentUserId) return;
+
     _prependAndSave(AppNotification(
       id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
       type: 'new_group_message',

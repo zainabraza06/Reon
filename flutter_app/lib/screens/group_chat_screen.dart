@@ -271,15 +271,20 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final sent = await ApiService.instance.sendGroupMessage(widget.groupId, form);
       if (mounted) {
         setState(() {
-          // Replace optimistic bubble with real server message
           final tempIdx = _messages.indexWhere((m) => m.id == tempId);
-          if (tempIdx >= 0) {
+          final serverIdx = _messages.indexWhere((m) => m.id == sent.id);
+          if (tempIdx >= 0 && serverIdx >= 0) {
+            // Socket already added the real message while optimistic bubble was showing.
+            // Remove the temp bubble; update the socket-added entry with server data.
+            _messages.removeAt(tempIdx);
+            final idx = _messages.indexWhere((m) => m.id == sent.id);
+            if (idx >= 0) _messages[idx] = sent;
+          } else if (tempIdx >= 0) {
             _messages[tempIdx] = sent;
+          } else if (serverIdx >= 0) {
+            _messages[serverIdx] = sent;
           } else {
-            // Socket may have already added it
-            final serverIdx = _messages.indexWhere((m) => m.id == sent.id);
-            if (serverIdx >= 0) _messages[serverIdx] = sent;
-            else _messages.add(sent);
+            _messages.add(sent);
           }
         });
       }
@@ -470,6 +475,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
     // Skip if already added (e.g. HTTP response arrived first)
     if (_messages.any((e) => e.id == msg.id)) return;
+
+    // For own media messages, an optimistic bubble with a temp ID is already
+    // showing. Let the HTTP response replace it — don't add a socket duplicate.
+    if (msg.sender.id == myId && _messages.any((e) => e.id.startsWith('temp_'))) return;
 
     final dec = await _decrypt(msg, myId);
     if (mounted) {

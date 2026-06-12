@@ -83,11 +83,23 @@ class NotificationService {
     // Suppress if user is actively viewing this conversation
     final data = message.data;
     final msgGroupId = data['groupId'] as String?;
-    final msgSenderId = data['senderId'] as String?;
+    // Backend may use different field names across event types
+    final actorId = (data['senderId'] ?? data['actorId'] ?? data['userId']) as String?;
+
     if (msgGroupId != null && msgGroupId == activeGroupId) return;
-    if (msgGroupId == null && msgSenderId != null && msgSenderId == activeChatId) return;
-    // Suppress echoes of the current user's own messages/actions
-    if (msgSenderId != null && msgSenderId == currentUserId) return;
+    if (msgGroupId == null && actorId != null && actorId == activeChatId) return;
+
+    // Suppress own messages/actions regardless of field name used for sender
+    if (actorId != null && actorId == currentUserId) return;
+
+    // Suppress group system events (add/remove/etc.) that the backend sends
+    // without a groupId while the user is actively viewing a group chat.
+    // These are always triggered by the user's own action so they're redundant.
+    final msgType = data['type'] as String?;
+    if (activeGroupId != null &&
+        msgGroupId == null &&
+        msgType != null &&
+        msgType.startsWith('group')) return;
 
     await _local.show(
       message.hashCode,
