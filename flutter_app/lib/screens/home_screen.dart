@@ -24,11 +24,26 @@ class _HomeScreenState extends State<HomeScreen> {
   int _notifBadge = 0;
   int _chatsBadge = 0; // badge on the Chats tab for new DM/group messages
 
+  // Signals ChatListScreen to silently reload when a notification-link chat closes.
+  final _chatListReloadNotifier = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _loadBadges();
     _listenSocket();
+  }
+
+  @override
+  void dispose() {
+    _chatListReloadNotifier.dispose();
+    super.dispose();
+  }
+
+  void _onNotificationChatOpened() {
+    setState(() => _chatsBadge = 0);
+    _loadBadges();
+    _chatListReloadNotifier.value++;
   }
 
   Future<void> _loadBadges() async {
@@ -124,12 +139,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screens = [
-      const ChatListScreen(),
+      ChatListScreen(reloadNotifier: _chatListReloadNotifier),
       const FriendsScreen(),
       const RecommendationsScreen(),
       NotificationsScreen(
           onUnreadChanged: (n) => setState(() => _notifBadge = n),
-          onGoToFriends: () => setState(() => _tab = 1)),
+          onGoToFriends: () => setState(() => _tab = 1),
+          onChatOpened: _onNotificationChatOpened),
       const SettingsScreen(),
     ];
 

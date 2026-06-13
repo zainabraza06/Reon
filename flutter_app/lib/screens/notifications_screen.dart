@@ -14,7 +14,8 @@ import 'group_chat_screen.dart';
 class NotificationsScreen extends StatefulWidget {
   final ValueChanged<int>? onUnreadChanged;
   final VoidCallback? onGoToFriends;
-  const NotificationsScreen({super.key, this.onUnreadChanged, this.onGoToFriends});
+  final VoidCallback? onChatOpened;
+  const NotificationsScreen({super.key, this.onUnreadChanged, this.onGoToFriends, this.onChatOpened});
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
@@ -215,15 +216,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       } else if (type == 'chat') {
         final userId = data['userId'] as String? ?? '';
         final userName = data['userName'] as String? ?? 'User';
-        navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => ChatScreen(userId: userId, userName: userName),
-        ));
+        navigatorKey.currentState
+            ?.push(MaterialPageRoute(
+              builder: (_) => ChatScreen(userId: userId, userName: userName),
+            ))
+            .then((_) => widget.onChatOpened?.call());
       } else if (type == 'group') {
         final groupId = data['groupId'] as String? ?? '';
         final groupName = data['groupName'] as String? ?? 'Group';
-        navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => GroupChatScreen(groupId: groupId, groupName: groupName),
-        ));
+        navigatorKey.currentState
+            ?.push(MaterialPageRoute(
+              builder: (_) => GroupChatScreen(groupId: groupId, groupName: groupName),
+            ))
+            .then((_) => widget.onChatOpened?.call());
       }
     } catch (_) {}
   }

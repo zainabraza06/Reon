@@ -227,8 +227,8 @@ class ApiService {
         res.statusCode! >= 200 &&
         res.statusCode! < 300) {
       final data = res.data as Map;
-      return ChatMessage.fromJson(
-          (data['data'] ?? data) as Map<String, dynamic>);
+      final msg = data['data'] ?? data['message'] ?? data;
+      return ChatMessage.fromJson(msg as Map<String, dynamic>);
     }
     throw ApiException(
         (res.data as Map?)?['message'] as String? ?? 'Send failed',

@@ -16,7 +16,8 @@ import 'group_chat_screen.dart';
 import 'create_group_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
-  const ChatListScreen({super.key});
+  final ValueNotifier<int>? reloadNotifier;
+  const ChatListScreen({super.key, this.reloadNotifier});
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
 }
@@ -38,10 +39,14 @@ class _ChatListScreenState extends State<ChatListScreen>
     _tab.addListener(() => setState(() {}));
     _load();
     _listenSocket();
+    widget.reloadNotifier?.addListener(_onReloadRequested);
   }
+
+  void _onReloadRequested() => _load(silent: true);
 
   @override
   void dispose() {
+    widget.reloadNotifier?.removeListener(_onReloadRequested);
     _tab.dispose();
     _search.dispose();
     SocketService.instance.off('new-message', _onNewMsg);
@@ -149,7 +154,10 @@ class _ChatListScreenState extends State<ChatListScreen>
           g.lastMessageContent == null) {
         String? encKey;
         for (final k in g.lastMessageMemberKeys!) {
-          if (k['userId']?.toString() == myId) {
+          final uid = k['userId'] is Map
+              ? ((k['userId'] as Map)['_id'] ?? (k['userId'] as Map)['id'])?.toString()
+              : k['userId']?.toString();
+          if (uid == myId) {
             encKey = k['encryptedKey'] as String?;
             break;
           }
@@ -308,7 +316,10 @@ class _ChatListScreenState extends State<ChatListScreen>
       String? encKey;
       for (final k in memberKeys) {
         final entry = k as Map;
-        if (entry['userId']?.toString() == myId) {
+        final uid = entry['userId'] is Map
+            ? ((entry['userId'] as Map)['_id'] ?? (entry['userId'] as Map)['id'])?.toString()
+            : entry['userId']?.toString();
+        if (uid == myId) {
           encKey = entry['encryptedKey'] as String?;
           break;
         }

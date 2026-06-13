@@ -164,7 +164,17 @@ class ChatProvider extends ChangeNotifier {
           .sendMessage(FormData.fromMap({'data': payload}));
       final dec = await _decrypt(sent.copyWith(plaintext: text));
 
-      _messages = [for (final m in _messages) m.id == tempId ? dec : m];
+      final hasTempId = _messages.any((m) => m.id == tempId);
+      final hasRealId = _messages.any((m) => m.id == dec.id);
+      if (hasTempId) {
+        // Normal path: replace the optimistic bubble with the real message.
+        _messages = [for (final m in _messages) m.id == tempId ? dec : m];
+      } else if (!hasRealId) {
+        // Fallback: temp was displaced (e.g. by a socket reconnect reload)
+        // but the real message isn't there yet — append it so it's never lost.
+        _messages = [..._messages, dec];
+      }
+      // If hasRealId && !hasTempId, the socket already added it; nothing to do.
       notifyListeners();
       await MessageCacheService.instance.upsert(recipientId, dec);
     } catch (_) {
@@ -352,7 +362,9 @@ class ChatProvider extends ChangeNotifier {
     final m = d as Map?;
     if (m == null) return;
     final msg = ChatMessage.fromJson(Map<String, dynamic>.from(m));
-    if (msg.sender != recipientId && msg.receiver != recipientId) return;
+    // Only handle messages sent BY the recipient to us; our own sends are
+    // already handled by the HTTP response path in sendMessage.
+    if (msg.sender != recipientId) return;
     if (_messages.any((e) => e.id == msg.id)) return;
 
     final dec = await _decrypt(msg);

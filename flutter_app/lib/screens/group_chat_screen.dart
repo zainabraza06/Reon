@@ -157,6 +157,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
     final prepared = await CryptoService.instance.encryptGroupText(text);
 
+    final myId = context.read<AuthProvider>().user?.id ?? '';
     final memberKeys = <Map<String, dynamic>>[];
     for (final mem in _group!.members) {
       try {
@@ -170,6 +171,22 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         }
       } catch (_) {}
     }
+
+    // Guarantee the sender's own key is present so they can decrypt their own
+    // message via the socket echo (in case tryGetPublicKey returned null for
+    // the sender's ID or their member entry had an empty user object).
+    if (!memberKeys.any((k) => k['userId'] == myId)) {
+      try {
+        final myJwk = await CryptoService.instance.getStoredPublicKey();
+        if (myJwk != null) {
+          memberKeys.add({
+            'userId': myId,
+            'encryptedKey': prepared.encryptKeyFor(myJwk),
+          });
+        }
+      } catch (_) {}
+    }
+
     if (memberKeys.isEmpty) return;
 
     final payload = jsonEncode({
@@ -451,6 +468,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     SocketService.instance.on('group-messages-read', _onRead);
   }
 
+  // Extracts a plain string ID from a userId field that may be a
+  // populated user object (Map) or a plain string sent by the backend.
+  static String? _extractUserId(dynamic raw) {
+    if (raw is Map) {
+      return (raw['_id'] ?? raw['id'])?.toString();
+    }
+    return raw?.toString();
+  }
+
   void _onNewMsg(dynamic d) async {
     final m = d as Map?;
     if (m == null) return;
@@ -460,11 +486,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final myId = context.read<AuthProvider>().user?.id ?? '';
 
     // The socket payload contains the full memberKeys array; extract our key.
+    // userId may be a plain string or a populated user object from the backend.
     if (rawMsg['encryptedKey'] == null) {
       final memberKeys = rawMsg['memberKeys'] as List? ?? [];
       for (final k in memberKeys) {
         final entry = Map<String, dynamic>.from(k as Map);
-        if (entry['userId']?.toString() == myId) {
+        if (_extractUserId(entry['userId']) == myId) {
           rawMsg['encryptedKey'] = entry['encryptedKey'];
           break;
         }
