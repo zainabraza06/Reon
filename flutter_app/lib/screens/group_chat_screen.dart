@@ -56,6 +56,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _recording = false;
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
+  // Receipt sheet live-update support
+  String? _receiptMsgId;
+  VoidCallback? _receiptRefresh;
 
   @override
   void initState() {
@@ -592,6 +595,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 : msg
         ];
       });
+      if (_receiptMsgId == mid && _receiptRefresh != null) {
+        _receiptRefresh!();
+      }
     }
   }
 
@@ -615,126 +621,146 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 : msg
         ];
       });
+      if (_receiptMsgId != null &&
+          idSet.contains(_receiptMsgId) &&
+          _receiptRefresh != null) {
+        _receiptRefresh!();
+      }
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  void _showReceiptSheet(GroupMessage msg) {
-    final members = _group?.members ?? [];
+  void _showReceiptSheet(GroupMessage initialMsg) {
+    _receiptMsgId = initialMsg.id;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    String _nameFor(String userId) {
-      for (final m in members) {
+    String nameFor(String userId) {
+      for (final m in (_group?.members ?? [])) {
         if (m.user.id == userId) return m.user.fullName;
       }
       return userId;
     }
 
-    final readEntries = msg.readBy
-        .where((r) => r['userId'] != msg.sender.id)
-        .toList();
-    final deliveredEntries = msg.deliveredTo
-        .where((d) => d['userId'] != msg.sender.id)
-        .toList();
+    Widget entryRow(Map<String, dynamic> entry) {
+      final uid = entry['userId'] as String? ?? '';
+      final at = entry['at'] as String?;
+      final dt = at != null ? DateTime.tryParse(at) : null;
+      final timeStr =
+          dt != null ? DateFormat('HH:mm, d MMM').format(dt.toLocal()) : '';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(children: [
+          ChatAvatar(name: nameFor(uid), size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+              child:
+                  Text(nameFor(uid), style: GoogleFonts.inter(fontSize: 14))),
+          if (timeStr.isNotEmpty)
+            Text(timeStr,
+                style: GoogleFonts.inter(
+                    fontSize: 11, color: ReonColors.textMuted)),
+        ]),
+      );
+    }
 
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 16),
-          Text('Message Info',
-              style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 16),
-          if (readEntries.isNotEmpty) ...[
-            Row(children: [
-              Icon(Icons.done_all_rounded,
-                  size: 16, color: ReonColors.accent),
-              const SizedBox(width: 6),
-              Text('Read by',
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          // Register the refresh callback so _onRead / _onDelivered can
+          // trigger a rebuild without closing the sheet.
+          _receiptRefresh = () {
+            if (ctx.mounted) setSheetState(() {});
+          };
+
+          // Always read the latest version from _messages so the sheet
+          // updates in real time when sockets fire.
+          final current = _messages.firstWhere(
+              (m) => m.id == initialMsg.id,
+              orElse: () => initialMsg);
+          final senderId = current.sender.id;
+          final readEntries =
+              current.readBy.where((r) => r['userId'] != senderId).toList();
+          final deliveredEntries = current.deliveredTo
+              .where((d) => d['userId'] != senderId)
+              .toList();
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child:
+                Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              Text('Message Info',
                   style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600, fontSize: 14)),
-            ]),
-            const SizedBox(height: 6),
-            ...readEntries.map((r) {
-              final uid = r['userId'] as String? ?? '';
-              final at = r['at'] as String?;
-              final dt = at != null ? DateTime.tryParse(at) : null;
-              final timeStr = dt != null
-                  ? DateFormat('HH:mm, d MMM').format(dt)
-                  : '';
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  ChatAvatar(name: _nameFor(uid), size: 32),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: Text(_nameFor(uid),
-                          style: GoogleFonts.inter(fontSize: 14))),
-                  if (timeStr.isNotEmpty)
-                    Text(timeStr,
+                      fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 16),
+
+              // ── Read by ───────────────────────────────────────────────────
+              Row(children: [
+                Icon(Icons.done_all_rounded,
+                    size: 16, color: ReonColors.accent),
+                const SizedBox(width: 6),
+                Text('Read by  (${readEntries.length})',
+                    style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600, fontSize: 14)),
+              ]),
+              const SizedBox(height: 4),
+              if (readEntries.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('No one has read this yet',
                         style: GoogleFonts.inter(
-                            fontSize: 11, color: ReonColors.textMuted)),
-                ]),
-              );
-            }),
-            const SizedBox(height: 12),
-          ],
-          if (deliveredEntries.isNotEmpty) ...[
-            Row(children: [
-              Icon(Icons.done_all_rounded,
-                  size: 16,
-                  color: Colors.grey.withValues(alpha: 0.7)),
-              const SizedBox(width: 6),
-              Text('Delivered to',
-                  style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600, fontSize: 14)),
-            ]),
-            const SizedBox(height: 6),
-            ...deliveredEntries.map((d) {
-              final uid = d['userId'] as String? ?? '';
-              final at = d['at'] as String?;
-              final dt = at != null ? DateTime.tryParse(at) : null;
-              final timeStr = dt != null
-                  ? DateFormat('HH:mm, d MMM').format(dt)
-                  : '';
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  ChatAvatar(name: _nameFor(uid), size: 32),
-                  const SizedBox(width: 10),
-                  Expanded(
-                      child: Text(_nameFor(uid),
-                          style: GoogleFonts.inter(fontSize: 14))),
-                  if (timeStr.isNotEmpty)
-                    Text(timeStr,
+                            fontSize: 13, color: ReonColors.textMuted)),
+                  ),
+                )
+              else
+                ...readEntries.map(entryRow),
+
+              const Divider(height: 24),
+
+              // ── Delivered to ──────────────────────────────────────────────
+              Row(children: [
+                Icon(Icons.done_all_rounded,
+                    size: 16,
+                    color: Colors.grey.withValues(alpha: 0.7)),
+                const SizedBox(width: 6),
+                Text('Delivered to  (${deliveredEntries.length})',
+                    style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600, fontSize: 14)),
+              ]),
+              const SizedBox(height: 4),
+              if (deliveredEntries.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Not delivered yet',
                         style: GoogleFonts.inter(
-                            fontSize: 11, color: ReonColors.textMuted)),
-                ]),
-              );
-            }),
-          ],
-          if (readEntries.isEmpty && deliveredEntries.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text('Not yet delivered',
-                  style: GoogleFonts.inter(
-                      fontSize: 14, color: ReonColors.textMuted)),
-            ),
-        ]),
+                            fontSize: 13, color: ReonColors.textMuted)),
+                  ),
+                )
+              else
+                ...deliveredEntries.map(entryRow),
+            ]),
+          );
+        },
       ),
-    );
+    ).whenComplete(() {
+      _receiptMsgId = null;
+      _receiptRefresh = null;
+    });
   }
 
   void _scrollToBottom({bool jump = false}) =>
