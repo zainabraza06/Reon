@@ -122,7 +122,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _loading = false;
         });
       }
-      _scrollToBottom();
+      // Only jump to bottom on initial open; paginating older messages should
+      // keep the viewport where the user is reading.
+      if (before == null) _scrollToBottom(jump: true);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -574,11 +576,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  void _scrollToBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _scrollToBottom({bool jump = false}) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
-          _scroll.animateTo(0, // reversed list: 0 = bottom (newest)
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut);
+          if (jump) {
+            _scroll.jumpTo(0);
+          } else {
+            _scroll.animateTo(0, // reversed list: 0 = bottom (newest)
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut);
+          }
         }
       });
 

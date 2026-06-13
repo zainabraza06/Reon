@@ -34,12 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _listenSocket();
   }
 
-  @override
-  void dispose() {
-    _chatListReloadNotifier.dispose();
-    super.dispose();
-  }
-
   void _onNotificationChatOpened() {
     setState(() => _chatsBadge = 0);
     _loadBadges();
@@ -125,6 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     s.off('user-status-changed', _onStatusChange);
     s.off('new-message', _onNewChatMsg);
     s.off('new-group-message', _onNewGroupChatMsg);
+    _chatListReloadNotifier.dispose();
     super.dispose();
   }
 

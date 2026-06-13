@@ -86,9 +86,44 @@ class _ChatViewState extends State<_ChatView> {
   bool _recording = false;
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
+  ChatProvider? _chatProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    // Jump to newest message once the initial load finishes.
+    // addPostFrameCallback defers until after the first build so the provider
+    // is accessible via context.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _chatProvider = context.read<ChatProvider>();
+      if (!_chatProvider!.loading && _chatProvider!.messages.isNotEmpty) {
+        _jumpToBottom();
+      } else {
+        _chatProvider!.addListener(_scrollOnInitialLoad);
+      }
+    });
+  }
+
+  void _scrollOnInitialLoad() {
+    final cp = _chatProvider;
+    if (cp == null) return;
+    if (!cp.loading && cp.messages.isNotEmpty) {
+      cp.removeListener(_scrollOnInitialLoad);
+      _chatProvider = null;
+      _jumpToBottom();
+    }
+  }
+
+  void _jumpToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(0);
+    });
+  }
 
   @override
   void dispose() {
+    _chatProvider?.removeListener(_scrollOnInitialLoad);
     _input.dispose();
     _scroll.dispose();
     _recordTimer?.cancel();
