@@ -157,9 +157,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _input.clear();
     setState(() {});
 
+    // Show optimistic bubble immediately so the user sees their message
+    // while encryption and key-fetching happen in the background.
+    final me = context.read<AuthProvider>().user!;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimistic = GroupMessage(
+      id: tempId,
+      groupId: widget.groupId,
+      sender: me,
+      contentType: 'text',
+      plaintext: text,
+      sentAt: DateTime.now(),
+    );
+    if (mounted) setState(() => _messages.add(optimistic));
+    _scrollToBottom();
+
     final prepared = await CryptoService.instance.encryptGroupText(text);
 
-    final myId = context.read<AuthProvider>().user?.id ?? '';
+    final myId = me.id;
     final memberKeys = <Map<String, dynamic>>[];
     for (final mem in _group!.members) {
       try {
@@ -189,7 +204,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       } catch (_) {}
     }
 
-    if (memberKeys.isEmpty) return;
+    if (memberKeys.isEmpty) {
+      if (mounted) setState(() => _messages.removeWhere((m) => m.id == tempId));
+      return;
+    }
 
     final payload = jsonEncode({
       'ciphertext': prepared.ciphertext,
@@ -204,11 +222,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       final dec = sent.copyWith(plaintext: text);
       if (mounted) {
         setState(() {
-          // Replace if socket already added this message (may be encrypted),
-          // otherwise append (socket hasn't fired yet).
-          final idx = _messages.indexWhere((m) => m.id == dec.id);
-          if (idx >= 0) {
-            _messages[idx] = dec;
+          final tempIdx = _messages.indexWhere((m) => m.id == tempId);
+          final serverIdx = _messages.indexWhere((m) => m.id == dec.id);
+          if (tempIdx >= 0 && serverIdx >= 0) {
+            // Socket already added the real message while temp was showing —
+            // remove the temp bubble and update the socket entry.
+            _messages.removeAt(tempIdx);
+            final i = _messages.indexWhere((m) => m.id == dec.id);
+            if (i >= 0) _messages[i] = dec;
+          } else if (tempIdx >= 0) {
+            _messages[tempIdx] = dec;
+          } else if (serverIdx >= 0) {
+            _messages[serverIdx] = dec;
           } else {
             _messages.add(dec);
           }
@@ -217,6 +242,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       _scrollToBottom();
     } catch (e) {
       if (mounted) {
+        setState(() => _messages.removeWhere((m) => m.id == tempId));
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Send failed: $e')));
       }
@@ -576,6 +602,123 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
+  void _showReceiptSheet(GroupMessage msg) {
+    final members = _group?.members ?? [];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    String _nameFor(String userId) {
+      for (final m in members) {
+        if (m.user.id == userId) return m.user.fullName;
+      }
+      return userId;
+    }
+
+    final readEntries = msg.readBy
+        .where((r) => r['userId'] != msg.sender.id)
+        .toList();
+    final deliveredEntries = msg.deliveredTo
+        .where((d) => d['userId'] != msg.sender.id)
+        .toList();
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? ReonColors.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          Text('Message Info',
+              style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 16),
+          if (readEntries.isNotEmpty) ...[
+            Row(children: [
+              Icon(Icons.done_all_rounded,
+                  size: 16, color: ReonColors.accent),
+              const SizedBox(width: 6),
+              Text('Read by',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600, fontSize: 14)),
+            ]),
+            const SizedBox(height: 6),
+            ...readEntries.map((r) {
+              final uid = r['userId'] as String? ?? '';
+              final at = r['at'] as String?;
+              final dt = at != null ? DateTime.tryParse(at) : null;
+              final timeStr = dt != null
+                  ? DateFormat('HH:mm, d MMM').format(dt)
+                  : '';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  ChatAvatar(name: _nameFor(uid), size: 32),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: Text(_nameFor(uid),
+                          style: GoogleFonts.inter(fontSize: 14))),
+                  if (timeStr.isNotEmpty)
+                    Text(timeStr,
+                        style: GoogleFonts.inter(
+                            fontSize: 11, color: ReonColors.textMuted)),
+                ]),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
+          if (deliveredEntries.isNotEmpty) ...[
+            Row(children: [
+              Icon(Icons.done_all_rounded,
+                  size: 16,
+                  color: Colors.grey.withValues(alpha: 0.7)),
+              const SizedBox(width: 6),
+              Text('Delivered to',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600, fontSize: 14)),
+            ]),
+            const SizedBox(height: 6),
+            ...deliveredEntries.map((d) {
+              final uid = d['userId'] as String? ?? '';
+              final at = d['at'] as String?;
+              final dt = at != null ? DateTime.tryParse(at) : null;
+              final timeStr = dt != null
+                  ? DateFormat('HH:mm, d MMM').format(dt)
+                  : '';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  ChatAvatar(name: _nameFor(uid), size: 32),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: Text(_nameFor(uid),
+                          style: GoogleFonts.inter(fontSize: 14))),
+                  if (timeStr.isNotEmpty)
+                    Text(timeStr,
+                        style: GoogleFonts.inter(
+                            fontSize: 11, color: ReonColors.textMuted)),
+                ]),
+              );
+            }),
+          ],
+          if (readEntries.isEmpty && deliveredEntries.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Not yet delivered',
+                  style: GoogleFonts.inter(
+                      fontSize: 14, color: ReonColors.textMuted)),
+            ),
+        ]),
+      ),
+    );
+  }
+
   void _scrollToBottom({bool jump = false}) =>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
@@ -681,7 +824,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               message: msg,
                               isMine: isMine,
                               memberCount: memberCount,
-                              myId: me.id);
+                              myId: me.id,
+                              onLongPress: isMine
+                                  ? () => _showReceiptSheet(msg)
+                                  : null);
                         }))),
         if (_uploading)
           LinearProgressIndicator(
@@ -863,11 +1009,13 @@ class _GroupBubble extends StatelessWidget {
   final bool isMine;
   final int memberCount;
   final String myId;
+  final VoidCallback? onLongPress;
   const _GroupBubble(
       {required this.message,
       required this.isMine,
       required this.memberCount,
-      required this.myId});
+      required this.myId,
+      this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -902,7 +1050,9 @@ class _GroupBubble extends StatelessWidget {
                         color: ReonColors.primary)),
               ]),
             const SizedBox(height: 2),
-            Container(
+            GestureDetector(
+              onLongPress: onLongPress,
+              child: Container(
               decoration: isMine
                   ? gradientBubbleDecoration(roundBR: false)
                   : BoxDecoration(
@@ -1011,7 +1161,8 @@ class _GroupBubble extends StatelessWidget {
                       ],
                     ]),
                   ]),
-            ),
+              ),
+            ), // GestureDetector
           ]),
     );
   }
@@ -1032,13 +1183,16 @@ class _GroupTick extends StatelessWidget {
     final otherRead = readBy.where((r) => r['userId'] != senderId).length;
     final otherDelivered =
         deliveredTo.where((d) => d['userId'] != senderId).length;
-    final allRead = memberCount > 0 && otherRead >= memberCount;
+    // memberCount includes the sender, so others = memberCount - 1.
+    final others = (memberCount - 1).clamp(0, 9999);
+    final allRead = others > 0 && otherRead >= others;
+    final allDelivered = others > 0 && otherDelivered >= others;
 
     if (allRead) {
       return Icon(Icons.done_all_rounded,
           size: 14, color: ReonColors.accent.withValues(alpha: 0.9));
     }
-    if (otherDelivered > 0) {
+    if (allDelivered) {
       return Icon(Icons.done_all_rounded,
           size: 14, color: Colors.white.withValues(alpha: 0.6));
     }
