@@ -89,7 +89,7 @@ class ChatMessage {
         media: (j['media'] as List? ?? [])
             .map((m) => MediaFile.fromJson(m as Map<String, dynamic>))
             .toList(),
-        sentAt: DateTime.parse(j['sentAt'] as String),
+        sentAt: DateTime.parse(j['sentAt'] as String).toLocal(),
         delivered: j['delivered'] as bool? ?? false,
         deliveredAt: j['deliveredAt'] != null
             ? DateTime.tryParse(j['deliveredAt'] as String)

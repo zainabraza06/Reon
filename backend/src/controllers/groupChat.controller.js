@@ -508,10 +508,30 @@ export const sendGroupMessage = async (req, res) => {
       memberCount,
     });
 
+    // Build a per-user view: extract each member's encryptedKey out of the
+    // full memberKeys arrays so clients don't have to scan them.
+    const filterForUser = (msg, uid) => {
+      const obj = msg.toObject ? msg.toObject() : { ...msg };
+      const uidStr = uid.toString();
+      obj.encryptedKey = obj.memberKeys?.find((k) => k.userId?.toString() === uidStr)?.encryptedKey ?? null;
+      obj.media = (obj.media || []).map((mf) => ({
+        ...mf,
+        encryptedKey: mf.memberKeys?.find((k) => k.userId?.toString() === uidStr)?.encryptedKey ?? null,
+      }));
+      return obj;
+    };
+
     // Emit to all members (including sender for sidebar update)
     for (const m of group.members) {
-      emitToUser(m.user.toString(), "new-group-message", { message: populated, groupId, groupName: group.name });
+      const uid = m.user.toString();
+      emitToUser(uid, "new-group-message", {
+        message: filterForUser(populated, uid),
+        groupId,
+        groupName: group.name,
+      });
     }
+
+    res.status(201).json({ message: filterForUser(populated, senderId) });
 
     // Push notification for offline members (never the sender)
     const senderUser = await User.findById(senderId).select("fullName").lean();
@@ -539,7 +559,6 @@ export const sendGroupMessage = async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: populated });
   } catch (err) {
     console.error("sendGroupMessage error:", err);
     res.status(500).json({ message: "Server error" });

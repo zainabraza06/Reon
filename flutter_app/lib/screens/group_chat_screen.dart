@@ -513,8 +513,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final rawMsg = Map<String, dynamic>.from(m['message'] as Map);
     final myId = context.read<AuthProvider>().user?.id ?? '';
 
-    // The socket payload contains the full memberKeys array; extract our key.
-    // userId may be a plain string or a populated user object from the backend.
+    // Extract per-user encryptedKey from memberKeys (text messages).
     if (rawMsg['encryptedKey'] == null) {
       final memberKeys = rawMsg['memberKeys'] as List? ?? [];
       for (final k in memberKeys) {
@@ -524,6 +523,25 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           break;
         }
       }
+    }
+
+    // Extract per-user encryptedKey from each media file's memberKeys.
+    final mediaList = rawMsg['media'] as List?;
+    if (mediaList != null && mediaList.isNotEmpty) {
+      rawMsg['media'] = mediaList.map((item) {
+        final mf = Map<String, dynamic>.from(item as Map);
+        if (mf['encryptedKey'] == null) {
+          final mediaKeys = mf['memberKeys'] as List? ?? [];
+          for (final k in mediaKeys) {
+            final entry = Map<String, dynamic>.from(k as Map);
+            if (_extractUserId(entry['userId']) == myId) {
+              mf['encryptedKey'] = entry['encryptedKey'];
+              break;
+            }
+          }
+        }
+        return mf;
+      }).toList();
     }
 
     final msg = GroupMessage.fromJson(rawMsg);

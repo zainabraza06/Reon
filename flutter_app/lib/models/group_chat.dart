@@ -145,7 +145,7 @@ class GroupMessage {
         media: (j['media'] as List? ?? [])
             .map((m) => MediaFile.fromJson(m as Map<String, dynamic>))
             .toList(),
-        sentAt: DateTime.parse(j['sentAt'] as String),
+        sentAt: DateTime.parse(j['sentAt'] as String).toLocal(),
         readBy: List<Map<String, dynamic>>.from(
             (j['readBy'] as List? ?? []).map((e) => e as Map<String, dynamic>)),
         deliveredTo: List<Map<String, dynamic>>.from(
